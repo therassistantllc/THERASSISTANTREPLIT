@@ -61,6 +61,25 @@ const M5 = 'ab600001-0000-0000-0000-000000000005';
 const M6 = 'ab600001-0000-0000-0000-000000000006';
 const M7 = 'ab600001-0000-0000-0000-000000000007';
 const M8 = 'ab600001-0000-0000-0000-000000000008';
+// ERA import batches — eb (all hex)
+const EB1 = 'eb700001-0000-0000-0000-000000000001';
+const EB2 = 'eb700001-0000-0000-0000-000000000002';
+const EB3 = 'eb700001-0000-0000-0000-000000000003';
+const EB4 = 'eb700001-0000-0000-0000-000000000004';
+const EB5 = 'eb700001-0000-0000-0000-000000000005';
+// ERA claim payments — ec (all hex)
+const ECP1 = 'ec800001-0000-0000-0000-000000000001';
+const ECP2 = 'ec800001-0000-0000-0000-000000000002';
+const ECP3 = 'ec800001-0000-0000-0000-000000000003';
+const ECP4 = 'ec800001-0000-0000-0000-000000000004';
+const ECP5 = 'ec800001-0000-0000-0000-000000000005';
+// Patient invoices — fa (all hex)
+const PI1 = 'fa900001-0000-0000-0000-000000000001';
+const PI2 = 'fa900001-0000-0000-0000-000000000002';
+const PI3 = 'fa900001-0000-0000-0000-000000000003';
+// Patient invoice payments — fe (all hex)
+const PIP1 = 'fe000001-0000-0000-0000-000000000001';
+const PIP2 = 'fe000001-0000-0000-0000-000000000002';
 // Real provider UUID (already exists in DB)
 const PROVIDER = '22222222-2222-2222-2222-222222222222';
 
@@ -301,6 +320,314 @@ async function main() {
     else mailOk++;
   }
   console.log(`  ✓ mailroom_items: ${mailOk} ok, ${mailErr} errors`);
+
+  // ─── 9. Update claims with submitted_at for current-month reporting ──────────
+  // The billing reports API filters by professional_claims.submitted_at within
+  // the selected month. Without this field set, claims won't appear in the report.
+  // Today is May 2026, so we set submitted_at to early May so claims appear in the
+  // current-month snapshot. We also record the ERA-matched paid/denied status.
+  console.log('9. Updating claim submitted_at / claim_status for ERA-linked claims');
+  const claimUpdates = [
+    { id: PC4, submitted_at: daysAgo(18), claim_status: 'paid',     billing_notes: 'Paid by BlueCross BlueShield via ERA 835. $168 allowed, $42 CO-45 contractual write-off, $42 patient copay billed.' },
+    { id: PC2, submitted_at: daysAgo(15), claim_status: 'paid',     billing_notes: 'Paid by United Healthcare via ERA 835. $140 allowed, $35 CO-45 contractual write-off, $35 patient deductible billed.' },
+    { id: PC3, submitted_at: daysAgo(17), claim_status: 'denied',   billing_notes: 'Denied by Aetna via ERA 835 — CARC 97 (service not covered). Appeal submitted.' },
+    { id: PC1, submitted_at: daysAgo(10), claim_status: 'submitted', billing_notes: 'Submitted via 837P batch B2026-02. ERA received — $116 payment, $29 patient deductible. Awaiting manual posting.' },
+  ];
+  let cuOk = 0, cuErr = 0;
+  for (const upd of claimUpdates) {
+    const { error } = await supabase
+      .from('professional_claims')
+      .update({ submitted_at: upd.submitted_at, claim_status: upd.claim_status, billing_notes: upd.billing_notes })
+      .eq('id', upd.id);
+    if (error) { console.error(`  ERROR claim update (${upd.id}):`, error.message); cuErr++; }
+    else cuOk++;
+  }
+  console.log(`  ✓ professional_claims updated: ${cuOk} ok, ${cuErr} errors`);
+
+  // ─── 10. ERA Import Batches ───────────────────────────────────────────────────
+  console.log('10. ERA import batches');
+  await upsert('era_import_batches', [
+    {
+      id: EB1,
+      organization_id: ORG_ID,
+      source: 'clearinghouse',
+      file_name: '835_BCBS_20260501_001.edi',
+      raw_content: 'ISA*00*          *00*          *ZZ*BCBS           *ZZ*DEMO_PRACTICE   *260501*0900*^*00501*000000001*0*P*:~GS*HP*BCBS*DEMO*20260501*0900*1*X*005010X221A1~ST*835*0001~BPR*I*168.00*C*ACH*CCP*01*123456789*DA*987654321*20260501~TRN*1*ERA2026050101*1234567890~REF*EV*BCBS2026~DTM*405*20260501~N1*PR*BLUECROSS BLUESHIELD~N1*PE*DEMO PRACTICE GROUP*XX*1234567890~CLP*CLM-2026-004*1*210.00*168.00*42.00*MC*BCBS-PC4-0001~SVC*HC:90837*175.00*140.00**1~DTM*472*20260501~CAS*CO*45*35.00~SVC*HC:90785*35.00*28.00**1~DTM*472*20260501~CAS*CO*45*7.00~SE*14*0001~GE*1*1~IEA*1*000000001~',
+      parsed_summary: { payer: 'BlueCross BlueShield', payer_id: 'BCBS', check_number: 'ACH-20260501-001', payment_date: dateAgo(18), claim_count: 1 },
+      import_status: 'posted',
+      total_claims: 1,
+      total_payment_amount: 168.00,
+      total_patient_responsibility: 42.00,
+      imported_at: daysAgo(18),
+    },
+    {
+      id: EB2,
+      organization_id: ORG_ID,
+      source: 'clearinghouse',
+      file_name: '835_UHC_20260504_001.edi',
+      raw_content: 'ISA*00*          *00*          *ZZ*UHC            *ZZ*DEMO_PRACTICE   *260504*1030*^*00501*000000002*0*P*:~GS*HP*UHC*DEMO*20260504*1030*2*X*005010X221A1~ST*835*0002~BPR*I*140.00*C*ACH*CCP*01*987654321*DA*123456789*20260504~TRN*1*ERA2026050402*0987654321~REF*EV*UHC2026~DTM*405*20260504~N1*PR*UNITED HEALTHCARE~N1*PE*DEMO PRACTICE GROUP*XX*1234567890~CLP*CLM-2026-002*1*175.00*140.00*35.00*MC*UHC-PC2-0001~SVC*HC:90837*175.00*140.00**1~DTM*472*20260504~CAS*CO*45*35.00~SE*12*0002~GE*1*2~IEA*1*000000002~',
+      parsed_summary: { payer: 'United Healthcare', payer_id: 'UHC', check_number: 'ACH-20260504-002', payment_date: dateAgo(15), claim_count: 1 },
+      import_status: 'posted',
+      total_claims: 1,
+      total_payment_amount: 140.00,
+      total_patient_responsibility: 35.00,
+      imported_at: daysAgo(15),
+    },
+    {
+      id: EB3,
+      organization_id: ORG_ID,
+      source: 'clearinghouse',
+      file_name: '835_AETNA_20260502_001.edi',
+      raw_content: 'ISA*00*          *00*          *ZZ*AETNA          *ZZ*DEMO_PRACTICE   *260502*1400*^*00501*000000003*0*P*:~GS*HP*AETNA*DEMO*20260502*1400*3*X*005010X221A1~ST*835*0003~BPR*I*0.00*C*NON*~TRN*1*ERA2026050203*2345678901~REF*EV*AETNA2026~DTM*405*20260502~N1*PR*AETNA~N1*PE*DEMO PRACTICE GROUP*XX*1234567890~CLP*CLM-2026-003*4*145.00*0.00*0.00*MC*AETNA-PC3-0001~CAS*CO*97*145.00~SVC*HC:90834*145.00*0.00**1~DTM*472*20260430~CAS*CO*97*145.00~SE*14*0003~GE*1*3~IEA*1*000000003~',
+      parsed_summary: { payer: 'Aetna', payer_id: 'AETNA', check_number: 'N/A-DENIAL', payment_date: dateAgo(17), claim_count: 1, denial_count: 1 },
+      import_status: 'posted',
+      total_claims: 1,
+      total_payment_amount: 0.00,
+      total_patient_responsibility: 0.00,
+      imported_at: daysAgo(17),
+    },
+    {
+      id: EB4,
+      organization_id: ORG_ID,
+      source: 'clearinghouse',
+      file_name: '835_BCBS_20260509_002.edi',
+      raw_content: 'ISA*00*          *00*          *ZZ*BCBS           *ZZ*DEMO_PRACTICE   *260509*0830*^*00501*000000004*0*P*:~GS*HP*BCBS*DEMO*20260509*0830*4*X*005010X221A1~ST*835*0004~BPR*I*116.00*C*ACH*CCP*01*123456789*DA*987654321*20260509~TRN*1*ERA2026050904*1234567890~REF*EV*BCBS2026B~DTM*405*20260509~N1*PR*BLUECROSS BLUESHIELD~N1*PE*DEMO PRACTICE GROUP*XX*1234567890~CLP*CLM-2026-001*1*145.00*116.00*29.00*MC*BCBS-PC1-0001~SVC*HC:90834*145.00*116.00**1~DTM*472*20260509~CAS*CO*45*29.00~SE*12*0004~GE*1*4~IEA*1*000000004~',
+      parsed_summary: { payer: 'BlueCross BlueShield', payer_id: 'BCBS', check_number: 'ACH-20260509-004', payment_date: dateAgo(10), claim_count: 1 },
+      import_status: 'matched',
+      total_claims: 1,
+      total_payment_amount: 116.00,
+      total_patient_responsibility: 29.00,
+      imported_at: daysAgo(10),
+    },
+    {
+      id: EB5,
+      organization_id: ORG_ID,
+      source: 'manual_upload',
+      file_name: '835_CIGNA_20260514_001.edi',
+      raw_content: 'ISA*00*          *00*          *ZZ*CIGNA          *ZZ*DEMO_PRACTICE   *260514*1100*^*00501*000000005*0*P*:~GS*HP*CIGNA*DEMO*20260514*1100*5*X*005010X221A1~ST*835*0005~BPR*I*156.00*C*ACH*CCP*01*555666777*DA*777888999*20260514~TRN*1*ERA2026051405*5556667770~REF*EV*CIGNA2026~DTM*405*20260514~N1*PR*CIGNA BEHAVIORAL HEALTH~N1*PE*DEMO PRACTICE GROUP*XX*1234567890~CLP*CLM-2026-CIGNA-001*1*195.00*156.00*39.00*MC*CIGNA-EXT-0001~SVC*HC:90837*195.00*156.00**1~DTM*472*20260514~CAS*CO*45*39.00~SE*12*0005~GE*1*5~IEA*1*000000005~',
+      parsed_summary: { payer: 'Cigna Behavioral Health', payer_id: 'CIGNA', check_number: 'ACH-20260514-005', payment_date: dateAgo(5), claim_count: 1, note: 'External claim — no matching local claim found.' },
+      import_status: 'blocked',
+      total_claims: 1,
+      total_payment_amount: 156.00,
+      total_patient_responsibility: 39.00,
+      imported_at: daysAgo(5),
+    },
+  ]);
+
+  // ─── 11. ERA Claim Payments ───────────────────────────────────────────────────
+  console.log('11. ERA claim payments');
+  await upsert('era_claim_payments', [
+    {
+      id: ECP1,
+      organization_id: ORG_ID,
+      era_import_batch_id: EB1,
+      professional_claim_id: PC4,
+      client_id: C1,
+      clp01_claim_control_number: 'CLM-2026-004',
+      clp02_claim_status_code: '1',
+      clp03_total_charge: 210.00,
+      clp04_payment_amount: 168.00,
+      clp05_patient_responsibility: 42.00,
+      payer_claim_control_number: 'BCBS-PC4-0001',
+      claim_match_status: 'matched',
+      posting_status: 'posted',
+      cas_adjustments: [{ group_code: 'CO', reason_code: '45', amount: 42.00, description: 'Charges exceed fee schedule/maximum allowable' }],
+      service_lines: [
+        { procedure_code: '90837', charge: 175.00, allowed: 140.00, paid: 140.00, adjustment: 35.00, adjustment_code: 'CO-45' },
+        { procedure_code: '90785', charge: 35.00, allowed: 28.00, paid: 28.00, adjustment: 7.00, adjustment_code: 'CO-45' },
+      ],
+      raw_segments: [],
+    },
+    {
+      id: ECP2,
+      organization_id: ORG_ID,
+      era_import_batch_id: EB2,
+      professional_claim_id: PC2,
+      client_id: C4,
+      clp01_claim_control_number: 'CLM-2026-002',
+      clp02_claim_status_code: '1',
+      clp03_total_charge: 175.00,
+      clp04_payment_amount: 140.00,
+      clp05_patient_responsibility: 35.00,
+      payer_claim_control_number: 'UHC-PC2-0001',
+      claim_match_status: 'matched',
+      posting_status: 'posted',
+      cas_adjustments: [{ group_code: 'CO', reason_code: '45', amount: 35.00, description: 'Charges exceed fee schedule/maximum allowable' }],
+      service_lines: [
+        { procedure_code: '90837', charge: 175.00, allowed: 140.00, paid: 140.00, adjustment: 35.00, adjustment_code: 'CO-45' },
+      ],
+      raw_segments: [],
+    },
+    {
+      id: ECP3,
+      organization_id: ORG_ID,
+      era_import_batch_id: EB3,
+      professional_claim_id: PC3,
+      client_id: C5,
+      clp01_claim_control_number: 'CLM-2026-003',
+      clp02_claim_status_code: '4',
+      clp03_total_charge: 145.00,
+      clp04_payment_amount: 0.00,
+      clp05_patient_responsibility: 0.00,
+      payer_claim_control_number: 'AETNA-PC3-0001',
+      claim_match_status: 'matched',
+      posting_status: 'posted',
+      cas_adjustments: [{ group_code: 'CO', reason_code: '97', amount: 145.00, description: 'Payment is included in the allowance for another service/procedure' }],
+      service_lines: [
+        { procedure_code: '90834', charge: 145.00, allowed: 0.00, paid: 0.00, adjustment: 145.00, adjustment_code: 'CO-97' },
+      ],
+      raw_segments: [],
+    },
+    {
+      id: ECP4,
+      organization_id: ORG_ID,
+      era_import_batch_id: EB4,
+      professional_claim_id: PC1,
+      client_id: C2,
+      clp01_claim_control_number: 'CLM-2026-001',
+      clp02_claim_status_code: '1',
+      clp03_total_charge: 145.00,
+      clp04_payment_amount: 116.00,
+      clp05_patient_responsibility: 29.00,
+      payer_claim_control_number: 'BCBS-PC1-0001',
+      claim_match_status: 'matched',
+      posting_status: 'ready',
+      cas_adjustments: [{ group_code: 'CO', reason_code: '45', amount: 29.00, description: 'Charges exceed fee schedule/maximum allowable' }],
+      service_lines: [
+        { procedure_code: '90834', charge: 145.00, allowed: 116.00, paid: 116.00, adjustment: 29.00, adjustment_code: 'CO-45' },
+      ],
+      raw_segments: [],
+    },
+    {
+      id: ECP5,
+      organization_id: ORG_ID,
+      era_import_batch_id: EB5,
+      professional_claim_id: null,
+      client_id: null,
+      clp01_claim_control_number: 'CLM-2026-CIGNA-001',
+      clp02_claim_status_code: '1',
+      clp03_total_charge: 195.00,
+      clp04_payment_amount: 156.00,
+      clp05_patient_responsibility: 39.00,
+      payer_claim_control_number: 'CIGNA-EXT-0001',
+      claim_match_status: 'unmatched',
+      posting_status: 'blocked',
+      cas_adjustments: [{ group_code: 'CO', reason_code: '45', amount: 39.00, description: 'Charges exceed fee schedule/maximum allowable' }],
+      service_lines: [
+        { procedure_code: '90837', charge: 195.00, allowed: 156.00, paid: 156.00, adjustment: 39.00, adjustment_code: 'CO-45' },
+      ],
+      raw_segments: [],
+    },
+  ]);
+
+  // ─── 12. ERA Posting Ledger Entries ──────────────────────────────────────────
+  console.log('12. ERA posting ledger entries');
+  const ledgerRows = [
+    { era_claim_payment_id: ECP1, professional_claim_id: PC4, client_id: C1, entry_type: 'insurance_payment',      amount: 168.00, group_code: null, reason_code: null, description: 'BlueCross BlueShield payment — CLM-2026-004' },
+    { era_claim_payment_id: ECP1, professional_claim_id: PC4, client_id: C1, entry_type: 'contractual_adjustment', amount: 42.00,  group_code: 'CO', reason_code: '45',  description: 'Contractual write-off — charges exceed fee schedule' },
+    { era_claim_payment_id: ECP1, professional_claim_id: PC4, client_id: C1, entry_type: 'patient_responsibility', amount: 42.00,  group_code: 'PR', reason_code: '1',   description: 'Patient deductible/copay — billed via invoice INV-2026-001' },
+    { era_claim_payment_id: ECP2, professional_claim_id: PC2, client_id: C4, entry_type: 'insurance_payment',      amount: 140.00, group_code: null, reason_code: null, description: 'United Healthcare payment — CLM-2026-002' },
+    { era_claim_payment_id: ECP2, professional_claim_id: PC2, client_id: C4, entry_type: 'contractual_adjustment', amount: 35.00,  group_code: 'CO', reason_code: '45',  description: 'Contractual write-off — charges exceed fee schedule' },
+    { era_claim_payment_id: ECP2, professional_claim_id: PC2, client_id: C4, entry_type: 'patient_responsibility', amount: 35.00,  group_code: 'PR', reason_code: '3',   description: 'Patient deductible — billed via invoice INV-2026-002' },
+    { era_claim_payment_id: ECP3, professional_claim_id: PC3, client_id: C5, entry_type: 'other_adjustment',       amount: 145.00, group_code: 'CO', reason_code: '97',  description: 'Claim denied — CARC 97: service not covered' },
+    { era_claim_payment_id: ECP4, professional_claim_id: PC1, client_id: C2, entry_type: 'insurance_payment',      amount: 116.00, group_code: null, reason_code: null, description: 'BlueCross BlueShield payment — CLM-2026-001 (pending posting)' },
+    { era_claim_payment_id: ECP4, professional_claim_id: PC1, client_id: C2, entry_type: 'contractual_adjustment', amount: 29.00,  group_code: 'CO', reason_code: '45',  description: 'Contractual write-off — charges exceed fee schedule' },
+    { era_claim_payment_id: ECP4, professional_claim_id: PC1, client_id: C2, entry_type: 'patient_responsibility', amount: 29.00,  group_code: 'PR', reason_code: '3',   description: 'Patient deductible — invoice pending' },
+  ];
+  let ledgerOk = 0, ledgerErr = 0;
+  for (const row of ledgerRows) {
+    const { error } = await supabase.from('era_posting_ledger_entries').insert({
+      organization_id: ORG_ID,
+      era_claim_payment_id: row.era_claim_payment_id,
+      professional_claim_id: row.professional_claim_id,
+      client_id: row.client_id,
+      entry_type: row.entry_type,
+      amount: row.amount,
+      group_code: row.group_code,
+      reason_code: row.reason_code,
+      description: row.description,
+    });
+    if (error && !error.message.includes('unique') && !error.message.includes('duplicate')) {
+      console.error(`  ERROR ledger (${row.description?.slice(0, 45)}):`, error.message);
+      ledgerErr++;
+    } else {
+      ledgerOk++;
+    }
+  }
+  console.log(`  ✓ era_posting_ledger_entries: ${ledgerOk} inserted/skipped, ${ledgerErr} errors`);
+
+  // ─── 13. Patient Invoices ─────────────────────────────────────────────────────
+  console.log('13. Patient invoices');
+  await upsert('patient_invoices', [
+    {
+      id: PI1,
+      organization_id: ORG_ID,
+      client_id: C1,
+      professional_claim_id: PC4,
+      era_claim_payment_id: ECP1,
+      invoice_status: 'paid',
+      invoice_number: 'INV-2026-001',
+      patient_responsibility_amount: 42.00,
+      paid_amount: 42.00,
+      balance_amount: 0.00,
+      source: 'era_pr',
+    },
+    {
+      id: PI2,
+      organization_id: ORG_ID,
+      client_id: C4,
+      professional_claim_id: PC2,
+      era_claim_payment_id: ECP2,
+      invoice_status: 'sent',
+      invoice_number: 'INV-2026-002',
+      patient_responsibility_amount: 35.00,
+      paid_amount: 0.00,
+      balance_amount: 35.00,
+      source: 'era_pr',
+    },
+    {
+      id: PI3,
+      organization_id: ORG_ID,
+      client_id: C2,
+      professional_claim_id: PC1,
+      era_claim_payment_id: ECP4,
+      invoice_status: 'open',
+      invoice_number: 'INV-2026-003',
+      patient_responsibility_amount: 29.00,
+      paid_amount: 0.00,
+      balance_amount: 29.00,
+      source: 'era_pr',
+    },
+  ]);
+
+  // ─── 14. Patient Invoice Payments ─────────────────────────────────────────────
+  // These drive the "Posted payments" metric in the Billing Reports page.
+  // paid_at is set within the current month (May 2026) so they appear in the report.
+  console.log('14. Patient invoice payments');
+  await upsert('patient_invoice_payments', [
+    {
+      id: PIP1,
+      organization_id: ORG_ID,
+      patient_invoice_id: PI1,
+      client_id: C1,
+      payment_status: 'posted',
+      payment_method: 'card',
+      amount: 42.00,
+      memo: 'Patient copay — Sarah Johnson — CLM-2026-004 — card on file',
+      paid_at: daysAgo(8),
+    },
+    {
+      id: PIP2,
+      organization_id: ORG_ID,
+      patient_invoice_id: PI2,
+      client_id: C4,
+      payment_status: 'posted',
+      payment_method: 'check',
+      amount: 20.00,
+      memo: 'Partial deductible payment — James Rivera — CLM-2026-002 — check #4421',
+      paid_at: daysAgo(3),
+    },
+  ]);
 
   console.log('\n=== Seed complete ===\n');
 }

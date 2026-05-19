@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "TherassistantEHR"
+version = "1.0.0"
+id = "artifacts/therassistant-ehr"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22803
+
+[services.development]
+run = "pnpm --filter @workspace/therassistant-ehr run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/therassistant-ehr", "run", "build" ]
+
+[services.production.run]
+args = ["pnpm", "--filter", "@workspace/therassistant-ehr", "run", "start"]
+
+[services.env]
+PORT = "22803"

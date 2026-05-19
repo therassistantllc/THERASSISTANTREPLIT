@@ -1,0 +1,30 @@
+/**
+ * GET /api/auth/me
+ * Returns the current authenticated user's context
+ * (staffId, organizationId, roles, permissions)
+ *
+ * Example: Call from client to load user context on app startup
+ */
+
+import { NextResponse } from "next/server";
+import { requireAuthentication } from "@/lib/rbac/middleware";
+
+export async function GET() {
+  const contextOrError = await requireAuthentication();
+
+  if (contextOrError instanceof NextResponse) {
+    return contextOrError;
+  }
+
+  const { staffId, organizationId, email, firstName, lastName, roles, permissions } = contextOrError;
+
+  return NextResponse.json({
+    staffId,
+    organizationId,
+    email,
+    firstName,
+    lastName,
+    roles,
+    permissions,
+  });
+}

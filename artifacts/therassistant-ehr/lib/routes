@@ -1,0 +1,78 @@
+// File: lib/routes.ts
+export const routes = {
+  home: "/",
+
+  patients: {
+    list: "/patients",
+    new: "/patients/new",
+    detail: (id: string) => `/patients/${id}`,
+    edit: (id: string) => `/patients/${id}/edit`,
+    documents: (id: string) => `/patients/${id}/documents`,
+    messages: (id: string) => `/patients/${id}/messages`,
+    billingSettings: (id: string) => `/patients/${id}/billing-settings`,
+  },
+
+  scheduling: {
+    calendar: "/scheduling",
+    newAppointment: "/scheduling/new",
+    appointmentDetail: (id: string) => `/appointments/${id}`,
+  },
+
+  encounters: {
+    list: "/encounters",
+    new: "/encounters/new",
+    detail: (id: string) => `/encounters/${id}`,
+    diagnoses: "/encounters/diagnoses",
+    newDiagnosis: "/encounters/diagnoses/new",
+    serviceLines: "/encounters/service-lines",
+    newServiceLine: "/encounters/service-lines/new",
+  },
+
+  billing: {
+    home: "/billing",
+    workqueue: "/billing/workqueue",
+    eligibility: "/billing/eligibility",
+    scrub: "/billing/scrub",
+    rejections: "/billing/rejections",
+    denials: "/billing/denials",
+    ar: "/billing/ar",
+    paymentImports: "/billing/payment-imports",
+    paymentExceptions: "/billing/payment-exceptions",
+  },
+
+  claims: {
+    list: "/claims",
+    create: "/claims/create",
+    detail: (id: string) => `/claims/${id}`,
+    status: "/claims/status",
+    submissions: "/claims/submissions",
+  },
+
+  insurance: {
+    eligibility: "/insurance/eligibility",
+    payers: "/insurance/payers",
+    newPolicy: "/insurance/policies/new",
+  },
+
+  clearinghouse: {
+    transactions: "/clearinghouse/transactions",
+    settings: "/settings/clearinghouse",
+  },
+
+  tickets: {
+    list: "/tickets",
+  },
+
+  staff: {
+    list: "/staff",
+  },
+
+  settings: {
+    home: "/settings",
+    clearinghouse: "/settings/clearinghouse",
+  },
+
+  admin: {
+    schemaVerification: "/admin/schema-verification",
+  },
+} as const;

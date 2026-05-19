@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { requireRoleInRoute } from "@/lib/rbac/middleware";
 import { STAFF_ROLES } from "@/lib/rbac/constants";
-
-const DEMO_ORG_ID = "11111111-1111-1111-1111-111111111111";
+import { ORGANIZATION_ID as DEMO_ORG_ID } from "@/lib/config";
 
 export async function POST() {
   // Require admin role — this endpoint performs privileged service-role writes

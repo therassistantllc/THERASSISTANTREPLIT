@@ -1,8 +1,9 @@
 import type { OfficeAlly837PGenerationInput } from "../types";
+import { DEFAULT_ORG_ID } from "@/lib/config";
 
 export const sample837pInput: OfficeAlly837PGenerationInput = {
   connection: {
-    organization_id: "11111111-1111-1111-1111-111111111111",
+    organization_id: DEFAULT_ORG_ID,
     mode: "test",
     submitter_id: "THERA837",
     submitter_name: "THERASSISTANT LLC",
@@ -17,7 +18,7 @@ export const sample837pInput: OfficeAlly837PGenerationInput = {
   submitterName: "THERASSISTANT LLC",
   claim: {
     id: "22222222-2222-2222-2222-222222222222",
-    organization_id: "11111111-1111-1111-1111-111111111111",
+    organization_id: DEFAULT_ORG_ID,
     patient_id: "33333333-3333-3333-3333-333333333333",
     appointment_id: "44444444-4444-4444-4444-444444444444",
     payer_profile_id: "55555555-5555-5555-5555-555555555555",
@@ -76,7 +77,7 @@ export const sample837pInput: OfficeAlly837PGenerationInput = {
   },
   payerProfile: {
     id: "55555555-5555-5555-5555-555555555555",
-    organization_id: "11111111-1111-1111-1111-111111111111",
+    organization_id: DEFAULT_ORG_ID,
     payer_name: "ACME HEALTH PLAN",
     office_ally_payer_id: "12345",
     payer_type: "commercial",

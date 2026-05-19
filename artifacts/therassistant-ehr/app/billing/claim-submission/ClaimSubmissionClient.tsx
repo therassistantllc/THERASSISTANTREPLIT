@@ -42,6 +42,17 @@ type ReadinessPayload = {
   metrics?: ReadinessMetrics;
 };
 
+type SubmissionQueueMetrics = {
+  secondaryClaims: number;
+  eraExceptions: number;
+};
+
+type SubmissionQueuePayload = {
+  success: boolean;
+  error?: string;
+  metrics?: SubmissionQueueMetrics;
+};
+
 function getOrganizationId() {
   if (typeof window === "undefined") return DEFAULT_ORG_ID;
   return new URLSearchParams(window.location.search).get("organizationId") || process.env.NEXT_PUBLIC_ORGANIZATION_ID || DEFAULT_ORG_ID;
@@ -62,6 +73,7 @@ export default function ClaimSubmissionClient() {
   const organizationId = useMemo(() => getOrganizationId(), []);
   const [batchPayload, setBatchPayload] = useState<BatchPayload | null>(null);
   const [readinessPayload, setReadinessPayload] = useState<ReadinessPayload | null>(null);
+  const [queuePayload, setQueuePayload] = useState<SubmissionQueuePayload | null>(null);
   const [loading, setLoading] = useState(Boolean(organizationId));
   const [error, setError] = useState<string | null>(null);
   const missingOrgMessage = "Missing organizationId. Add ?organizationId=... to the URL or configure NEXT_PUBLIC_ORGANIZATION_ID.";
@@ -72,23 +84,27 @@ export default function ClaimSubmissionClient() {
     let cancelled = false;
     async function load() {
       try {
-        const [batchRes, readinessRes] = await Promise.all([
+        const [batchRes, readinessRes, queueRes] = await Promise.all([
           fetch(`/api/billing/837p-batches?organizationId=${encodeURIComponent(organizationId)}`, { cache: "no-store" }),
           fetch(`/api/billing/claim-readiness?organizationId=${encodeURIComponent(organizationId)}`, { cache: "no-store" }),
+          fetch(`/api/billing/submission-queues?organizationId=${encodeURIComponent(organizationId)}`, { cache: "no-store" }),
         ]);
 
-        const [batchJson, readinessJson] = await Promise.all([
+        const [batchJson, readinessJson, queueJson] = await Promise.all([
           batchRes.json() as Promise<BatchPayload>,
           readinessRes.json() as Promise<ReadinessPayload>,
+          queueRes.json() as Promise<SubmissionQueuePayload>,
         ]);
 
         if (cancelled) return;
 
         if (!batchRes.ok || !batchJson.success) throw new Error(batchJson.error ?? "Failed to load 837P batch data");
         if (!readinessRes.ok || !readinessJson.success) throw new Error(readinessJson.error ?? "Failed to load claim readiness data");
+        if (!queueRes.ok || !queueJson.success) throw new Error(queueJson.error ?? "Failed to load submission queues");
 
         setBatchPayload(batchJson);
         setReadinessPayload(readinessJson);
+        setQueuePayload(queueJson);
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Failed to load claim submission center");
       } finally {
@@ -104,6 +120,7 @@ export default function ClaimSubmissionClient() {
 
   const batchMetrics = batchPayload?.metrics ?? { total: 0, readyToGenerate: 0, generated: 0, submitted: 0, rejected: 0 };
   const readinessMetrics = readinessPayload?.metrics ?? { total: 0, blocked: 0, readyForClaim: 0, claimCreated: 0, validationFailed: 0, readyForBatch: 0 };
+  const queueMetrics = queuePayload?.metrics ?? { secondaryClaims: 0, eraExceptions: 0 };
   const batches = batchPayload?.batches ?? [];
   const orgQuery = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
 
@@ -158,8 +175,8 @@ export default function ClaimSubmissionClient() {
             <p><strong>Aging 8-14:</strong> {loading ? "-" : (aging["8-14 days"] ?? 0)}</p>
             <p><strong>Aging 15-30:</strong> {loading ? "-" : (aging["15-30 days"] ?? 0)}</p>
             <p><strong>Aging 31+:</strong> {loading ? "-" : (aging["31+ days"] ?? 0)}</p>
-            <p><strong>Secondary Claims:</strong> {loading ? "-" : 0}</p>
-            <p><strong>ERA Exceptions:</strong> {loading ? "-" : 0}</p>
+            <p><strong>Secondary Claims:</strong> {loading ? "-" : queueMetrics.secondaryClaims}</p>
+            <p><strong>ERA Exceptions:</strong> {loading ? "-" : queueMetrics.eraExceptions}</p>
           </div>
         </article>
         <article className="panel">

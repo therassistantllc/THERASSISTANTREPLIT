@@ -11,7 +11,7 @@ function getOrganizationId() {
 }
 
 function getAppointmentId() {
-  if (typeof window === "undefined") return DEFAULT_ORG_ID;
+  if (typeof window === "undefined") return "";
   const params = new URLSearchParams(window.location.search);
   return params.get("appointmentId") || "";
 }

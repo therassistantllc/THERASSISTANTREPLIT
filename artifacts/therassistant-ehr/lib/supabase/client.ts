@@ -12,4 +12,3 @@ if (!supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-export const supabaseTyped = supabase;

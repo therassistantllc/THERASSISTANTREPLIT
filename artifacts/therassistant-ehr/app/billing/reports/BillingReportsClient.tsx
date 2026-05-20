@@ -24,6 +24,8 @@ type ReportPayload = {
     openBalance: number;
     invoiceCount: number;
     collectionsCount: number;
+    collectionsBalance: number;
+    averageOpenBalance: number;
   };
   workqueue?: {
     created: number;
@@ -31,6 +33,34 @@ type ReportPayload = {
     deferred: number;
     openNow: number;
   };
+  aging?: {
+    bucket0to30: { count: number; totalCharge: number };
+    bucket31to60: { count: number; totalCharge: number };
+    bucket61Plus: { count: number; totalCharge: number };
+    totalOutstanding: number;
+  };
+  denials?: {
+    totalAdjustmentAmount: number;
+    totalAdjustmentCount: number;
+    breakdown: Array<{
+      groupCode: string;
+      reasonCode: string;
+      carcCode: string;
+      occurrences: number;
+      totalAmount: number;
+    }>;
+  };
+  payerPerformance?: Array<{
+    payerProfileId: string | null;
+    payerName: string;
+    totalClaims: number;
+    acceptedClaims: number;
+    paidClaims: number;
+    rejectedClaims: number;
+    acceptanceRate: number;
+    averageTurnaroundDays: number | null;
+    totalCharge: number;
+  }>;
 };
 
 function getOrganizationId() {
@@ -164,6 +194,8 @@ export default function BillingReportsClient() {
                 <p><strong>Outstanding patient balance:</strong> {money(payload.patientResponsibility?.openBalance ?? 0)}</p>
                 <p><strong>Open patient invoices:</strong> {payload.patientResponsibility?.invoiceCount ?? 0}</p>
               </div>
+              <p><strong>Average open balance:</strong> {money(payload.patientResponsibility?.averageOpenBalance ?? 0)}</p>
+              <p><strong>Collections balance:</strong> {money(payload.patientResponsibility?.collectionsBalance ?? 0)}</p>
               <div className="section-actions">
                 <Link className="button button-secondary" href={`/clients${orgQuery}`}>Open Client Balances</Link>
               </div>
@@ -187,35 +219,88 @@ export default function BillingReportsClient() {
           <section className="chart-grid">
             <article className="panel">
               <h2>Claims Aging</h2>
+              <p className="muted-text">By days since claim was submitted ({payload.aging?.totalOutstanding ?? 0} outstanding).</p>
               <div className="detail-list">
-                <p><strong>0-30 days:</strong> {(payload.workqueue?.openNow ?? 0) - (payload.workqueue?.deferred ?? 0)}</p>
-                <p><strong>31-60 days:</strong> {payload.workqueue?.deferred ?? 0}</p>
-                <p><strong>61+ days:</strong> {Math.max(0, (payload.claims?.deniedOrRejected ?? 0) - (payload.workqueue?.deferred ?? 0))}</p>
+                <p>
+                  <strong>0-30 days:</strong> {payload.aging?.bucket0to30.count ?? 0} claims · {money(payload.aging?.bucket0to30.totalCharge ?? 0)}
+                </p>
+                <p>
+                  <strong>31-60 days:</strong> {payload.aging?.bucket31to60.count ?? 0} claims · {money(payload.aging?.bucket31to60.totalCharge ?? 0)}
+                </p>
+                <p>
+                  <strong>61+ days:</strong> {payload.aging?.bucket61Plus.count ?? 0} claims · {money(payload.aging?.bucket61Plus.totalCharge ?? 0)}
+                </p>
               </div>
             </article>
 
             <article className="panel">
               <h2>Denial / Rejection Report</h2>
-              <div className="detail-list">
-                <p><strong>Total denied/rejected:</strong> {payload.claims?.deniedOrRejected ?? 0}</p>
-                <p><strong>Follow-up queue now:</strong> {payload.workqueue?.openNow ?? 0}</p>
-                <p><strong>Escalated:</strong> {payload.workqueue?.deferred ?? 0}</p>
-              </div>
-            </article>
-
-            <article className="panel">
-              <h2>Payer Performance</h2>
-              <p className="muted">Payer-level acceptance and turnaround is available once payer-level aggregates are enabled.</p>
-            </article>
-
-            <article className="panel">
-              <h2>Provider Productivity</h2>
-              <p className="muted">Provider productivity cards are reserved for encounter and signed-note metrics integration.</p>
+              <p className="muted-text">
+                CARC adjustments from ERA payments this month ({payload.denials?.totalAdjustmentCount ?? 0} total · {money(payload.denials?.totalAdjustmentAmount ?? 0)}).
+              </p>
+              {payload.denials && payload.denials.breakdown.length > 0 ? (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>CARC</th>
+                      <th>Group</th>
+                      <th>Reason</th>
+                      <th>Count</th>
+                      <th>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payload.denials.breakdown.map((row) => (
+                      <tr key={row.carcCode}>
+                        <td>{row.carcCode}</td>
+                        <td>{row.groupCode || "—"}</td>
+                        <td>{row.reasonCode || "—"}</td>
+                        <td>{row.occurrences}</td>
+                        <td>{money(row.totalAmount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="muted">No ERA adjustments recorded for this month.</p>
+              )}
             </article>
 
             <article className="panel wide-panel">
-              <h2>Behavioral Health Coding Intelligence</h2>
-              <p className="muted">Placeholder surfaced for BH coding intelligence (modifier patterns, DX/CPT pair quality, documentation quality scoring).</p>
+              <h2>Payer Performance</h2>
+              <p className="muted-text">Acceptance rate and average payer turnaround for claims submitted this month.</p>
+              {payload.payerPerformance && payload.payerPerformance.length > 0 ? (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Payer</th>
+                      <th>Claims</th>
+                      <th>Accepted</th>
+                      <th>Paid</th>
+                      <th>Rejected</th>
+                      <th>Acceptance</th>
+                      <th>Avg turnaround</th>
+                      <th>Total charge</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payload.payerPerformance.map((row) => (
+                      <tr key={row.payerProfileId ?? row.payerName}>
+                        <td>{row.payerName}</td>
+                        <td>{row.totalClaims}</td>
+                        <td>{row.acceptedClaims}</td>
+                        <td>{row.paidClaims}</td>
+                        <td>{row.rejectedClaims}</td>
+                        <td>{row.acceptanceRate.toFixed(1)}%</td>
+                        <td>{row.averageTurnaroundDays === null ? "—" : `${row.averageTurnaroundDays} d`}</td>
+                        <td>{money(row.totalCharge)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="muted">No claims have been submitted to a payer this month yet.</p>
+              )}
             </article>
           </section>
         </>

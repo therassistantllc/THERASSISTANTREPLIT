@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DEFAULT_ORG_ID } from "@/lib/config";
 
 type Policy = {
@@ -40,6 +40,8 @@ type EligibilityResponse = {
   error?: string;
 };
 
+const STALE_DAYS = 30;
+
 function getOrganizationId() {
   if (typeof window === "undefined") return process.env.NEXT_PUBLIC_ORGANIZATION_ID || DEFAULT_ORG_ID;
   return new URLSearchParams(window.location.search).get("organizationId") || process.env.NEXT_PUBLIC_ORGANIZATION_ID || DEFAULT_ORG_ID;
@@ -73,36 +75,96 @@ function compactJson(value: unknown) {
   }
 }
 
+function daysSince(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return null;
+  return Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
+}
+
+type Banner = { tone: "warn" | "error" | "info"; message: string };
+
+function deriveBanner(latest: EligibilityCheck | null): Banner | null {
+  if (!latest) {
+    return { tone: "warn", message: "No eligibility check on file. Run a real-time check before the visit." };
+  }
+  const status = (latest.status || "").toLowerCase();
+  if (status === "error") {
+    return { tone: "error", message: latest.errorMessage || "Last eligibility check failed. Retry below." };
+  }
+  const days = daysSince(latest.checkedAt);
+  if (days !== null && days > STALE_DAYS) {
+    return { tone: "warn", message: `Last eligibility check was ${days} days ago (older than ${STALE_DAYS} days). Re-check before billing.` };
+  }
+  if (status === "inactive") {
+    return { tone: "error", message: "Payer reports coverage is INACTIVE. Verify insurance with patient." };
+  }
+  return null;
+}
+
 export default function EligibilityDetailClient({ clientId }: { clientId: string }) {
   const organizationId = useMemo(() => getOrganizationId(), []);
   const [data, setData] = useState<EligibilityResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState<string | null>(null); // policyId being checked, or "any"
+  const [runError, setRunError] = useState<string | null>(null);
+  const [runMessage, setRunMessage] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const response = await fetch(`/api/patients/${clientId}/eligibility?organizationId=${encodeURIComponent(organizationId)}`);
+    const json = (await response.json()) as EligibilityResponse;
+    if (!response.ok || !json.success) {
+      setError(json.error || "Unable to load eligibility.");
+    } else {
+      setData(json);
+    }
+    setLoading(false);
+  }, [clientId, organizationId]);
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      const response = await fetch(`/api/patients/${clientId}/eligibility?organizationId=${encodeURIComponent(organizationId)}`);
-      const json = (await response.json()) as EligibilityResponse;
-      if (!response.ok || !json.success) {
-        setError(json.error || "Unable to load eligibility.");
-      } else {
-        setData(json);
-      }
-      setLoading(false);
-    }
-
-    if (organizationId && clientId) void load();
-    else {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (organizationId && clientId) {
+      void load();
+    } else {
       setError("Missing organizationId or clientId.");
       setLoading(false);
     }
-  }, [clientId, organizationId]);
+  }, [clientId, organizationId, load]);
+
+  const runCheck = useCallback(async (insurancePolicyId?: string | null) => {
+    setRunning(insurancePolicyId ?? "any");
+    setRunError(null);
+    setRunMessage(null);
+    try {
+      const res = await fetch(`/api/clearinghouse/eligibility/run`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          patientId: clientId,
+          insurancePolicyId: insurancePolicyId ?? null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setRunError(json?.error || "Eligibility check failed.");
+      } else {
+        const status = json?.normalized?.status ?? "completed";
+        setRunMessage(`Eligibility check ${status}.`);
+        await load();
+      }
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : "Eligibility check failed.");
+    } finally {
+      setRunning(null);
+    }
+  }, [clientId, load]);
 
   const patient = data?.patient;
   const latest = data?.latestEligibility ?? null;
+  const banner = deriveBanner(latest);
+  const isRunningAny = running !== null;
 
   return (
     <main className="app-shell">
@@ -113,10 +175,52 @@ export default function EligibilityDetailClient({ clientId }: { clientId: string
           <p className="hero-copy">Coverage, copay, deductible, and benefit history for the visit workflow.</p>
         </div>
         <div className="hero-actions">
+          <button
+            type="button"
+            className="button button-primary"
+            disabled={isRunningAny}
+            onClick={() => runCheck(null)}
+          >
+            {isRunningAny ? "Checking…" : "Check eligibility"}
+          </button>
           <Link className="button button-secondary" href={`/clients/${clientId}`}>Patient Chart</Link>
           <Link className="button button-secondary" href={`/workqueue/new?clientId=${clientId}&organizationId=${organizationId}&reason=eligibility_question`}>Route Issue</Link>
         </div>
       </section>
+
+      {banner ? (
+        <div
+          className="alert-panel"
+          style={{
+            background: banner.tone === "error" ? "#fef2f2" : banner.tone === "warn" ? "#fffbeb" : "#eff6ff",
+            borderColor: banner.tone === "error" ? "#fecaca" : banner.tone === "warn" ? "#fde68a" : "#bfdbfe",
+            color: banner.tone === "error" ? "#991b1b" : banner.tone === "warn" ? "#92400e" : "#1e40af",
+          }}
+        >
+          <strong style={{ display: "block", marginBottom: 4 }}>
+            {banner.tone === "error" ? "Eligibility issue" : banner.tone === "warn" ? "Eligibility attention" : "Eligibility"}
+          </strong>
+          <span>{banner.message}</span>
+        </div>
+      ) : null}
+
+      {runError ? (
+        <div className="alert-panel" style={{ background: "#fef2f2", borderColor: "#fecaca", color: "#991b1b" }}>
+          <strong style={{ display: "block", marginBottom: 4 }}>Eligibility check failed</strong>
+          <span>{runError}</span>
+          <div style={{ marginTop: 8 }}>
+            <button type="button" className="button button-secondary" onClick={() => runCheck(null)} disabled={isRunningAny}>
+              {isRunningAny ? "Retrying…" : "Retry"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {runMessage ? (
+        <div className="alert-panel" style={{ background: "#ecfdf5", borderColor: "#a7f3d0", color: "#065f46" }}>
+          {runMessage}
+        </div>
+      ) : null}
 
       {loading ? <div className="empty-state">Loading eligibility…</div> : null}
       {error ? <div className="alert-panel">{error}</div> : null}
@@ -169,6 +273,16 @@ export default function EligibilityDetailClient({ clientId }: { clientId: string
                     <span>Policy: {policy.policyNumber || "—"}</span>
                     <span>Payer ID: {policy.clearinghousePayerId || "—"}</span>
                     <span>{formatDate(policy.effectiveDate)} – {formatDate(policy.terminationDate)}</span>
+                    <div style={{ marginTop: 6 }}>
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        disabled={isRunningAny}
+                        onClick={() => runCheck(policy.id)}
+                      >
+                        {running === policy.id ? "Checking…" : "Check this policy"}
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {(data?.policies || []).length === 0 ? <div className="empty-state">No insurance policies found.</div> : null}

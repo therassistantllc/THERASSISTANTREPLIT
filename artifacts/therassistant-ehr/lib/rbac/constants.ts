@@ -57,6 +57,7 @@ export const PERMISSIONS = {
   SUBMIT_CLAIMS: "submit_claims",
   REVIEW_DENIALS: "review_denials",
   MANAGE_ELIGIBILITY: "manage_eligibility",
+  RUN_ELIGIBILITY: "eligibility:run",
 
   // Work Queue & Operations
   VIEW_WORKQUEUE: "view_workqueue",
@@ -102,6 +103,7 @@ export const PERMISSION_LABELS: Record<PermissionCode, string> = {
   submit_claims: "Submit Claims",
   review_denials: "Review Denials",
   manage_eligibility: "Manage Eligibility",
+  "eligibility:run": "Run Real-time Eligibility (270/271)",
 
   // Operations
   view_workqueue: "View Work Queue",
@@ -144,6 +146,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<StaffRoleCode, PermissionCode[]> =
     PERMISSIONS.SUBMIT_CLAIMS,
     PERMISSIONS.REVIEW_DENIALS,
     PERMISSIONS.MANAGE_ELIGIBILITY,
+    PERMISSIONS.RUN_ELIGIBILITY,
     PERMISSIONS.VIEW_WORKQUEUE,
     PERMISSIONS.MANAGE_WORKQUEUE,
     PERMISSIONS.PROCESS_PAYMENTS,
@@ -172,6 +175,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<StaffRoleCode, PermissionCode[]> =
     PERMISSIONS.EDIT_DIAGNOSES,
     PERMISSIONS.VIEW_BILLING,
     PERMISSIONS.MANAGE_ELIGIBILITY,
+    PERMISSIONS.RUN_ELIGIBILITY,
   ],
 
   biller: [
@@ -184,6 +188,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<StaffRoleCode, PermissionCode[]> =
     PERMISSIONS.SUBMIT_CLAIMS,
     PERMISSIONS.REVIEW_DENIALS,
     PERMISSIONS.MANAGE_ELIGIBILITY,
+    PERMISSIONS.RUN_ELIGIBILITY,
     PERMISSIONS.VIEW_WORKQUEUE,
     PERMISSIONS.MANAGE_WORKQUEUE,
     PERMISSIONS.PROCESS_PAYMENTS,
@@ -281,6 +286,7 @@ export const PERMISSION_TO_CATEGORY: Record<PermissionCode, string> = {
   submit_claims: PERMISSION_CATEGORIES.BILLING,
   review_denials: PERMISSION_CATEGORIES.BILLING,
   manage_eligibility: PERMISSION_CATEGORIES.BILLING,
+  "eligibility:run": PERMISSION_CATEGORIES.BILLING,
 
   // Operations
   view_workqueue: PERMISSION_CATEGORIES.OPERATIONS,

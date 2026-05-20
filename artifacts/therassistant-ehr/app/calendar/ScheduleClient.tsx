@@ -638,7 +638,69 @@ function AppointmentCard({
 
 /* ─── Context Panel ───────────────────────────────────────────────────────── */
 
+type EligibilityRunResult = {
+  status: string;
+  payerName: string | null;
+  planName: string | null;
+  copayAmount: number | null;
+  deductibleRemaining: number | null;
+  effectiveDate: string | null;
+  terminationDate: string | null;
+  message?: string | null;
+};
+
+function money(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(value));
+}
+
 function ContextPanel({ appt }: { appt: ScheduleAppointment }) {
+  const [eligibilityRunning, setEligibilityRunning] = useState(false);
+  const [eligibilityError, setEligibilityError] = useState<string | null>(null);
+  const [eligibilityResult, setEligibilityResult] = useState<EligibilityRunResult | null>(null);
+
+  // Reset eligibility panel state whenever the selected appointment changes
+  useEffect(() => {
+    setEligibilityRunning(false);
+    setEligibilityError(null);
+    setEligibilityResult(null);
+  }, [appt.id]);
+
+  const runEligibility = async () => {
+    setEligibilityRunning(true);
+    setEligibilityError(null);
+    try {
+      const res = await fetch("/api/clearinghouse/eligibility/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          patientId: appt.clientId,
+          appointmentId: appt.id,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setEligibilityError(json?.error || "Eligibility check failed.");
+      } else {
+        const n = json?.normalized ?? {};
+        setEligibilityResult({
+          status: String(n.status ?? "unknown"),
+          payerName: n.payerName ?? null,
+          planName: n.planName ?? null,
+          copayAmount: n.copayAmount ?? null,
+          deductibleRemaining: n.deductibleRemaining ?? null,
+          effectiveDate: n.effectiveDate ?? null,
+          terminationDate: n.terminationDate ?? null,
+          message: n.message ?? null,
+        });
+      }
+    } catch (e) {
+      setEligibilityError(e instanceof Error ? e.message : "Eligibility check failed.");
+    } finally {
+      setEligibilityRunning(false);
+    }
+  };
+
   return (
     <>
       <div className={styles.contextHeader}>
@@ -728,6 +790,47 @@ function ContextPanel({ appt }: { appt: ScheduleAppointment }) {
             ))}
           </div>
         ) : null}
+
+        {/* Eligibility (real-time 270/271) */}
+        <div className={styles.contextSection}>
+          <div className={styles.contextSectionLabel}>Real-time eligibility</div>
+          <button
+            type="button"
+            className={styles.contextActionSecondary}
+            onClick={runEligibility}
+            disabled={eligibilityRunning}
+            style={{ width: "100%" }}
+          >
+            {eligibilityRunning ? "Checking eligibility…" : "Check eligibility"}
+          </button>
+          {eligibilityError ? (
+            <div style={{ marginTop: 8, padding: 8, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, color: "#991b1b", fontSize: 12.5 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>Check failed</div>
+              <div style={{ marginBottom: 6 }}>{eligibilityError}</div>
+              <button
+                type="button"
+                onClick={runEligibility}
+                disabled={eligibilityRunning}
+                style={{ fontSize: 12, padding: "4px 8px", border: "1px solid #fca5a5", background: "white", borderRadius: 4, cursor: "pointer", color: "#991b1b" }}
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
+          {eligibilityResult ? (
+            <div style={{ marginTop: 8, padding: 8, background: eligibilityResult.status === "active" ? "#ecfdf5" : eligibilityResult.status === "inactive" ? "#fef2f2" : "#fffbeb", border: `1px solid ${eligibilityResult.status === "active" ? "#a7f3d0" : eligibilityResult.status === "inactive" ? "#fecaca" : "#fde68a"}`, borderRadius: 6, fontSize: 12.5 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4, textTransform: "uppercase" }}>{eligibilityResult.status}</div>
+              {eligibilityResult.payerName ? <div>Payer: {eligibilityResult.payerName}</div> : null}
+              {eligibilityResult.planName ? <div>Plan: {eligibilityResult.planName}</div> : null}
+              <div>Copay: {money(eligibilityResult.copayAmount)}</div>
+              <div>Deductible remaining: {money(eligibilityResult.deductibleRemaining)}</div>
+              {eligibilityResult.effectiveDate || eligibilityResult.terminationDate ? (
+                <div>Coverage: {eligibilityResult.effectiveDate ?? "—"} → {eligibilityResult.terminationDate ?? "—"}</div>
+              ) : null}
+              {eligibilityResult.message ? <div style={{ marginTop: 4, fontStyle: "italic" }}>{eligibilityResult.message}</div> : null}
+            </div>
+          ) : null}
+        </div>
 
         {/* Footer Actions */}
         <div className={styles.contextFooter}>

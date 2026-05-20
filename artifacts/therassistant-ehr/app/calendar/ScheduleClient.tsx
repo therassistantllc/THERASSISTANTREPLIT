@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import styles from "./schedule.module.css";
 
 /* ─── Types ───────────────────────────────────────────────────────────────── */
@@ -42,14 +42,18 @@ interface ScheduleAppointment {
 
 /* ─── Demo Data ───────────────────────────────────────────────────────────── */
 
-const TODAY = new Date();
-const DATE_LABEL = TODAY.toLocaleDateString("en-US", {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-});
-const DATE_SHORT = TODAY.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+function computeDateLabels() {
+  const today = new Date();
+  return {
+    label: today.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }),
+    short: today.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }),
+  };
+}
 
 const APPOINTMENTS: ScheduleAppointment[] = [
   {
@@ -304,6 +308,14 @@ export default function ScheduleClient() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedId, setSelectedId] = useState<string | null>("appt-a3");
+  const [dateLabels, setDateLabels] = useState<{ label: string; short: string }>({ label: "", short: "" });
+
+  useEffect(() => {
+    setDateLabels(computeDateLabels());
+  }, []);
+
+  const DATE_LABEL = dateLabels.label;
+  const DATE_SHORT = dateLabels.short;
 
   const summary = useMemo(() => computeSummary(APPOINTMENTS), []);
 

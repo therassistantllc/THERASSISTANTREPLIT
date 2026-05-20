@@ -35,6 +35,13 @@ type ProfessionalClaimRow = {
   id: string;
   claim_number: string | null;
   claim_status: string | null;
+  date_of_service_from: string | null;
+  date_of_service_to: string | null;
+  ready_to_submit_at: string | null;
+  submitted_at: string | null;
+  accepted_at: string | null;
+  paid_at: string | null;
+  denied_at: string | null;
 };
 
 type ClientRow = {
@@ -50,6 +57,7 @@ type LedgerRow = {
   group_code: string | null;
   reason_code: string | null;
   description: string | null;
+  created_at: string | null;
 };
 
 type EraClaimPaymentRow = {
@@ -126,7 +134,9 @@ export async function GET(request: Request) {
       claimIds.length
         ? supabase
             .from("professional_claims")
-            .select("id, claim_number, claim_status")
+            .select(
+              "id, claim_number, claim_status, date_of_service_from, date_of_service_to, ready_to_submit_at, submitted_at, accepted_at, paid_at, denied_at",
+            )
             .in("id", claimIds)
         : Promise.resolve({ data: [] as ProfessionalClaimRow[], error: null }),
       clientIds.length
@@ -138,7 +148,7 @@ export async function GET(request: Request) {
       paymentIds.length
         ? supabase
             .from("era_posting_ledger_entries")
-            .select("era_claim_payment_id, entry_type, amount, group_code, reason_code, description")
+            .select("era_claim_payment_id, entry_type, amount, group_code, reason_code, description, created_at")
             .eq("organization_id", organizationId)
             .in("era_claim_payment_id", paymentIds)
             .is("archived_at", null)
@@ -225,9 +235,21 @@ export async function GET(request: Request) {
           groupCode: entry.group_code,
           reasonCode: entry.reason_code,
           description: entry.description,
+          postedAt: entry.created_at,
         })),
         professionalClaim: claim
-          ? { id: claim.id, claimNumber: claim.claim_number, claimStatus: claim.claim_status }
+          ? {
+              id: claim.id,
+              claimNumber: claim.claim_number,
+              claimStatus: claim.claim_status,
+              dateOfServiceFrom: claim.date_of_service_from,
+              dateOfServiceTo: claim.date_of_service_to,
+              readyToSubmitAt: claim.ready_to_submit_at,
+              submittedAt: claim.submitted_at,
+              acceptedAt: claim.accepted_at,
+              paidAt: claim.paid_at,
+              deniedAt: claim.denied_at,
+            }
           : null,
         client: client
           ? {

@@ -1,8 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_ORG_ID } from "@/lib/config";
 import styles from "./schedule.module.css";
+
+function getOrganizationId() {
+  if (typeof window === "undefined") return DEFAULT_ORG_ID;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("organizationId") || process.env.NEXT_PUBLIC_ORGANIZATION_ID || DEFAULT_ORG_ID;
+}
 
 /* ─── Types ───────────────────────────────────────────────────────────────── */
 
@@ -311,6 +318,7 @@ export default function ScheduleClient() {
   const [dateLabels, setDateLabels] = useState<{ label: string; short: string }>({ label: "", short: "" });
   const [appointments, setAppointments] = useState<ScheduleAppointment[]>(APPOINTMENTS);
   const [isNewApptOpen, setIsNewApptOpen] = useState(false);
+  const organizationId = useMemo(() => getOrganizationId(), []);
 
   useEffect(() => {
     setDateLabels(computeDateLabels());
@@ -338,55 +346,13 @@ export default function ScheduleClient() {
     if (filter === "completed") list = list.filter((a) => a.status === "completed" || a.status === "needs_signature");
     if (filter === "no_show") list = list.filter((a) => a.status === "no_show" || a.status === "cancelled");
     return list;
-  }, [search, filter]);
+  }, [appointments, search, filter]);
 
   const selected = useMemo(() => appointments.find((a) => a.id === selectedId) ?? null, [appointments, selectedId]);
 
-  const handleCreateAppointment = (input: {
-    patientName: string;
-    timeStart: string;
-    durationMin: number;
-    type: string;
-    cpt: string;
-    provider: string;
-    location: "Office" | "Telehealth";
-    insurance: string;
-  }) => {
-    const [hourStr, minuteRest] = input.timeStart.split(":");
-    const minute = parseInt((minuteRest ?? "00").slice(0, 2), 10) || 0;
-    const hour24 = parseInt(hourStr, 10) || 9;
-    const endTotal = hour24 * 60 + minute + input.durationMin;
-    const endH = Math.floor(endTotal / 60);
-    const endM = endTotal % 60;
-    const fmt = (h: number, m: number) => {
-      const period = h >= 12 ? "PM" : "AM";
-      const h12 = h % 12 === 0 ? 12 : h % 12;
-      return `${h12}:${String(m).padStart(2, "0")} ${period}`;
-    };
-    const period = hour24 >= 12 ? "PM" : "AM";
-    const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
-    const newAppt: ScheduleAppointment = {
-      id: `appt-${Date.now()}`,
-      clientId: `new-${Date.now()}`,
-      patientName: input.patientName,
-      dob: "1990-01-01",
-      timeStart: `${h12}:${String(minute).padStart(2, "0")} ${period}`,
-      timeEnd: fmt(endH, endM),
-      durationMin: input.durationMin,
-      type: input.type,
-      cpt: input.cpt,
-      provider: input.provider,
-      location: input.location,
-      insurance: input.insurance,
-      status: "scheduled",
-      alerts: [],
-      recentNote: null,
-      diagnoses: [],
-      tasks: [],
-      copay: null,
-    };
+  const handleAppointmentCreated = (created: ScheduleAppointment) => {
     setAppointments((prev) =>
-      [...prev, newAppt].sort((a, b) => {
+      [...prev, created].sort((a, b) => {
         const toMin = (t: string) => {
           const [hm, p] = t.split(" ");
           const [hh, mm] = hm.split(":").map((n) => parseInt(n, 10));
@@ -396,7 +362,7 @@ export default function ScheduleClient() {
         return toMin(a.timeStart) - toMin(b.timeStart);
       }),
     );
-    setSelectedId(newAppt.id);
+    setSelectedId(created.id);
     setIsNewApptOpen(false);
   };
 
@@ -449,8 +415,9 @@ export default function ScheduleClient() {
 
       {isNewApptOpen ? (
         <NewAppointmentModal
+          organizationId={organizationId}
           onClose={() => setIsNewApptOpen(false)}
-          onCreate={handleCreateAppointment}
+          onCreated={handleAppointmentCreated}
         />
       ) : null}
 
@@ -788,30 +755,107 @@ function ContextPanel({ appt }: { appt: ScheduleAppointment }) {
 
 /* ─── New Appointment Modal ───────────────────────────────────────────────── */
 
+type ClientOption = { id: string; name: string };
+type ProviderOption = { id: string; name: string };
+
 function NewAppointmentModal({
+  organizationId,
   onClose,
-  onCreate,
+  onCreated,
 }: {
+  organizationId: string;
   onClose: () => void;
-  onCreate: (input: {
-    patientName: string;
-    timeStart: string;
-    durationMin: number;
-    type: string;
-    cpt: string;
-    provider: string;
-    location: "Office" | "Telehealth";
-    insurance: string;
-  }) => void;
+  onCreated: (appointment: ScheduleAppointment) => void;
 }) {
-  const [patientName, setPatientName] = useState("");
+  const today = useMemo(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }, []);
+
+  const [clientQuery, setClientQuery] = useState("");
+  const [selectedClient, setSelectedClient] = useState<ClientOption | null>(null);
+  const [clientResults, setClientResults] = useState<ClientOption[]>([]);
+  const [clientLoading, setClientLoading] = useState(false);
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
+
+  const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const [providerId, setProviderId] = useState("");
+  const [providersLoading, setProvidersLoading] = useState(true);
+
+  const [date, setDate] = useState(today);
   const [timeStart, setTimeStart] = useState("09:00");
   const [durationMin, setDurationMin] = useState(45);
   const [type, setType] = useState("Individual Therapy");
-  const [provider, setProvider] = useState("Lena Ortiz, LPC");
+  const [reason, setReason] = useState("");
   const [location, setLocation] = useState<"Office" | "Telehealth">("Office");
-  const [insurance, setInsurance] = useState("BCBS Colorado");
+
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clientReqSeqRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setProvidersLoading(true);
+    fetch(`/api/providers/credentialing?organizationId=${encodeURIComponent(organizationId)}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((json: { success?: boolean; providers?: Array<{ id: string; provider_name: string; credential_display?: string | null; is_active?: boolean }>; error?: string }) => {
+        if (cancelled) return;
+        if (!json.success) throw new Error(json.error || "Failed to load providers");
+        const list = (json.providers ?? [])
+          .filter((p) => p.is_active !== false)
+          .map((p) => ({
+            id: String(p.id),
+            name: p.credential_display ? `${p.provider_name}, ${p.credential_display}` : String(p.provider_name),
+          }));
+        setProviders(list);
+        if (list.length > 0) setProviderId(list[0].id);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load providers");
+      })
+      .finally(() => {
+        if (!cancelled) setProvidersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId]);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (selectedClient && clientQuery === selectedClient.name) return;
+    const q = clientQuery.trim();
+    debounceRef.current = setTimeout(() => {
+      const seq = ++clientReqSeqRef.current;
+      setClientLoading(true);
+      const params = new URLSearchParams({ organizationId });
+      if (q) params.set("q", q);
+      fetch(`/api/clients?${params.toString()}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((json: { success?: boolean; clients?: Array<{ id: string; name: string }>; error?: string }) => {
+          if (seq !== clientReqSeqRef.current) return;
+          if (!json.success) throw new Error(json.error || "Failed to load clients");
+          setClientResults((json.clients ?? []).slice(0, 25).map((c) => ({ id: String(c.id), name: String(c.name) })));
+          setError(null);
+        })
+        .catch((e: unknown) => {
+          if (seq !== clientReqSeqRef.current) return;
+          setClientResults([]);
+          setError(e instanceof Error ? e.message : "Client search failed");
+        })
+        .finally(() => {
+          if (seq === clientReqSeqRef.current) setClientLoading(false);
+        });
+    }, 200);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [clientQuery, organizationId, selectedClient]);
 
   const cptForType = (t: string) => {
     if (t === "Intake") return "90791";
@@ -820,22 +864,85 @@ function NewAppointmentModal({
     return "90834";
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const formatClock = (hour24: number, minute: number) => {
+    const period = hour24 >= 12 ? "PM" : "AM";
+    const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+    return `${h12}:${String(minute).padStart(2, "0")} ${period}`;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!patientName.trim()) {
-      setError("Patient name is required");
-      return;
+    setError(null);
+    if (!selectedClient) return setError("Select a client from your chart list");
+    if (!providerId) return setError("Select a provider");
+    if (!reason.trim()) return setError("Reason is required");
+    const [hh, mm] = timeStart.split(":").map((n) => parseInt(n, 10));
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return setError("Invalid start time");
+    if (mm % 15 !== 0) return setError("Start time must be on a 15-minute interval (00, 15, 30, 45)");
+
+    const startLocal = new Date(`${date}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`);
+    if (Number.isNaN(startLocal.getTime())) return setError("Invalid date/time");
+
+    const providerLabel = providers.find((p) => p.id === providerId)?.name ?? "Unassigned";
+
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/scheduling/appointments/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          clientId: selectedClient.id,
+          providerId,
+          scheduledStartAt: startLocal.toISOString(),
+          durationMinutes: durationMin,
+          appointmentType: type,
+          reason: reason.trim(),
+          serviceLocation: location === "Telehealth" ? "telehealth" : "office",
+          reminderPortalEnabled: true,
+        }),
+      });
+      const json = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        appointments?: Array<{ id: string; scheduled_start_at: string }>;
+      };
+      if (!response.ok || !json.success) {
+        throw new Error(json.error || `Failed to create appointment (${response.status})`);
+      }
+
+      const created = json.appointments?.[0];
+      const newId = created?.id ?? `appt-${Date.now()}`;
+      const endTotal = hh * 60 + mm + durationMin;
+      const endH = Math.floor(endTotal / 60);
+      const endM = endTotal % 60;
+
+      const appointment: ScheduleAppointment = {
+        id: newId,
+        clientId: selectedClient.id,
+        patientName: selectedClient.name,
+        dob: "",
+        timeStart: formatClock(hh, mm),
+        timeEnd: formatClock(endH, endM),
+        durationMin,
+        type,
+        cpt: cptForType(type),
+        provider: providerLabel,
+        location,
+        insurance: "",
+        status: "scheduled",
+        alerts: [],
+        recentNote: null,
+        diagnoses: [],
+        tasks: [],
+        copay: null,
+      };
+      onCreated(appointment);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create appointment");
+    } finally {
+      setSubmitting(false);
     }
-    onCreate({
-      patientName: patientName.trim(),
-      timeStart,
-      durationMin,
-      type,
-      cpt: cptForType(type),
-      provider,
-      location,
-      insurance,
-    });
   };
 
   const overlay: React.CSSProperties = {
@@ -926,22 +1033,93 @@ function NewAppointmentModal({
               {error}
             </div>
           ) : null}
-          <div>
-            <label style={label}>Patient name</label>
+          <div style={{ position: "relative" }}>
+            <label style={label}>Client (chart)</label>
             <input
               style={input}
               type="text"
-              value={patientName}
-              onChange={(e) => setPatientName(e.target.value)}
-              placeholder="e.g. Maya Chen"
+              value={clientQuery}
+              onChange={(e) => {
+                setClientQuery(e.target.value);
+                setSelectedClient(null);
+                setClientDropdownOpen(true);
+              }}
+              onFocus={() => setClientDropdownOpen(true)}
+              onBlur={() => setTimeout(() => setClientDropdownOpen(false), 150)}
+              placeholder="Search by client name…"
+              autoComplete="off"
               autoFocus
             />
+            {clientDropdownOpen && (clientResults.length > 0 || clientLoading) ? (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  right: 0,
+                  marginTop: 2,
+                  background: "#fff",
+                  border: "1px solid #d8e1e9",
+                  borderRadius: 4,
+                  boxShadow: "0 8px 20px rgba(16,36,63,0.12)",
+                  maxHeight: 200,
+                  overflowY: "auto",
+                  zIndex: 1010,
+                }}
+              >
+                {clientLoading ? (
+                  <div style={{ padding: "8px 10px", fontSize: 12, color: "#5c6e82" }}>Searching…</div>
+                ) : (
+                  clientResults.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setSelectedClient(c);
+                        setClientQuery(c.name);
+                        setClientDropdownOpen(false);
+                      }}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "8px 10px",
+                        fontSize: 13,
+                        background: selectedClient?.id === c.id ? "#eef4fb" : "#fff",
+                        border: "none",
+                        borderBottom: "1px solid #f0f3f6",
+                        cursor: "pointer",
+                        color: "#1a2332",
+                      }}
+                    >
+                      {c.name}
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : null}
+            {selectedClient ? (
+              <div style={{ marginTop: 4, fontSize: 11, color: "#1a7f3c" }}>
+                ✓ Linked to chart {selectedClient.id.slice(0, 8)}…
+              </div>
+            ) : (
+              <div style={{ marginTop: 4, fontSize: 11, color: "#5c6e82" }}>
+                Must select an existing chart. New patients should be added via Clients → New Client first.
+              </div>
+            )}
           </div>
           <div style={row}>
             <div>
-              <label style={label}>Start time</label>
-              <input style={input} type="time" value={timeStart} onChange={(e) => setTimeStart(e.target.value)} />
+              <label style={label}>Date</label>
+              <input style={input} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
+            <div>
+              <label style={label}>Start time</label>
+              <input style={input} type="time" step={900} value={timeStart} onChange={(e) => setTimeStart(e.target.value)} />
+            </div>
+          </div>
+          <div style={row}>
             <div>
               <label style={label}>Duration (min)</label>
               <select style={input} value={durationMin} onChange={(e) => setDurationMin(parseInt(e.target.value, 10))}>
@@ -949,17 +1127,6 @@ function NewAppointmentModal({
                 <option value={45}>45</option>
                 <option value={53}>53</option>
                 <option value={60}>60</option>
-              </select>
-            </div>
-          </div>
-          <div style={row}>
-            <div>
-              <label style={label}>Appointment type</label>
-              <select style={input} value={type} onChange={(e) => setType(e.target.value)}>
-                <option>Individual Therapy</option>
-                <option>Intake</option>
-                <option>Treatment Plan Review</option>
-                <option>Family Therapy</option>
               </select>
             </div>
             <div>
@@ -976,29 +1143,41 @@ function NewAppointmentModal({
           </div>
           <div style={row}>
             <div>
-              <label style={label}>Provider</label>
-              <select style={input} value={provider} onChange={(e) => setProvider(e.target.value)}>
-                <option>Lena Ortiz, LPC</option>
-                <option>Noah Kim, LCSW</option>
-                <option>Priya Shah, PsyD</option>
+              <label style={label}>Appointment type</label>
+              <select style={input} value={type} onChange={(e) => setType(e.target.value)}>
+                <option>Individual Therapy</option>
+                <option>Intake</option>
+                <option>Treatment Plan Review</option>
+                <option>Family Therapy</option>
               </select>
             </div>
             <div>
-              <label style={label}>Insurance</label>
-              <select style={input} value={insurance} onChange={(e) => setInsurance(e.target.value)}>
-                <option>BCBS Colorado</option>
-                <option>Aetna</option>
-                <option>Medicare</option>
-                <option>Colorado Medicaid</option>
-                <option>United Behavioral Health</option>
-                <option>Self-pay</option>
+              <label style={label}>Provider</label>
+              <select style={input} value={providerId} onChange={(e) => setProviderId(e.target.value)} disabled={providersLoading}>
+                {providersLoading ? <option value="">Loading…</option> : null}
+                {!providersLoading && providers.length === 0 ? <option value="">No active providers</option> : null}
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
               </select>
             </div>
           </div>
+          <div>
+            <label style={label}>Reason</label>
+            <input
+              style={input}
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Weekly therapy session, follow-up on anxiety symptoms"
+            />
+          </div>
         </div>
         <div style={foot}>
-          <button type="button" style={btn} onClick={onClose}>Cancel</button>
-          <button type="submit" style={btnPrimary}>Create appointment</button>
+          <button type="button" style={btn} onClick={onClose} disabled={submitting}>Cancel</button>
+          <button type="submit" style={{ ...btnPrimary, opacity: submitting ? 0.6 : 1, cursor: submitting ? "wait" : "pointer" }} disabled={submitting}>
+            {submitting ? "Creating…" : "Create appointment"}
+          </button>
         </div>
       </form>
     </div>

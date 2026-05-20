@@ -1,0 +1,255 @@
+import { NextResponse } from "next/server";
+import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
+
+type CasAdjustment = {
+  groupCode?: string | null;
+  reasonCode?: string | null;
+  amount?: number | string | null;
+  group_code?: string | null;
+  reason_code?: string | null;
+  description?: string | null;
+};
+
+type ServiceLine = {
+  procedure_code?: string | null;
+  charge?: number | string | null;
+  allowed?: number | string | null;
+  paid?: number | string | null;
+  adjustment?: number | string | null;
+  adjustment_code?: string | null;
+};
+
+type EraImportBatchRow = {
+  id: string;
+  payer_profile_id: string | null;
+  parsed_summary: Record<string, unknown> | null;
+  imported_at: string | null;
+};
+
+type PayerProfileRow = {
+  id: string;
+  payer_name: string | null;
+};
+
+type ProfessionalClaimRow = {
+  id: string;
+  claim_number: string | null;
+  claim_status: string | null;
+};
+
+type ClientRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+};
+
+type LedgerRow = {
+  era_claim_payment_id: string;
+  entry_type: string;
+  amount: number | string | null;
+  group_code: string | null;
+  reason_code: string | null;
+  description: string | null;
+};
+
+type EraClaimPaymentRow = {
+  id: string;
+  organization_id: string;
+  era_import_batch_id: string;
+  professional_claim_id: string | null;
+  client_id: string | null;
+  clp01_claim_control_number: string;
+  clp03_total_charge: number | string;
+  clp04_payment_amount: number | string;
+  clp05_patient_responsibility: number | string;
+  payer_claim_control_number: string | null;
+  claim_match_status: string;
+  posting_status: string;
+  cas_adjustments: CasAdjustment[] | null;
+  service_lines: ServiceLine[] | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function money(value: unknown) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+
+function safeString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value;
+  return String(value);
+}
+
+export async function GET(request: Request) {
+  try {
+    const supabase = createServerSupabaseAdminClient();
+    if (!supabase) {
+      return NextResponse.json({ success: false, error: "Database connection not available" }, { status: 500 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const organizationId = searchParams.get("organizationId");
+    if (!organizationId) {
+      return NextResponse.json({ success: false, error: "organizationId is required" }, { status: 400 });
+    }
+
+    const { data: payments, error } = await supabase
+      .from("era_claim_payments")
+      .select(
+        "id, organization_id, era_import_batch_id, professional_claim_id, client_id, clp01_claim_control_number, clp03_total_charge, clp04_payment_amount, clp05_patient_responsibility, payer_claim_control_number, claim_match_status, posting_status, cas_adjustments, service_lines, created_at, updated_at",
+      )
+      .eq("organization_id", organizationId)
+      .is("archived_at", null)
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    if (error) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+
+    const rows = (payments ?? []) as EraClaimPaymentRow[];
+
+    const batchIds = Array.from(new Set(rows.map((r) => r.era_import_batch_id).filter(Boolean)));
+    const claimIds = Array.from(new Set(rows.map((r) => r.professional_claim_id).filter((id): id is string => Boolean(id))));
+    const clientIds = Array.from(new Set(rows.map((r) => r.client_id).filter((id): id is string => Boolean(id))));
+    const paymentIds = rows.map((r) => r.id);
+
+    const [batchesRes, claimsRes, clientsRes, ledgerRes] = await Promise.all([
+      batchIds.length
+        ? supabase
+            .from("era_import_batches")
+            .select("id, payer_profile_id, parsed_summary, imported_at")
+            .in("id", batchIds)
+        : Promise.resolve({ data: [] as EraImportBatchRow[], error: null }),
+      claimIds.length
+        ? supabase
+            .from("professional_claims")
+            .select("id, claim_number, claim_status")
+            .in("id", claimIds)
+        : Promise.resolve({ data: [] as ProfessionalClaimRow[], error: null }),
+      clientIds.length
+        ? supabase
+            .from("clients")
+            .select("id, first_name, last_name")
+            .in("id", clientIds)
+        : Promise.resolve({ data: [] as ClientRow[], error: null }),
+      paymentIds.length
+        ? supabase
+            .from("era_posting_ledger_entries")
+            .select("era_claim_payment_id, entry_type, amount, group_code, reason_code, description")
+            .eq("organization_id", organizationId)
+            .in("era_claim_payment_id", paymentIds)
+            .is("archived_at", null)
+        : Promise.resolve({ data: [] as LedgerRow[], error: null }),
+    ]);
+
+    const batchesById = new Map<string, EraImportBatchRow>(
+      ((batchesRes.data ?? []) as EraImportBatchRow[]).map((b) => [b.id, b]),
+    );
+    const claimsById = new Map<string, ProfessionalClaimRow>(
+      ((claimsRes.data ?? []) as ProfessionalClaimRow[]).map((c) => [c.id, c]),
+    );
+    const clientsById = new Map<string, ClientRow>(
+      ((clientsRes.data ?? []) as ClientRow[]).map((c) => [c.id, c]),
+    );
+
+    const payerIds = Array.from(
+      new Set(
+        Array.from(batchesById.values())
+          .map((b) => b.payer_profile_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const payersById = new Map<string, PayerProfileRow>();
+    if (payerIds.length > 0) {
+      const { data: payerRows } = await supabase
+        .from("payer_profiles")
+        .select("id, payer_name")
+        .in("id", payerIds);
+      for (const row of (payerRows ?? []) as PayerProfileRow[]) {
+        payersById.set(row.id, row);
+      }
+    }
+
+    const ledgerByPaymentId = new Map<string, LedgerRow[]>();
+    for (const row of (ledgerRes.data ?? []) as LedgerRow[]) {
+      const list = ledgerByPaymentId.get(row.era_claim_payment_id) ?? [];
+      list.push(row);
+      ledgerByPaymentId.set(row.era_claim_payment_id, list);
+    }
+
+    const items = rows.map((row) => {
+      const batch = batchesById.get(row.era_import_batch_id) ?? null;
+      const claim = row.professional_claim_id ? claimsById.get(row.professional_claim_id) ?? null : null;
+      const client = row.client_id ? clientsById.get(row.client_id) ?? null : null;
+      const payer = batch?.payer_profile_id ? payersById.get(batch.payer_profile_id) ?? null : null;
+      const parsedPayerName =
+        payer?.payer_name ??
+        (batch?.parsed_summary && typeof batch.parsed_summary === "object"
+          ? safeString((batch.parsed_summary as Record<string, unknown>).payer)
+          : null);
+      const checkNumber =
+        batch?.parsed_summary && typeof batch.parsed_summary === "object"
+          ? safeString((batch.parsed_summary as Record<string, unknown>).check_number)
+          : null;
+
+      return {
+        id: row.id,
+        eraImportBatchId: row.era_import_batch_id,
+        claimControlNumber: row.clp01_claim_control_number,
+        payerClaimControlNumber: row.payer_claim_control_number,
+        totalCharge: money(row.clp03_total_charge),
+        paymentAmount: money(row.clp04_payment_amount),
+        patientResponsibility: money(row.clp05_patient_responsibility),
+        claimMatchStatus: row.claim_match_status,
+        postingStatus: row.posting_status,
+        casAdjustments: (row.cas_adjustments ?? []).map((adj) => ({
+          groupCode: adj.groupCode ?? adj.group_code ?? null,
+          reasonCode: adj.reasonCode ?? adj.reason_code ?? null,
+          amount: money(adj.amount),
+          description: adj.description ?? null,
+        })),
+        serviceLines: (row.service_lines ?? []).map((line) => ({
+          procedureCode: line.procedure_code ?? null,
+          charge: money(line.charge),
+          allowed: money(line.allowed),
+          paid: money(line.paid),
+          adjustment: money(line.adjustment),
+          adjustmentCode: line.adjustment_code ?? null,
+        })),
+        ledgerEntries: (ledgerByPaymentId.get(row.id) ?? []).map((entry) => ({
+          entryType: entry.entry_type,
+          amount: money(entry.amount),
+          groupCode: entry.group_code,
+          reasonCode: entry.reason_code,
+          description: entry.description,
+        })),
+        professionalClaim: claim
+          ? { id: claim.id, claimNumber: claim.claim_number, claimStatus: claim.claim_status }
+          : null,
+        client: client
+          ? {
+              id: client.id,
+              displayName:
+                [client.first_name, client.last_name].filter(Boolean).join(" ").trim() || "Unknown patient",
+            }
+          : null,
+        payer: { id: payer?.id ?? null, name: parsedPayerName ?? "Unknown payer" },
+        checkNumber,
+        importedAt: batch?.imported_at ?? null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+    });
+
+    return NextResponse.json({ success: true, organizationId, items });
+  } catch (error) {
+    console.error("ERA payments API error:", error);
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : "ERA payments API failed" },
+      { status: 500 },
+    );
+  }
+}

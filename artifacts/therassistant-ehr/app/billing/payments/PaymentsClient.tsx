@@ -1,127 +1,229 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { DEFAULT_ORG_ID } from "@/lib/config";
 import styles from "./payments.module.css";
 
-type PaymentStatus = "ready" | "partial" | "exception" | "review" | "posted";
-type QueueTab = "all" | "era" | "patient" | "checks" | "unapplied" | "exceptions";
+type QueueTab = "all" | "matched" | "unmatched" | "blocked" | "posted";
 
-interface PaymentItem {
-  id: string;
-  source: string;
-  eraId?: string;
-  payer?: string;
-  patient?: string;
+interface CasAdjustment {
+  groupCode: string | null;
+  reasonCode: string | null;
   amount: number;
-  method: "ERA" | "Patient" | "Check" | "Card" | "ACH";
-  status: PaymentStatus;
-  date: string;
-  exception?: string;
+  description: string | null;
 }
 
-interface LedgerLine {
-  dos: string;
-  cpt: string;
+interface ServiceLine {
+  procedureCode: string | null;
   charge: number;
+  allowed: number;
   paid: number;
-  adj: number;
-  ptResp: number;
-  claimStatus: string;
+  adjustment: number;
+  adjustmentCode: string | null;
 }
 
-const PAYMENTS: PaymentItem[] = [
-  { id: "pmt-1", source: "ERA #ERA-2026-0234", eraId: "ERA-2026-0234", payer: "BCBS Colorado", amount: 1248.22, method: "ERA", status: "partial", date: "05/19/2026", exception: "Payment amount exceeds remaining balance by $42.18" },
-  { id: "pmt-2", source: "ERA #ERA-2026-0235", eraId: "ERA-2026-0235", payer: "Aetna", amount: 892.50, method: "ERA", status: "ready", date: "05/19/2026" },
-  { id: "pmt-3", source: "Patient – Dana Patel", patient: "Dana Patel", amount: 40.00, method: "Card", status: "posted", date: "05/19/2026" },
-  { id: "pmt-4", source: "Patient – James Rivera", patient: "James Rivera", amount: 0.00, method: "Patient", status: "review", date: "05/18/2026", exception: "Copay collected: $0 — verify Medicare advantage plan" },
-  { id: "pmt-5", source: "ERA #ERA-2026-0231", eraId: "ERA-2026-0231", payer: "Colorado Medicaid", amount: 2104.80, method: "ERA", status: "posted", date: "05/16/2026" },
-  { id: "pmt-6", source: "Check #44821", amount: 618.00, method: "Check", status: "ready", date: "05/15/2026" },
-  { id: "pmt-7", source: "ERA #ERA-2026-0229", eraId: "ERA-2026-0229", payer: "United Behavioral Health", amount: 330.00, method: "ERA", status: "exception", date: "05/14/2026", exception: "Unmatched claim — no matching claim found in system" },
-  { id: "pmt-8", source: "Patient – Sofia Martinez", patient: "Sofia Martinez", amount: 0.00, method: "ACH", status: "review", date: "05/13/2026", exception: "ACH returned — insufficient funds" },
-];
+interface LedgerEntry {
+  entryType: string;
+  amount: number;
+  groupCode: string | null;
+  reasonCode: string | null;
+  description: string | null;
+}
 
-const LEDGER: LedgerLine[] = [
-  { dos: "05/02", cpt: "90837", charge: 150.00, paid: 98.00, adj: 32.00, ptResp: 20.00, claimStatus: "paid" },
-  { dos: "04/25", cpt: "90837", charge: 150.00, paid: 98.00, adj: 32.00, ptResp: 20.00, claimStatus: "paid" },
-  { dos: "04/11", cpt: "90834", charge: 120.00, paid: 0.00, adj: 0.00, ptResp: 120.00, claimStatus: "patient" },
-  { dos: "03/28", cpt: "90837", charge: 150.00, paid: 98.22, adj: 31.78, ptResp: 20.00, claimStatus: "paid" },
-  { dos: "03/14", cpt: "90791", charge: 195.00, paid: 130.50, adj: 44.50, ptResp: 20.00, claimStatus: "paid" },
-];
+interface EraPaymentItem {
+  id: string;
+  eraImportBatchId: string;
+  claimControlNumber: string;
+  payerClaimControlNumber: string | null;
+  totalCharge: number;
+  paymentAmount: number;
+  patientResponsibility: number;
+  claimMatchStatus: string;
+  postingStatus: string;
+  casAdjustments: CasAdjustment[];
+  serviceLines: ServiceLine[];
+  ledgerEntries: LedgerEntry[];
+  professionalClaim: { id: string; claimNumber: string | null; claimStatus: string | null } | null;
+  client: { id: string; displayName: string } | null;
+  payer: { id: string | null; name: string };
+  checkNumber: string | null;
+  importedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
-const TIMELINE = [
-  { label: "Claim Submitted", date: "04/25/2026", dot: "dotBlue" },
-  { label: "ERA Received from BCBS", date: "05/12/2026", dot: "dotGreen" },
-  { label: "Payment Partially Applied", date: "05/19/2026", dot: "dotAmber" },
-  { label: "Patient Balance Created – $20.00", date: "05/19/2026", dot: "dotBlue" },
-  { label: "Statement Pending", date: "—", dot: "dotGray" },
-];
-
-const STATUS_LABELS: Record<PaymentStatus, string> = {
-  ready: "Ready to Post",
-  partial: "Partially Applied",
-  exception: "Exception",
-  review: "Needs Review",
-  posted: "Posted",
-};
-
-const STATUS_CLASS: Record<PaymentStatus, string> = {
-  ready: styles.qsReady,
-  partial: styles.qsPartial,
-  exception: styles.qsException,
-  review: styles.qsReview,
-  posted: styles.qsPosted,
-};
-
-type TabFilter = Record<QueueTab, boolean>;
+function getOrganizationId() {
+  if (typeof window === "undefined") return process.env.NEXT_PUBLIC_ORGANIZATION_ID || DEFAULT_ORG_ID;
+  return (
+    new URLSearchParams(window.location.search).get("organizationId") ||
+    process.env.NEXT_PUBLIC_ORGANIZATION_ID ||
+    DEFAULT_ORG_ID
+  );
+}
 
 function money(v: number) {
   return v.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
-function methodIcon(method: PaymentItem["method"]) {
-  if (method === "ERA") return { cls: styles.queueRowIconEra, label: "ERA" };
-  if (method === "Patient" || method === "Card") return { cls: styles.queueRowIconPatient, label: "$" };
-  if (method === "Check") return { cls: styles.queueRowIconCheck, label: "CHK" };
-  return { cls: styles.queueRowIconException, label: "!" };
+function formatDate(iso: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString();
+}
+
+function postingStatusLabel(status: string) {
+  switch (status) {
+    case "posted":
+      return "Posted";
+    case "ready":
+      return "Ready to Post";
+    case "blocked":
+      return "Blocked";
+    case "partial":
+      return "Partially Applied";
+    case "exception":
+      return "Exception";
+    default:
+      return status.charAt(0).toUpperCase() + status.slice(1);
+  }
+}
+
+function postingStatusClass(status: string) {
+  switch (status) {
+    case "posted":
+      return styles.qsPosted;
+    case "ready":
+      return styles.qsReady;
+    case "blocked":
+      return styles.qsException;
+    case "partial":
+      return styles.qsPartial;
+    default:
+      return styles.qsReview;
+  }
+}
+
+function matchBadgeText(status: string) {
+  if (status === "matched") return "Matched";
+  if (status === "unmatched") return "Unmatched";
+  return status;
 }
 
 export default function PaymentsClient() {
+  const organizationId = useMemo(() => getOrganizationId(), []);
   const [tab, setTab] = useState<QueueTab>("all");
-  const [selectedId, setSelectedId] = useState<string>("pmt-1");
   const [search, setSearch] = useState("");
+  const [items, setItems] = useState<EraPaymentItem[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [postingId, setPostingId] = useState<string | null>(null);
+  const [postFeedback, setPostFeedback] = useState<{ id: string; message: string; tone: "ok" | "err" } | null>(null);
+
+  const loadPayments = useCallback(async () => {
+    if (!organizationId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/billing/era-payments?organizationId=${encodeURIComponent(organizationId)}`,
+        { cache: "no-store" },
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error ?? `Request failed with ${res.status}`);
+      const list = (json.items ?? []) as EraPaymentItem[];
+      setItems(list);
+      setSelectedId((prev) => prev && list.some((p) => p.id === prev) ? prev : list[0]?.id ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load ERA payments");
+    } finally {
+      setLoading(false);
+    }
+  }, [organizationId]);
+
+  useEffect(() => {
+    loadPayments();
+  }, [loadPayments]);
 
   const filtered = useMemo(() => {
-    let list = PAYMENTS;
-    if (tab === "era") list = list.filter((p) => p.method === "ERA");
-    if (tab === "patient") list = list.filter((p) => p.method === "Patient" || p.method === "Card" || p.method === "ACH");
-    if (tab === "checks") list = list.filter((p) => p.method === "Check");
-    if (tab === "unapplied") list = list.filter((p) => p.status === "ready" || p.status === "partial");
-    if (tab === "exceptions") list = list.filter((p) => p.status === "exception" || p.status === "review");
+    let list = items;
+    if (tab === "matched") list = list.filter((p) => p.claimMatchStatus === "matched" && p.postingStatus !== "posted");
+    if (tab === "unmatched") list = list.filter((p) => p.claimMatchStatus !== "matched");
+    if (tab === "blocked") list = list.filter((p) => p.postingStatus === "blocked");
+    if (tab === "posted") list = list.filter((p) => p.postingStatus === "posted");
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter((p) =>
-        p.source.toLowerCase().includes(q) ||
-        (p.payer ?? "").toLowerCase().includes(q) ||
-        (p.patient ?? "").toLowerCase().includes(q),
+      list = list.filter(
+        (p) =>
+          p.claimControlNumber.toLowerCase().includes(q) ||
+          p.payer.name.toLowerCase().includes(q) ||
+          (p.client?.displayName ?? "").toLowerCase().includes(q) ||
+          (p.professionalClaim?.claimNumber ?? "").toLowerCase().includes(q),
       );
     }
     return list;
-  }, [tab, search]);
+  }, [items, tab, search]);
 
-  const selected = useMemo(() => PAYMENTS.find((p) => p.id === selectedId) ?? null, [selectedId]);
+  const selected = useMemo(() => items.find((p) => p.id === selectedId) ?? null, [items, selectedId]);
 
-  const kpi = useMemo(() => ({
-    postedToday: money(PAYMENTS.filter((p) => p.status === "posted").reduce((s, p) => s + p.amount, 0)),
-    pendingEra: PAYMENTS.filter((p) => p.method === "ERA" && p.status !== "posted").length,
-    unapplied: money(PAYMENTS.filter((p) => p.status === "ready" || p.status === "partial").reduce((s, p) => s + p.amount, 0)),
-    patientPayments: money(PAYMENTS.filter((p) => p.method === "Patient" || p.method === "Card" || p.method === "ACH").reduce((s, p) => s + p.amount, 0)),
-    refunds: 3,
-    exceptions: PAYMENTS.filter((p) => p.status === "exception" || p.status === "review").length,
-  }), []);
+  const kpi = useMemo(() => {
+    const posted = items.filter((p) => p.postingStatus === "posted");
+    const pending = items.filter((p) => p.postingStatus !== "posted");
+    const blocked = items.filter((p) => p.postingStatus === "blocked" || p.claimMatchStatus !== "matched");
+    const unapplied = items.filter((p) => p.claimMatchStatus === "matched" && p.postingStatus === "ready");
+    const patientResp = items
+      .filter((p) => p.postingStatus !== "posted")
+      .reduce((s, p) => s + p.patientResponsibility, 0);
+    return {
+      postedTotal: money(posted.reduce((s, p) => s + p.paymentAmount, 0)),
+      pendingCount: pending.length,
+      unapplied: money(unapplied.reduce((s, p) => s + p.paymentAmount, 0)),
+      pendingPatientResp: money(patientResp),
+      blocked: blocked.length,
+    };
+  }, [items]);
+
+  const handlePost = useCallback(
+    async (id: string) => {
+      setPostingId(id);
+      setPostFeedback(null);
+      try {
+        const res = await fetch(`/api/billing/era-payments/${encodeURIComponent(id)}/post`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ organizationId }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(json.error ?? json.errors?.[0]?.message ?? `Request failed with ${res.status}`);
+        }
+        const messageBits: string[] = [];
+        if (json.alreadyPosted) messageBits.push("Already posted");
+        else if (json.posted) messageBits.push("Payment posted");
+        if (json.patientInvoiceCreated) messageBits.push("patient invoice created");
+        if (json.workqueueItemsClosed > 0) messageBits.push(`${json.workqueueItemsClosed} workqueue item(s) closed`);
+        setPostFeedback({
+          id,
+          message: messageBits.join(" · ") || "Payment posted",
+          tone: "ok",
+        });
+        await loadPayments();
+      } catch (err) {
+        setPostFeedback({
+          id,
+          message: err instanceof Error ? err.message : "Failed to post payment",
+          tone: "err",
+        });
+      } finally {
+        setPostingId(null);
+      }
+    },
+    [organizationId, loadPayments],
+  );
 
   return (
     <div className={styles.page}>
-      {/* Header */}
       <header className={styles.header}>
         <span className={styles.headerTitle}>Payments &amp; ERA</span>
         <div className={styles.headerSpacer} />
@@ -129,66 +231,59 @@ export default function PaymentsClient() {
           <span className={styles.searchIcon}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
           </span>
-          <input className={styles.searchInput} placeholder="Search ERA #, patient, payer…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className={styles.searchInput} placeholder="Search ERA claim #, patient, payer…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <input type="date" className={styles.dateInput} defaultValue={new Date().toISOString().slice(0, 10)} />
-        <button type="button" className={styles.headerBtn}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-          Export
-        </button>
-        <button type="button" className={styles.headerBtn}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-          Import ERA
-        </button>
-        <button type="button" className={`${styles.headerBtn} ${styles.headerBtnPrimary}`}>
-          + Post Payment
+        <button type="button" className={styles.headerBtn} onClick={() => loadPayments()} disabled={loading}>
+          {loading ? "Refreshing…" : "Refresh"}
         </button>
       </header>
 
-      {/* KPI Row */}
       <div className={styles.kpiRow}>
         <div className={styles.kpiCard}>
-          <div className={`${styles.kpiValue} ${styles.kpiValueGreen}`}>{kpi.postedToday}</div>
-          <div className={styles.kpiLabel}>Posted Today</div>
-          <div className={`${styles.kpiTrend} ${styles.kpiTrendUp}`}>↑ 12% vs last week</div>
+          <div className={`${styles.kpiValue} ${styles.kpiValueGreen}`}>{kpi.postedTotal}</div>
+          <div className={styles.kpiLabel}>Posted (all-time)</div>
         </div>
         <div className={styles.kpiCard}>
-          <div className={`${styles.kpiValue} ${styles.kpiValueBlue}`}>{kpi.pendingEra}</div>
+          <div className={`${styles.kpiValue} ${styles.kpiValueBlue}`}>{kpi.pendingCount}</div>
           <div className={styles.kpiLabel}>Pending ERAs</div>
         </div>
         <div className={styles.kpiCard}>
           <div className={`${styles.kpiValue} ${styles.kpiValueAmber}`}>{kpi.unapplied}</div>
-          <div className={styles.kpiLabel}>Unapplied Cash</div>
+          <div className={styles.kpiLabel}>Ready to Post</div>
         </div>
         <div className={styles.kpiCard}>
-          <div className={styles.kpiValue}>{kpi.patientPayments}</div>
-          <div className={styles.kpiLabel}>Patient Payments</div>
+          <div className={styles.kpiValue}>{kpi.pendingPatientResp}</div>
+          <div className={styles.kpiLabel}>Pending Pt. Responsibility</div>
         </div>
         <div className={styles.kpiCard}>
-          <div className={styles.kpiValue}>{kpi.refunds}</div>
-          <div className={styles.kpiLabel}>Refund Requests</div>
-        </div>
-        <div className={styles.kpiCard}>
-          <div className={`${styles.kpiValue} ${styles.kpiValueRed}`}>{kpi.exceptions}</div>
-          <div className={styles.kpiLabel}>Exceptions</div>
+          <div className={`${styles.kpiValue} ${styles.kpiValueRed}`}>{kpi.blocked}</div>
+          <div className={styles.kpiLabel}>Blocked / Unmatched</div>
         </div>
       </div>
 
-      {/* Body */}
+      {error ? <div style={{ padding: 12, color: "#B91C1C", fontSize: 12 }}>Error: {error}</div> : null}
+
       <div className={styles.body}>
-        {/* Left Queue */}
         <div className={styles.queuePanel}>
           <div className={styles.queueTabs}>
-            {(["all", "era", "patient", "checks", "unapplied", "exceptions"] as QueueTab[]).map((t) => (
-              <button key={t} type="button" className={tab === t ? `${styles.queueTab} ${styles.queueTabActive}` : styles.queueTab} onClick={() => setTab(t)}>
-                {t === "era" ? "ERA" : t === "unapplied" ? "Unapplied" : t.charAt(0).toUpperCase() + t.slice(1)}
+            {(["all", "matched", "unmatched", "blocked", "posted"] as QueueTab[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={tab === t ? `${styles.queueTab} ${styles.queueTabActive}` : styles.queueTab}
+                onClick={() => setTab(t)}
+              >
+                {t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             ))}
           </div>
           <div className={`${styles.queueList} text-[10px]`}>
-            {filtered.map((pmt) => {
-              const icon = methodIcon(pmt.method);
-              return (
+            {loading && items.length === 0 ? (
+              <div style={{ padding: 16, fontSize: 12, color: "#64748B" }}>Loading ERA payments…</div>
+            ) : filtered.length === 0 ? (
+              <div style={{ padding: 16, fontSize: 12, color: "#64748B" }}>No ERA payments match this filter.</div>
+            ) : (
+              filtered.map((pmt) => (
                 <div
                   key={pmt.id}
                   className={`${styles.queueRow} ${selectedId === pmt.id ? styles.queueRowSelected : ""}`}
@@ -197,165 +292,244 @@ export default function PaymentsClient() {
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === "Enter") setSelectedId(pmt.id); }}
                 >
-                  <div className={`${styles.queueRowIcon} ${icon.cls}`}>
-                    <span style={{ fontSize: 11, fontWeight: 700 }}>{icon.label}</span>
+                  <div className={`${styles.queueRowIcon} ${styles.queueRowIconEra}`}>
+                    <span style={{ fontSize: 11, fontWeight: 700 }}>ERA</span>
                   </div>
                   <div className={styles.queueRowMain}>
                     <div className={styles.queueRowTop}>
-                      <span className={styles.queueRowSource}>{pmt.source}</span>
-                      <span className={styles.queueRowAmount}>{money(pmt.amount)}</span>
+                      <span className={styles.queueRowSource}>{pmt.claimControlNumber}</span>
+                      <span className={styles.queueRowAmount}>{money(pmt.paymentAmount)}</span>
                     </div>
                     <div className={styles.queueRowMeta}>
-                      {pmt.payer ?? pmt.patient ?? pmt.method}
+                      {pmt.payer.name}
                       <span>·</span>
-                      <span>{pmt.date}</span>
-                      <span className={`${styles.queueRowStatus} ${STATUS_CLASS[pmt.status]}`}>
-                        {STATUS_LABELS[pmt.status]}
+                      <span>{pmt.client?.displayName ?? "Unmatched"}</span>
+                      <span>·</span>
+                      <span>{formatDate(pmt.importedAt ?? pmt.createdAt)}</span>
+                      <span className={`${styles.queueRowStatus} ${postingStatusClass(pmt.postingStatus)}`}>
+                        {postingStatusLabel(pmt.postingStatus)}
                       </span>
                     </div>
                   </div>
                 </div>
-              );
-            })}
+              ))
+            )}
           </div>
         </div>
 
-        {/* Right Detail */}
         <div className={styles.detailPanel}>
           {selected ? (
             <div className={styles.detailScroll}>
-              {/* Payment Summary */}
               <div className={styles.paymentSummaryCard}>
                 <div className={styles.paymentSummaryHeader}>
-                  <div className={styles.paymentSummaryTitle}>{selected.source}</div>
-                  <span className={`${styles.paymentSummaryBadge} ${STATUS_CLASS[selected.status]}`}>
-                    {STATUS_LABELS[selected.status]}
+                  <div className={styles.paymentSummaryTitle}>
+                    ERA {selected.claimControlNumber}
+                    {selected.professionalClaim?.claimNumber
+                      ? ` · Claim ${selected.professionalClaim.claimNumber}`
+                      : ""}
+                  </div>
+                  <span className={`${styles.paymentSummaryBadge} ${postingStatusClass(selected.postingStatus)}`}>
+                    {postingStatusLabel(selected.postingStatus)}
                   </span>
                 </div>
                 <div className={styles.paymentSummaryMeta}>
                   <div className={styles.paymentSummaryField}>
-                    <span className={styles.fieldLabel}>Amount</span>
-                    <span className={styles.fieldValueLarge}>{money(selected.amount)}</span>
+                    <span className={styles.fieldLabel}>Payment</span>
+                    <span className={styles.fieldValueLarge}>{money(selected.paymentAmount)}</span>
                   </div>
                   <div className={styles.paymentSummaryField}>
-                    <span className={styles.fieldLabel}>Method</span>
-                    <span className={styles.fieldValue}>{selected.method}</span>
+                    <span className={styles.fieldLabel}>Total Charge</span>
+                    <span className={styles.fieldValue}>{money(selected.totalCharge)}</span>
+                  </div>
+                  <div className={styles.paymentSummaryField}>
+                    <span className={styles.fieldLabel}>Patient Resp.</span>
+                    <span className={styles.fieldValue}>{money(selected.patientResponsibility)}</span>
+                  </div>
+                  <div className={styles.paymentSummaryField}>
+                    <span className={styles.fieldLabel}>Payer</span>
+                    <span className={styles.fieldValue}>{selected.payer.name}</span>
+                  </div>
+                  {selected.client ? (
+                    <div className={styles.paymentSummaryField}>
+                      <span className={styles.fieldLabel}>Patient</span>
+                      <span className={styles.fieldValue}>{selected.client.displayName}</span>
+                    </div>
+                  ) : null}
+                  <div className={styles.paymentSummaryField}>
+                    <span className={styles.fieldLabel}>Match Status</span>
+                    <span className={styles.fieldValue}>{matchBadgeText(selected.claimMatchStatus)}</span>
                   </div>
                   <div className={styles.paymentSummaryField}>
                     <span className={styles.fieldLabel}>Received</span>
-                    <span className={styles.fieldValue}>{selected.date}</span>
+                    <span className={styles.fieldValue}>{formatDate(selected.importedAt ?? selected.createdAt)}</span>
                   </div>
-                  {selected.payer ? (
+                  {selected.checkNumber ? (
                     <div className={styles.paymentSummaryField}>
-                      <span className={styles.fieldLabel}>Payer</span>
-                      <span className={styles.fieldValue}>{selected.payer}</span>
-                    </div>
-                  ) : null}
-                  {selected.patient ? (
-                    <div className={styles.paymentSummaryField}>
-                      <span className={styles.fieldLabel}>Patient</span>
-                      <span className={styles.fieldValue}>{selected.patient}</span>
-                    </div>
-                  ) : null}
-                  {selected.eraId ? (
-                    <div className={styles.paymentSummaryField}>
-                      <span className={styles.fieldLabel}>ERA #</span>
-                      <span className={styles.fieldValue}>{selected.eraId}</span>
+                      <span className={styles.fieldLabel}>Check / Trace</span>
+                      <span className={styles.fieldValue}>{selected.checkNumber}</span>
                     </div>
                   ) : null}
                 </div>
               </div>
 
-              {/* Exception card if applicable */}
-              {selected.exception ? (
+              {selected.claimMatchStatus !== "matched" ? (
                 <div className={styles.exceptionCard}>
                   <span className={styles.exceptionIcon}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
                   </span>
                   <div className={styles.exceptionBody}>
-                    <div className={styles.exceptionText}>⚠ {selected.exception}</div>
-                    <div className={styles.exceptionActions}>
-                      <button type="button" className={styles.exceptionBtn}>Apply as Credit</button>
-                      <button type="button" className={styles.exceptionBtn}>Refund</button>
-                      <button type="button" className={styles.exceptionBtn}>Transfer</button>
-                      <button type="button" className={styles.exceptionBtn}>Dismiss</button>
+                    <div className={styles.exceptionText}>
+                      ⚠ This ERA payment is not matched to a claim and cannot be posted.
                     </div>
                   </div>
                 </div>
               ) : null}
 
-              {/* Ledger */}
               <div className={styles.sectionPanel}>
                 <div className={styles.sectionHeader}>
-                  <span className={styles.sectionTitle}>Payment Ledger</span>
+                  <span className={styles.sectionTitle}>Service Lines</span>
                 </div>
                 <table className={styles.ledger}>
                   <thead>
                     <tr>
-                      <th>DOS</th>
                       <th>CPT</th>
                       <th>Charge</th>
+                      <th>Allowed</th>
                       <th>Paid</th>
                       <th>Adj</th>
-                      <th>Pt Resp</th>
+                      <th>Code</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {LEDGER.map((row, i) => (
-                      <tr key={i}>
-                        <td className={styles.ledgerDos}>{row.dos}</td>
-                        <td className={styles.ledgerCpt}>{row.cpt}</td>
-                        <td>{row.charge.toFixed(2)}</td>
-                        <td className={row.paid > 0 ? styles.ledgerPaid : styles.ledgerZero}>{row.paid > 0 ? row.paid.toFixed(2) : "0.00"}</td>
-                        <td className={row.adj > 0 ? styles.ledgerAdj : styles.ledgerZero}>{row.adj > 0 ? row.adj.toFixed(2) : "—"}</td>
-                        <td className={row.ptResp > 0 ? styles.ledgerPtResp : styles.ledgerZero}>{row.ptResp > 0 ? row.ptResp.toFixed(2) : "—"}</td>
+                    {selected.serviceLines.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ textAlign: "center", color: "#64748B", padding: 12 }}>
+                          No service-line breakdown provided in ERA.
+                        </td>
                       </tr>
-                    ))}
-                    <tr style={{ background: "#F8FAFC" }}>
-                      <td colSpan={2} style={{ fontWeight: 700, color: "#0F172A", fontSize: 12 }}>TOTAL</td>
-                      <td style={{ fontWeight: 700, color: "#0F172A" }}>{LEDGER.reduce((s, r) => s + r.charge, 0).toFixed(2)}</td>
-                      <td className={styles.ledgerPaid} style={{ fontWeight: 700 }}>{LEDGER.reduce((s, r) => s + r.paid, 0).toFixed(2)}</td>
-                      <td className={styles.ledgerAdj}>{LEDGER.reduce((s, r) => s + r.adj, 0).toFixed(2)}</td>
-                      <td className={styles.ledgerPtResp} style={{ fontWeight: 700 }}>{LEDGER.reduce((s, r) => s + r.ptResp, 0).toFixed(2)}</td>
+                    ) : (
+                      selected.serviceLines.map((line, i) => (
+                        <tr key={i}>
+                          <td className={styles.ledgerCpt}>{line.procedureCode ?? "—"}</td>
+                          <td>{line.charge.toFixed(2)}</td>
+                          <td>{line.allowed.toFixed(2)}</td>
+                          <td className={line.paid > 0 ? styles.ledgerPaid : styles.ledgerZero}>{line.paid.toFixed(2)}</td>
+                          <td className={line.adjustment > 0 ? styles.ledgerAdj : styles.ledgerZero}>{line.adjustment > 0 ? line.adjustment.toFixed(2) : "—"}</td>
+                          <td>{line.adjustmentCode ?? "—"}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className={styles.sectionPanel}>
+                <div className={styles.sectionHeader}>
+                  <span className={styles.sectionTitle}>Posting Ledger</span>
+                </div>
+                <table className={styles.ledger}>
+                  <thead>
+                    <tr>
+                      <th>Entry</th>
+                      <th>Group</th>
+                      <th>Reason</th>
+                      <th>Amount</th>
+                      <th>Description</th>
                     </tr>
+                  </thead>
+                  <tbody>
+                    {selected.ledgerEntries.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} style={{ textAlign: "center", color: "#64748B", padding: 12 }}>
+                          No ledger entries yet — post this payment to create them.
+                        </td>
+                      </tr>
+                    ) : (
+                      selected.ledgerEntries.map((entry, i) => (
+                        <tr key={i}>
+                          <td>{entry.entryType}</td>
+                          <td>{entry.groupCode ?? "—"}</td>
+                          <td>{entry.reasonCode ?? "—"}</td>
+                          <td className={entry.entryType === "insurance_payment" ? styles.ledgerPaid : entry.entryType === "patient_responsibility" ? styles.ledgerPtResp : styles.ledgerAdj}>
+                            {entry.amount.toFixed(2)}
+                          </td>
+                          <td>{entry.description ?? "—"}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
 
-                {/* Posting Actions */}
                 <div className={styles.postingActions}>
-                  <button type="button" className={`${styles.postBtn} ${styles.postBtnPrimary}`}>Post Payment</button>
-                  <button type="button" className={styles.postBtn}>Split Payment</button>
-                  <button type="button" className={styles.postBtn}>Transfer Balance</button>
-                  <button type="button" className={styles.postBtn}>Write Off</button>
-                  <button type="button" className={styles.postBtn}>Send to Patient Billing</button>
-                  <button type="button" className={`${styles.postBtn} ${styles.postBtnRed}`}>Create Refund</button>
+                  <button
+                    type="button"
+                    className={`${styles.postBtn} ${styles.postBtnPrimary}`}
+                    onClick={() => handlePost(selected.id)}
+                    disabled={
+                      postingId === selected.id ||
+                      selected.postingStatus === "posted" ||
+                      selected.claimMatchStatus !== "matched"
+                    }
+                  >
+                    {postingId === selected.id
+                      ? "Posting…"
+                      : selected.postingStatus === "posted"
+                      ? "Already Posted"
+                      : "Post Payment"}
+                  </button>
                 </div>
+
+                {postFeedback && postFeedback.id === selected.id ? (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "8px 12px",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      background: postFeedback.tone === "ok" ? "#ECFDF5" : "#FEF2F2",
+                      color: postFeedback.tone === "ok" ? "#065F46" : "#B91C1C",
+                      border: `1px solid ${postFeedback.tone === "ok" ? "#A7F3D0" : "#FECACA"}`,
+                    }}
+                  >
+                    {postFeedback.message}
+                  </div>
+                ) : null}
               </div>
 
-              {/* Financial Timeline */}
-              <div className={styles.sectionPanel}>
-                <div className={styles.sectionHeader}>
-                  <span className={styles.sectionTitle}>Financial Timeline</span>
+              {selected.casAdjustments.length > 0 ? (
+                <div className={styles.sectionPanel}>
+                  <div className={styles.sectionHeader}>
+                    <span className={styles.sectionTitle}>CAS Adjustments (from 835)</span>
+                  </div>
+                  <table className={styles.ledger}>
+                    <thead>
+                      <tr>
+                        <th>Group</th>
+                        <th>Reason</th>
+                        <th>Amount</th>
+                        <th>Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selected.casAdjustments.map((adj, i) => (
+                        <tr key={i}>
+                          <td>{adj.groupCode ?? "—"}</td>
+                          <td>{adj.reasonCode ?? "—"}</td>
+                          <td>{adj.amount.toFixed(2)}</td>
+                          <td>{adj.description ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div className={styles.timeline}>
-                  {TIMELINE.map((item, i) => (
-                    <div key={i} className={styles.timelineItem}>
-                      <div className={`${styles.timelineDot} ${styles[item.dot as keyof typeof styles]}`}>✓</div>
-                      <div className={styles.timelineContent}>
-                        <div className={styles.timelineLabel}>{item.label}</div>
-                        <div className={styles.timelineDate}>{item.date}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              ) : null}
             </div>
           ) : (
             <div className={styles.detailEmpty}>
               <div className={styles.detailEmptyIcon}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
               </div>
-              <div className={styles.detailEmptyText}>Select a payment to view the ledger and post</div>
+              <div className={styles.detailEmptyText}>Select an ERA payment to view detail and post</div>
             </div>
           )}
         </div>

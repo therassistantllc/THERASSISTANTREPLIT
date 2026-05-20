@@ -41,6 +41,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Access denied: organization mismatch" }, { status: 403 });
   }
 
+  // If an insurance policy is specified, verify it belongs to this patient AND this org.
+  if (body.insurancePolicyId) {
+    const { data: policy, error: policyError } = await supabase
+      .from("insurance_policies")
+      .select("id, client_id, organization_id")
+      .eq("id", body.insurancePolicyId)
+      .maybeSingle();
+    if (policyError || !policy) {
+      return NextResponse.json({ error: "Insurance policy not found." }, { status: 404 });
+    }
+    if (policy.organization_id !== organizationId || policy.client_id !== patientId) {
+      // Audit the denied attempt so cross-tenant probing is observable.
+      await supabase.from("audit_logs").insert({
+        organization_id: organizationId,
+        patient_id: patientId,
+        appointment_id: body.appointmentId ?? null,
+        user_id: staffId,
+        user_role: roles?.[0] ?? null,
+        event_type: "eligibility_check_denied",
+        event_summary: "Eligibility run denied: insurance policy does not belong to this patient/organization.",
+        action: "eligibility.run",
+        object_type: "insurance_policy",
+        object_id: body.insurancePolicyId,
+        event_metadata: {
+          reason: "policy_tenant_mismatch",
+          insurance_policy_id: body.insurancePolicyId,
+        },
+      });
+      return NextResponse.json({ error: "Access denied: insurance policy does not belong to this patient." }, { status: 403 });
+    }
+  }
+
   const startedAt = new Date().toISOString();
   const service = new ClearinghouseService();
 

@@ -168,6 +168,13 @@ function formatDate(value: string | null | undefined) {
   return date.toLocaleDateString();
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "Not listed";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+}
+
 function formatMoney(value: string | number | null | undefined) {
   const amount = Number(value ?? 0);
   return amount.toLocaleString(undefined, { style: "currency", currency: "USD" });
@@ -497,6 +504,17 @@ export default function PatientChartClient({ clientId }: { clientId: string }) {
               const backUrl = hasCard(insurance.cardBack)
                 ? `/api/intake/card/${encodeURIComponent(submission.id)}/back${cacheBust}`
                 : null;
+              const cardMeta = (raw: unknown): { uploadedAt: string | null; replacedByStaffName: string | null } => {
+                if (!raw || typeof raw !== "object") return { uploadedAt: null, replacedByStaffName: null };
+                const obj = raw as Record<string, unknown>;
+                const uploadedAt = typeof obj.uploadedAt === "string" ? obj.uploadedAt : null;
+                const replacedByStaffName = typeof obj.replacedByStaffName === "string" && obj.replacedByStaffName
+                  ? obj.replacedByStaffName
+                  : (typeof obj.replacedByStaffId === "string" && obj.replacedByStaffId ? "a staff member" : null);
+                return { uploadedAt, replacedByStaffName };
+              };
+              const frontMeta = cardMeta(insurance.cardFront);
+              const backMeta = cardMeta(insurance.cardBack);
               const consents = (submission.consents ?? {}) as Record<string, unknown>;
               const consentList = [
                 consents.hipaa ? "HIPAA" : null,
@@ -516,9 +534,17 @@ export default function PatientChartClient({ clientId }: { clientId: string }) {
                     <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
                       {(["front", "back"] as const).map((side) => {
                         const url = side === "front" ? frontUrl : backUrl;
+                        const meta = side === "front" ? frontMeta : backMeta;
                         const busyKey = `${submission.id}:${side}`;
                         const busy = cardBusy === busyKey;
                         const label = side === "front" ? "Front" : "Back";
+                        const provenance = url
+                          ? meta.replacedByStaffName
+                            ? `Updated by ${meta.replacedByStaffName}${meta.uploadedAt ? ` on ${formatDateTime(meta.uploadedAt)}` : ""}`
+                            : meta.uploadedAt
+                              ? `Uploaded by patient at intake (${formatDateTime(meta.uploadedAt)})`
+                              : "Uploaded by patient at intake"
+                          : null;
                         return (
                           <div key={side} style={{ display: "flex", flexDirection: "column", gap: "4px", minWidth: "120px" }}>
                             <span style={{ fontSize: "12px", fontWeight: 600 }}>Card {label}</span>
@@ -565,6 +591,9 @@ export default function PatientChartClient({ clientId }: { clientId: string }) {
                                 <a href={url} target="_blank" rel="noreferrer">View original</a>
                               ) : null}
                             </div>
+                            {provenance ? (
+                              <span style={{ fontSize: "11px", color: "var(--muted, #777)" }}>{provenance}</span>
+                            ) : null}
                           </div>
                         );
                       })}

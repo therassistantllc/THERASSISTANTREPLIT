@@ -84,7 +84,14 @@ create unique index if not exists uq_concept_set_members
   on public.concept_set_members (concept_set_id, member_concept_id);
 alter table public.concept_set_members enable row level security;
 drop policy if exists concept_set_members_read on public.concept_set_members;
-create policy concept_set_members_read on public.concept_set_members for select to authenticated using (true);
+create policy concept_set_members_read on public.concept_set_members for select to authenticated using (
+  exists (
+    select 1 from public.concepts c
+    where c.id = concept_set_members.concept_set_id
+      and (c.created_by_organization_id is null
+           or c.created_by_organization_id::text = coalesce(auth.jwt() ->> 'organization_id', auth.jwt() -> 'app_metadata' ->> 'organization_id', ''))
+  )
+);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- RLS — dictionary is globally readable to authenticated users.
@@ -120,12 +127,35 @@ create policy concepts_write on public.concepts
     and created_by_organization_id::text = coalesce(auth.jwt() ->> 'organization_id', auth.jwt() -> 'app_metadata' ->> 'organization_id', '')
   );
 
+-- Child-table reads inherit from the parent concept's visibility — direct table
+-- queries cannot bypass org scoping.
 drop policy if exists concept_names_read on public.concept_names;
-create policy concept_names_read on public.concept_names for select to authenticated using (true);
+create policy concept_names_read on public.concept_names for select to authenticated using (
+  exists (
+    select 1 from public.concepts c
+    where c.id = concept_names.concept_id
+      and (c.created_by_organization_id is null
+           or c.created_by_organization_id::text = coalesce(auth.jwt() ->> 'organization_id', auth.jwt() -> 'app_metadata' ->> 'organization_id', ''))
+  )
+);
 drop policy if exists concept_mappings_read on public.concept_mappings;
-create policy concept_mappings_read on public.concept_mappings for select to authenticated using (true);
+create policy concept_mappings_read on public.concept_mappings for select to authenticated using (
+  exists (
+    select 1 from public.concepts c
+    where c.id = concept_mappings.concept_id
+      and (c.created_by_organization_id is null
+           or c.created_by_organization_id::text = coalesce(auth.jwt() ->> 'organization_id', auth.jwt() -> 'app_metadata' ->> 'organization_id', ''))
+  )
+);
 drop policy if exists concept_answers_read on public.concept_answers;
-create policy concept_answers_read on public.concept_answers for select to authenticated using (true);
+create policy concept_answers_read on public.concept_answers for select to authenticated using (
+  exists (
+    select 1 from public.concepts c
+    where c.id = concept_answers.concept_id
+      and (c.created_by_organization_id is null
+           or c.created_by_organization_id::text = coalesce(auth.jwt() ->> 'organization_id', auth.jwt() -> 'app_metadata' ->> 'organization_id', ''))
+  )
+);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Seed: PHQ-9, GAD-7, vitals starter set.
@@ -194,10 +224,14 @@ on conflict (id) do update set
   name = excluded.name, description = excluded.description, datatype = excluded.datatype,
   concept_class = excluded.concept_class, is_set = excluded.is_set, updated_at = now();
 
--- Diagnosis placeholder (text class for the picker)
+-- Diagnosis placeholder + a few common starter diagnoses (ICD-10 mapped below)
 insert into public.concepts (id, name, description, datatype, concept_class, is_set)
 values
-  ('d1a90000-0000-4000-8000-000000000001', 'Diagnosis (free text placeholder)', 'Holds a diagnosis until a proper ICD-10-coded concept replaces it', 'text', 'Diagnosis', false)
+  ('d1a90000-0000-4000-8000-000000000001', 'Diagnosis (free text placeholder)', 'Holds a diagnosis until a proper ICD-10-coded concept replaces it', 'text', 'Diagnosis', false),
+  ('d1a90000-0000-4000-8000-000000000002', 'Major depressive disorder, single episode, unspecified', 'ICD-10 F32.9 — common depression diagnosis starter concept', 'coded', 'Diagnosis', false),
+  ('d1a90000-0000-4000-8000-000000000003', 'Generalized anxiety disorder', 'ICD-10 F41.1 — common anxiety diagnosis starter concept', 'coded', 'Diagnosis', false),
+  ('d1a90000-0000-4000-8000-000000000004', 'Post-traumatic stress disorder, unspecified', 'ICD-10 F43.10 — common PTSD diagnosis starter concept', 'coded', 'Diagnosis', false),
+  ('d1a90000-0000-4000-8000-000000000005', 'Adjustment disorder, unspecified', 'ICD-10 F43.20 — common adjustment diagnosis starter concept', 'coded', 'Diagnosis', false)
 on conflict (id) do update set
   name = excluded.name, description = excluded.description, datatype = excluded.datatype,
   concept_class = excluded.concept_class, is_set = excluded.is_set, updated_at = now();
@@ -235,7 +269,11 @@ where id in (
   '71ca1500-0000-4000-8000-000000000003',
   '71ca1500-0000-4000-8000-000000000004',
   '71ca1500-0000-4000-8000-000000000005',
-  'd1a90000-0000-4000-8000-000000000001'
+  'd1a90000-0000-4000-8000-000000000001',
+  'd1a90000-0000-4000-8000-000000000002',
+  'd1a90000-0000-4000-8000-000000000003',
+  'd1a90000-0000-4000-8000-000000000004',
+  'd1a90000-0000-4000-8000-000000000005'
 )
 on conflict (concept_id, locale, lower(name)) do update set name_type = excluded.name_type;
 
@@ -258,7 +296,11 @@ insert into public.concept_mappings (concept_id, code_system, code, display) val
   ('71ca1500-0000-4000-8000-000000000002', 'LOINC', '29463-7', 'Body weight'),
   ('71ca1500-0000-4000-8000-000000000003', 'LOINC', '8480-6', 'Systolic blood pressure'),
   ('71ca1500-0000-4000-8000-000000000004', 'LOINC', '8462-4', 'Diastolic blood pressure'),
-  ('71ca1500-0000-4000-8000-000000000005', 'LOINC', '8867-4', 'Heart rate')
+  ('71ca1500-0000-4000-8000-000000000005', 'LOINC', '8867-4', 'Heart rate'),
+  ('d1a90000-0000-4000-8000-000000000002', 'ICD10CM', 'F32.9',  'Major depressive disorder, single episode, unspecified'),
+  ('d1a90000-0000-4000-8000-000000000003', 'ICD10CM', 'F41.1',  'Generalized anxiety disorder'),
+  ('d1a90000-0000-4000-8000-000000000004', 'ICD10CM', 'F43.10', 'Post-traumatic stress disorder, unspecified'),
+  ('d1a90000-0000-4000-8000-000000000005', 'ICD10CM', 'F43.20', 'Adjustment disorder, unspecified')
 on conflict (concept_id, code_system, code) do update set display = excluded.display;
 
 -- ─────────────────────────────────────────────────────────────────────────────

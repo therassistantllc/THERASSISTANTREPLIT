@@ -242,6 +242,7 @@ export class ClearinghouseService {
       deductible_remaining: result.normalized.deductibleRemaining ?? null,
       coinsurance_percent: result.normalized.coinsurancePercent ?? null,
       out_of_pocket_remaining: result.normalized.outOfPocketRemaining ?? null,
+      coverage_level: result.normalized.coverageLevel ?? null,
       raw_benefits: result.normalized.rawBenefits ?? {},
       checked_at: new Date().toISOString(),
     };

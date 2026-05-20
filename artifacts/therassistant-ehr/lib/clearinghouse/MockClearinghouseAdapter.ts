@@ -55,6 +55,7 @@ export class MockClearinghouseAdapter implements ClearinghouseAdapter {
       coinsurancePercent: status === "active" ? 20 : null,
       outOfPocketRemaining: status === "active" ? 1700 : null,
       serviceTypeCode: input.serviceTypeCode ?? "98",
+      coverageLevel: status === "active" ? "individual" : null,
       message:
         status === "inactive"
           ? "Coverage inactive based on mock 271."

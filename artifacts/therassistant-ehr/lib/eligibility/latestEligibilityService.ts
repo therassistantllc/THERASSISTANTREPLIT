@@ -20,6 +20,7 @@ export interface LatestEligibilityResult {
   terminationDate: string | null;
   serviceTypeCode: string;
   serviceTypeDescription: string;
+  coverageLevel: string | null;
   checkedAt: string | null;
   daysSinceChecked: number | null;
   displayStatus: "Active" | "Inactive" | "Not checked" | "Not checked in 30+ days" | "Unknown";
@@ -38,6 +39,7 @@ function baseNotChecked(): LatestEligibilityResult {
     terminationDate: null,
     serviceTypeCode: "98",
     serviceTypeDescription: "Professional Services",
+    coverageLevel: null,
     checkedAt: null,
     daysSinceChecked: null,
     displayStatus: "Not checked",
@@ -103,7 +105,7 @@ export async function getLatestEligibilityForPatient(
   let query = supabase
     .from("eligibility_requests")
     .select(
-      "id,eligibility_status,status,payer_id,payer_name,copay_amount,deductible_remaining,effective_date,termination_date,service_type_code,service_type_description,created_at"
+      "id,eligibility_status,status,payer_id,payer_name,copay_amount,deductible_remaining,effective_date,termination_date,service_type_code,service_type_description,coverage_level,created_at"
     )
     .eq("organization_id", input.organization_id)
     .eq("patient_id", input.patient_id)
@@ -136,6 +138,10 @@ export async function getLatestEligibilityForPatient(
     terminationDate: data.termination_date || null,
     serviceTypeCode: data.service_type_code || "98",
     serviceTypeDescription: data.service_type_description || "Professional Services",
+    coverageLevel:
+      typeof (data as { coverage_level?: string | null }).coverage_level === "string"
+        ? ((data as { coverage_level?: string | null }).coverage_level as string)
+        : null,
     checkedAt,
     daysSinceChecked,
     displayStatus: deriveDisplayStatus(eligibilityStatus, daysSinceChecked),

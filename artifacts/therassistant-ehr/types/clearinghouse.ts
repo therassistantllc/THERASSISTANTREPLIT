@@ -152,6 +152,12 @@ export interface EligibilityResponseNormalized {
   coinsurancePercent?: number | null;
   outOfPocketRemaining?: number | null;
   serviceTypeCode?: string | null;
+  /**
+   * Coverage type / level returned by the payer (e.g. "individual", "family",
+   * "employee only"). Parsed from the X12 271 EB02 (coverage level code) or
+   * INS segment depending on the payer. Surfaced in UI summary panels.
+   */
+  coverageLevel?: string | null;
   message?: string | null;
   rawBenefits?: Record<string, unknown>;
 }

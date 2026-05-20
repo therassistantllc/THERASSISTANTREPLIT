@@ -252,6 +252,36 @@ function extractX12(rawResponse: string) {
   return x12 ?? candidate.trim();
 }
 
+/** Decode an X12 271 EB02 coverage-level code into a human-readable string. */
+function decodeCoverageLevel(code: string | null | undefined): string | null {
+  if (!code) return null;
+  const map: Record<string, string> = {
+    CHD: "children only",
+    DEP: "dependents only",
+    ECH: "employee and children",
+    ESP: "employee and spouse",
+    FAM: "family",
+    IND: "individual",
+    SPC: "spouse and children",
+    SPO: "spouse only",
+  };
+  return map[code.toUpperCase()] ?? code;
+}
+
+/** Pull the coverage-level code from the first EB segment (EB02). */
+function extractCoverageLevel(rawX12: string): string | null {
+  // Segments are tilde-delimited per X12; elements are asterisk-delimited.
+  const segments = rawX12.split(/~\s*/);
+  for (const seg of segments) {
+    if (!seg.startsWith("EB")) continue;
+    const elements = seg.split("*");
+    // EB01 = eligibility/benefit code, EB02 = coverage level code.
+    const eb02 = elements[2]?.trim();
+    if (eb02) return decodeCoverageLevel(eb02);
+  }
+  return null;
+}
+
 function normalize271(rawX12: string): EligibilityResponseNormalized {
   const hasAaa42 = rawX12.includes("AAA*") && rawX12.includes("*42*");
   const hasAaa80 = rawX12.includes("AAA*") && rawX12.includes("*80*");
@@ -259,7 +289,14 @@ function normalize271(rawX12: string): EligibilityResponseNormalized {
   if (hasAaa42) return { status: "error", message: "Payer unable to respond at current time (AAA03=42).", rawBenefits: { rawX12 } };
   if (hasAaa80) return { status: "error", message: "No payer response received; transaction terminated (AAA03=80).", rawBenefits: { rawX12 } };
   if (hasAaa15) return { status: "not_found", message: "Required application data missing or member not matched (AAA03=15).", rawBenefits: { rawX12 } };
-  if (rawX12.includes("EB*1") || rawX12.includes("EB**")) return { status: "active", message: "Eligibility response received.", rawBenefits: { rawX12 } };
+  if (rawX12.includes("EB*1") || rawX12.includes("EB**")) {
+    return {
+      status: "active",
+      coverageLevel: extractCoverageLevel(rawX12),
+      message: "Eligibility response received.",
+      rawBenefits: { rawX12 },
+    };
+  }
   return { status: "unknown", message: "271 received; detailed parser pending.", rawBenefits: { rawX12 } };
 }
 

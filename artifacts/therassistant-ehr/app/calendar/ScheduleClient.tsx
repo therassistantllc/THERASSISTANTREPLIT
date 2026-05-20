@@ -645,6 +645,7 @@ type EligibilityRunResult = {
   status: string;
   payerName: string | null;
   planName: string | null;
+  coverageLevel: string | null;
   copayAmount: number | null;
   deductibleRemaining: number | null;
   effectiveDate: string | null;
@@ -652,16 +653,66 @@ type EligibilityRunResult = {
   message?: string | null;
 };
 
+/**
+ * Pre-check freshness snapshot. Read once when the panel opens (and after a
+ * fresh run) so the front-desk sees missing-or-stale banners at check-in
+ * BEFORE deciding whether to run a new 270/271. Stale = no check or
+ * checked_at > 30 days.
+ */
+type EligibilityFreshness = {
+  state: "missing" | "stale" | "fresh" | "loading";
+  daysSince: number | null;
+  lastStatus: string | null;
+};
+
+const STALE_DAYS = 30;
+
 function ContextPanel({ appt, onClose }: { appt: ScheduleAppointment; onClose: () => void }) {
+  const organizationId = useMemo(() => getOrganizationId(), []);
   const [eligibilityRunning, setEligibilityRunning] = useState(false);
   const [eligibilityError, setEligibilityError] = useState<string | null>(null);
   const [eligibilityResult, setEligibilityResult] = useState<EligibilityRunResult | null>(null);
+  const [freshness, setFreshness] = useState<EligibilityFreshness>({
+    state: "loading",
+    daysSince: null,
+    lastStatus: null,
+  });
 
+  // Reset and re-fetch freshness whenever the selected appointment changes.
   useEffect(() => {
+    let cancelled = false;
     setEligibilityRunning(false);
     setEligibilityError(null);
     setEligibilityResult(null);
-  }, [appt.id]);
+    setFreshness({ state: "loading", daysSince: null, lastStatus: null });
+
+    (async () => {
+      try {
+        const url = `/api/patients/${encodeURIComponent(appt.clientId)}/eligibility?organizationId=${encodeURIComponent(organizationId)}`;
+        const res = await fetch(url, { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const latest = json?.latestEligibility ?? null;
+        if (!latest || !latest.checkedAt) {
+          setFreshness({ state: "missing", daysSince: null, lastStatus: null });
+          return;
+        }
+        const t = new Date(latest.checkedAt).getTime();
+        const days = Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 86_400_000)) : null;
+        if (days !== null && days > STALE_DAYS) {
+          setFreshness({ state: "stale", daysSince: days, lastStatus: latest.status ?? null });
+        } else {
+          setFreshness({ state: "fresh", daysSince: days, lastStatus: latest.status ?? null });
+        }
+      } catch {
+        if (!cancelled) setFreshness({ state: "missing", daysSince: null, lastStatus: null });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appt.id, appt.clientId, organizationId]);
 
   const runEligibility = async () => {
     setEligibilityRunning(true);
@@ -681,12 +732,15 @@ function ContextPanel({ appt, onClose }: { appt: ScheduleAppointment; onClose: (
           status: String(n.status ?? "unknown"),
           payerName: n.payerName ?? null,
           planName: n.planName ?? null,
+          coverageLevel: n.coverageLevel ?? null,
           copayAmount: n.copayAmount ?? null,
           deductibleRemaining: n.deductibleRemaining ?? null,
           effectiveDate: n.effectiveDate ?? null,
           terminationDate: n.terminationDate ?? null,
           message: n.message ?? null,
         });
+        // A successful run resets the staleness banner to fresh immediately.
+        setFreshness({ state: "fresh", daysSince: 0, lastStatus: String(n.status ?? "unknown") });
       }
     } catch (e) {
       setEligibilityError(e instanceof Error ? e.message : "Eligibility check failed.");
@@ -881,6 +935,38 @@ function ContextPanel({ appt, onClose }: { appt: ScheduleAppointment; onClose: (
           <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
             <Bell className="w-3.5 h-3.5 text-slate-400" /> Real-time Eligibility
           </h4>
+
+          {/* Pre-check staleness banner: render BEFORE the run button so
+              front-desk sees missing/stale state at check-in without having
+              to click anything. */}
+          {freshness.state === "missing" ? (
+            <div className="p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-xs flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+              <span>
+                <span className="font-semibold">No eligibility on file.</span> Run a real-time check
+                before this visit.
+              </span>
+            </div>
+          ) : freshness.state === "stale" ? (
+            <div className="p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-xs flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+              <span>
+                <span className="font-semibold">
+                  Last check was {freshness.daysSince} day{freshness.daysSince === 1 ? "" : "s"} ago
+                </span>{" "}
+                (older than {STALE_DAYS} days). Re-check before billing.
+              </span>
+            </div>
+          ) : freshness.state === "fresh" && !eligibilityResult ? (
+            <div className="p-2 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-900 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+              <span>
+                Eligibility checked {freshness.daysSince === 0 ? "today" : `${freshness.daysSince} day${freshness.daysSince === 1 ? "" : "s"} ago`}
+                {freshness.lastStatus ? ` — ${freshness.lastStatus}` : ""}.
+              </span>
+            </div>
+          ) : null}
+
           <button
             type="button"
             onClick={runEligibility}
@@ -908,6 +994,9 @@ function ContextPanel({ appt, onClose }: { appt: ScheduleAppointment; onClose: (
               <div className="font-bold uppercase tracking-wider text-[11px]">{eligibilityResult.status}</div>
               {eligibilityResult.payerName ? <div>Payer: {eligibilityResult.payerName}</div> : null}
               {eligibilityResult.planName ? <div>Plan: {eligibilityResult.planName}</div> : null}
+              {eligibilityResult.coverageLevel ? (
+                <div>Coverage type: {eligibilityResult.coverageLevel}</div>
+              ) : null}
               <div>Copay: {money(eligibilityResult.copayAmount)}</div>
               <div>Deductible remaining: {money(eligibilityResult.deductibleRemaining)}</div>
               {eligibilityResult.effectiveDate || eligibilityResult.terminationDate ? (

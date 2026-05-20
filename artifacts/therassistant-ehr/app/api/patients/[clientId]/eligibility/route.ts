@@ -41,6 +41,7 @@ function eligibilityDto(row: DbRow) {
     deductibleRemaining: asNumber(row.deductible_remaining),
     coverageStartDate: asString(row.coverage_start_date),
     coverageEndDate: asString(row.coverage_end_date),
+    coverageLevel: typeof row.coverage_level === "string" ? row.coverage_level : null,
     serviceTypeCode: asString(row.service_type_code),
     responseSummary: row.response_summary ?? null,
     rawResponse: row.raw_response ?? null,
@@ -90,7 +91,7 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
 
     const { data: checks, error: checksError } = await supabase
       .from("eligibility_checks")
-      .select("id, eligibility_status, checked_at, copay_amount, deductible_remaining, coverage_start_date, coverage_end_date, service_type_code, response_summary, raw_response, error_message, insurance_policy_id")
+      .select("id, eligibility_status, checked_at, copay_amount, deductible_remaining, coverage_start_date, coverage_end_date, coverage_level, service_type_code, response_summary, raw_response, error_message, insurance_policy_id")
       .eq("organization_id", organizationId)
       .eq("client_id", clientId)
       .is("archived_at", null)

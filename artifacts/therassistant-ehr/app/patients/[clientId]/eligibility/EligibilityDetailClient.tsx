@@ -24,6 +24,7 @@ type EligibilityCheck = {
   deductibleRemaining: number | null;
   coverageStartDate: string;
   coverageEndDate: string;
+  coverageLevel?: string | null;
   serviceTypeCode: string;
   responseSummary: unknown;
   rawResponse: unknown;
@@ -258,6 +259,7 @@ export default function EligibilityDetailClient({ clientId }: { clientId: string
               <div className="detail-list">
                 <p><strong>Coverage start:</strong> {formatDate(latest?.coverageStartDate || "")}</p>
                 <p><strong>Coverage end:</strong> {formatDate(latest?.coverageEndDate || "")}</p>
+                <p><strong>Coverage type:</strong> {latest?.coverageLevel || "—"}</p>
                 <p><strong>Service type:</strong> {latest?.serviceTypeCode || "98"}</p>
                 <p><strong>Error:</strong> {latest?.errorMessage || "—"}</p>
               </div>

@@ -309,6 +309,8 @@ export default function ScheduleClient() {
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedId, setSelectedId] = useState<string | null>("appt-a3");
   const [dateLabels, setDateLabels] = useState<{ label: string; short: string }>({ label: "", short: "" });
+  const [appointments, setAppointments] = useState<ScheduleAppointment[]>(APPOINTMENTS);
+  const [isNewApptOpen, setIsNewApptOpen] = useState(false);
 
   useEffect(() => {
     setDateLabels(computeDateLabels());
@@ -317,10 +319,10 @@ export default function ScheduleClient() {
   const DATE_LABEL = dateLabels.label;
   const DATE_SHORT = dateLabels.short;
 
-  const summary = useMemo(() => computeSummary(APPOINTMENTS), []);
+  const summary = useMemo(() => computeSummary(appointments), [appointments]);
 
   const filtered = useMemo(() => {
-    let list = APPOINTMENTS;
+    let list = appointments;
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -338,7 +340,65 @@ export default function ScheduleClient() {
     return list;
   }, [search, filter]);
 
-  const selected = useMemo(() => APPOINTMENTS.find((a) => a.id === selectedId) ?? null, [selectedId]);
+  const selected = useMemo(() => appointments.find((a) => a.id === selectedId) ?? null, [appointments, selectedId]);
+
+  const handleCreateAppointment = (input: {
+    patientName: string;
+    timeStart: string;
+    durationMin: number;
+    type: string;
+    cpt: string;
+    provider: string;
+    location: "Office" | "Telehealth";
+    insurance: string;
+  }) => {
+    const [hourStr, minuteRest] = input.timeStart.split(":");
+    const minute = parseInt((minuteRest ?? "00").slice(0, 2), 10) || 0;
+    const hour24 = parseInt(hourStr, 10) || 9;
+    const endTotal = hour24 * 60 + minute + input.durationMin;
+    const endH = Math.floor(endTotal / 60);
+    const endM = endTotal % 60;
+    const fmt = (h: number, m: number) => {
+      const period = h >= 12 ? "PM" : "AM";
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+    };
+    const period = hour24 >= 12 ? "PM" : "AM";
+    const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+    const newAppt: ScheduleAppointment = {
+      id: `appt-${Date.now()}`,
+      clientId: `new-${Date.now()}`,
+      patientName: input.patientName,
+      dob: "1990-01-01",
+      timeStart: `${h12}:${String(minute).padStart(2, "0")} ${period}`,
+      timeEnd: fmt(endH, endM),
+      durationMin: input.durationMin,
+      type: input.type,
+      cpt: input.cpt,
+      provider: input.provider,
+      location: input.location,
+      insurance: input.insurance,
+      status: "scheduled",
+      alerts: [],
+      recentNote: null,
+      diagnoses: [],
+      tasks: [],
+      copay: null,
+    };
+    setAppointments((prev) =>
+      [...prev, newAppt].sort((a, b) => {
+        const toMin = (t: string) => {
+          const [hm, p] = t.split(" ");
+          const [hh, mm] = hm.split(":").map((n) => parseInt(n, 10));
+          const h24 = p === "PM" && hh !== 12 ? hh + 12 : p === "AM" && hh === 12 ? 0 : hh;
+          return h24 * 60 + mm;
+        };
+        return toMin(a.timeStart) - toMin(b.timeStart);
+      }),
+    );
+    setSelectedId(newAppt.id);
+    setIsNewApptOpen(false);
+  };
 
   return (
     <div className={styles.page}>
@@ -379,13 +439,20 @@ export default function ScheduleClient() {
           ))}
         </div>
 
-        <button type="button" className={styles.newApptBtn}>
+        <button type="button" className={styles.newApptBtn} onClick={() => setIsNewApptOpen(true)}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
           New Appointment
         </button>
       </header>
+
+      {isNewApptOpen ? (
+        <NewAppointmentModal
+          onClose={() => setIsNewApptOpen(false)}
+          onCreate={handleCreateAppointment}
+        />
+      ) : null}
 
       {/* ── Summary Strip ─── */}
       <div className={styles.summaryStrip}>
@@ -716,5 +783,224 @@ function ContextPanel({ appt }: { appt: ScheduleAppointment }) {
         </div>
       </div>
     </>
+  );
+}
+
+/* ─── New Appointment Modal ───────────────────────────────────────────────── */
+
+function NewAppointmentModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (input: {
+    patientName: string;
+    timeStart: string;
+    durationMin: number;
+    type: string;
+    cpt: string;
+    provider: string;
+    location: "Office" | "Telehealth";
+    insurance: string;
+  }) => void;
+}) {
+  const [patientName, setPatientName] = useState("");
+  const [timeStart, setTimeStart] = useState("09:00");
+  const [durationMin, setDurationMin] = useState(45);
+  const [type, setType] = useState("Individual Therapy");
+  const [provider, setProvider] = useState("Lena Ortiz, LPC");
+  const [location, setLocation] = useState<"Office" | "Telehealth">("Office");
+  const [insurance, setInsurance] = useState("BCBS Colorado");
+  const [error, setError] = useState<string | null>(null);
+
+  const cptForType = (t: string) => {
+    if (t === "Intake") return "90791";
+    if (t === "Treatment Plan Review") return "H0032";
+    if (durationMin >= 53) return "90837";
+    return "90834";
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!patientName.trim()) {
+      setError("Patient name is required");
+      return;
+    }
+    onCreate({
+      patientName: patientName.trim(),
+      timeStart,
+      durationMin,
+      type,
+      cpt: cptForType(type),
+      provider,
+      location,
+      insurance,
+    });
+  };
+
+  const overlay: React.CSSProperties = {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(16, 36, 63, 0.45)",
+    backdropFilter: "blur(2px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+    padding: 16,
+  };
+  const card: React.CSSProperties = {
+    background: "#fff",
+    border: "1px solid #d8e1e9",
+    borderRadius: 6,
+    width: "100%",
+    maxWidth: 520,
+    boxShadow: "0 20px 50px rgba(16, 36, 63, 0.2)",
+    overflow: "hidden",
+  };
+  const head: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "14px 18px",
+    borderBottom: "1px solid #e8eef3",
+    background: "#f8fafc",
+  };
+  const body: React.CSSProperties = { padding: "16px 18px", display: "grid", gap: 12 };
+  const label: React.CSSProperties = {
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    color: "#5c6e82",
+    fontWeight: 600,
+    marginBottom: 4,
+    display: "block",
+  };
+  const input: React.CSSProperties = {
+    width: "100%",
+    border: "1px solid #d8e1e9",
+    borderRadius: 4,
+    padding: "8px 10px",
+    fontSize: 13,
+    color: "#1a2332",
+    background: "#fff",
+  };
+  const row: React.CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 };
+  const foot: React.CSSProperties = {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 8,
+    padding: "12px 18px",
+    borderTop: "1px solid #e8eef3",
+    background: "#fafbfc",
+  };
+  const btn: React.CSSProperties = {
+    padding: "8px 14px",
+    borderRadius: 4,
+    fontSize: 13,
+    fontWeight: 600,
+    border: "1px solid #d8e1e9",
+    background: "#fff",
+    color: "#1a2332",
+    cursor: "pointer",
+  };
+  const btnPrimary: React.CSSProperties = {
+    ...btn,
+    background: "#10243f",
+    color: "#fff",
+    borderColor: "#10243f",
+  };
+
+  return (
+    <div style={overlay} onClick={onClose} role="dialog" aria-modal="true" aria-label="New appointment">
+      <form style={card} onClick={(e) => e.stopPropagation()} onSubmit={handleSubmit}>
+        <div style={head}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#10243f" }}>New Appointment</div>
+          <button type="button" onClick={onClose} style={{ ...btn, padding: "4px 8px" }} aria-label="Close">
+            ×
+          </button>
+        </div>
+        <div style={body}>
+          {error ? (
+            <div style={{ background: "#fff1f1", border: "1px solid #f4c7c7", color: "#b02020", padding: "8px 10px", borderRadius: 4, fontSize: 12 }}>
+              {error}
+            </div>
+          ) : null}
+          <div>
+            <label style={label}>Patient name</label>
+            <input
+              style={input}
+              type="text"
+              value={patientName}
+              onChange={(e) => setPatientName(e.target.value)}
+              placeholder="e.g. Maya Chen"
+              autoFocus
+            />
+          </div>
+          <div style={row}>
+            <div>
+              <label style={label}>Start time</label>
+              <input style={input} type="time" value={timeStart} onChange={(e) => setTimeStart(e.target.value)} />
+            </div>
+            <div>
+              <label style={label}>Duration (min)</label>
+              <select style={input} value={durationMin} onChange={(e) => setDurationMin(parseInt(e.target.value, 10))}>
+                <option value={30}>30</option>
+                <option value={45}>45</option>
+                <option value={53}>53</option>
+                <option value={60}>60</option>
+              </select>
+            </div>
+          </div>
+          <div style={row}>
+            <div>
+              <label style={label}>Appointment type</label>
+              <select style={input} value={type} onChange={(e) => setType(e.target.value)}>
+                <option>Individual Therapy</option>
+                <option>Intake</option>
+                <option>Treatment Plan Review</option>
+                <option>Family Therapy</option>
+              </select>
+            </div>
+            <div>
+              <label style={label}>Location</label>
+              <select
+                style={input}
+                value={location}
+                onChange={(e) => setLocation(e.target.value as "Office" | "Telehealth")}
+              >
+                <option>Office</option>
+                <option>Telehealth</option>
+              </select>
+            </div>
+          </div>
+          <div style={row}>
+            <div>
+              <label style={label}>Provider</label>
+              <select style={input} value={provider} onChange={(e) => setProvider(e.target.value)}>
+                <option>Lena Ortiz, LPC</option>
+                <option>Noah Kim, LCSW</option>
+                <option>Priya Shah, PsyD</option>
+              </select>
+            </div>
+            <div>
+              <label style={label}>Insurance</label>
+              <select style={input} value={insurance} onChange={(e) => setInsurance(e.target.value)}>
+                <option>BCBS Colorado</option>
+                <option>Aetna</option>
+                <option>Medicare</option>
+                <option>Colorado Medicaid</option>
+                <option>United Behavioral Health</option>
+                <option>Self-pay</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div style={foot}>
+          <button type="button" style={btn} onClick={onClose}>Cancel</button>
+          <button type="submit" style={btnPrimary}>Create appointment</button>
+        </div>
+      </form>
+    </div>
   );
 }

@@ -120,7 +120,7 @@ export async function GET(request: Request) {
 
     const { data: clients, error } = await supabase
       .from("clients")
-      .select("id, first_name, last_name, preferred_name, email, phone, archived_at, deceased_at, updated_at")
+      .select("id, first_name, last_name, preferred_name, email, phone, intake_status, archived_at, deceased_at, updated_at")
       .eq("organization_id", organizationId)
       .is("archived_at", null)
       .order("last_name", { ascending: true })
@@ -162,7 +162,7 @@ export async function GET(request: Request) {
       email: client.email ?? null,
       phone: client.phone ?? null,
       status: client.deceased_at ? "deceased" : "active",
-      intakeStatus: null,
+      intakeStatus: client.intake_status ?? "not_started",
       openBalance: balances.get(value(client.id)) ?? 0,
       updatedAt: client.updated_at ?? null,
     }));
@@ -173,7 +173,7 @@ export async function GET(request: Request) {
       metrics: {
         total: records.length,
         active: records.filter((record) => record.status === "active").length,
-        intakeIncomplete: records.filter((record) => record.intakeStatus !== "complete").length,
+        intakeIncomplete: records.filter((record) => String(record.intakeStatus ?? "") !== "complete").length,
         withBalance: records.filter((record) => record.openBalance > 0).length,
       },
       clients: records,

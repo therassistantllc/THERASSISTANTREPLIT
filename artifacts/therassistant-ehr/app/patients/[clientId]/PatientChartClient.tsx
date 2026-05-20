@@ -107,6 +107,31 @@ type DocumentSummary = {
   mailroomItemId?: string | null;
 };
 
+type IntakeLink = {
+  id: string;
+  token: string;
+  url: string;
+  status: string;
+  expiresAt: string | null;
+  createdAt: string | null;
+  usedAt: string | null;
+  submissionId: string | null;
+};
+
+type IntakeSubmission = {
+  id: string;
+  status: string;
+  signatureName: string | null;
+  signatureSignedAt: string | null;
+  phq9Score: number | null;
+  phq9Severity: string | null;
+  gad7Score: number | null;
+  gad7Severity: string | null;
+  submittedAt: string | null;
+  insurance?: Record<string, unknown> | null;
+  consents?: Record<string, unknown> | null;
+};
+
 type MailroomSummary = {
   id: string;
   fileName?: string;
@@ -174,7 +199,56 @@ export default function PatientChartClient({ clientId }: { clientId: string }) {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [intakeLinks, setIntakeLinks] = useState<IntakeLink[]>([]);
+  const [intakeSubmissions, setIntakeSubmissions] = useState<IntakeSubmission[]>([]);
+  const [intakeBusy, setIntakeBusy] = useState(false);
+  const [intakeMessage, setIntakeMessage] = useState<string | null>(null);
   const organizationId = useMemo(() => getOrganizationId(), []);
+
+  async function reloadIntake() {
+    try {
+      const [linksRes, subsRes] = await Promise.all([
+        fetch(`/api/intake/links?clientId=${encodeURIComponent(clientId)}`, { cache: "no-store" }),
+        fetch(`/api/intake/submissions?clientId=${encodeURIComponent(clientId)}`, { cache: "no-store" }),
+      ]);
+      const linksJson = await linksRes.json().catch(() => ({}));
+      const subsJson = await subsRes.json().catch(() => ({}));
+      if (linksRes.ok && linksJson.success) setIntakeLinks(linksJson.links ?? []);
+      if (subsRes.ok && subsJson.success) setIntakeSubmissions(subsJson.submissions ?? []);
+    } catch {
+      // intake data is best-effort
+    }
+  }
+
+  async function handleCreateIntakeLink() {
+    setIntakeBusy(true);
+    setIntakeMessage(null);
+    try {
+      const response = await fetch(`/api/intake/links`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to create intake link");
+      const url = typeof window !== "undefined" ? `${window.location.origin}${json.link.url}` : json.link.url;
+      try {
+        if (typeof navigator !== "undefined" && navigator.clipboard) {
+          await navigator.clipboard.writeText(url);
+          setIntakeMessage(`Intake link copied to clipboard: ${url}`);
+        } else {
+          setIntakeMessage(`Intake link: ${url}`);
+        }
+      } catch {
+        setIntakeMessage(`Intake link: ${url}`);
+      }
+      await reloadIntake();
+    } catch (linkError) {
+      setIntakeMessage(linkError instanceof Error ? linkError.message : "Failed to create intake link");
+    } finally {
+      setIntakeBusy(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -221,9 +295,11 @@ export default function PatientChartClient({ clientId }: { clientId: string }) {
     }
 
     void loadPatient();
+    void reloadIntake();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, organizationId]);
 
   const patient = summary?.patient;
@@ -280,6 +356,14 @@ export default function PatientChartClient({ clientId }: { clientId: string }) {
           <Link className="button button-secondary" href={`/clients/${patient.id}/balance${orgQ}`}>Balance</Link>
           <Link className="button button-secondary" href={`/clients/${patient.id}/documents${orgQ}`}>Documents</Link>
           <Link className="button" href={`/workqueue/new?clientId=${patient.id}${organizationId ? `&organizationId=${organizationId}` : ""}`}>Route to Biller</Link>
+          <button
+            type="button"
+            className="button"
+            onClick={handleCreateIntakeLink}
+            disabled={intakeBusy}
+          >
+            {intakeBusy ? "Generating…" : "Send intake link"}
+          </button>
         </div>
       </section>
 
@@ -300,6 +384,71 @@ export default function PatientChartClient({ clientId }: { clientId: string }) {
           <span>Open Workqueue</span>
           <strong>{workqueueItems.length}</strong>
         </article>
+      </section>
+
+      <section className="panel" style={{ marginBottom: "16px" }}>
+        <h2>Patient Intake</h2>
+        {intakeMessage ? <div className="alert-panel">{intakeMessage}</div> : null}
+        {intakeSubmissions.length === 0 && intakeLinks.length === 0 ? (
+          <p className="muted">No intake on file yet. Send the patient a one-time intake link.</p>
+        ) : null}
+        {intakeSubmissions.length > 0 ? (
+          <div className="stack-list">
+            {intakeSubmissions.slice(0, 3).map((submission) => {
+              const insurance = (submission.insurance ?? {}) as Record<string, unknown>;
+              const safeCard = (raw: unknown): string | null => {
+                if (!raw || typeof raw !== "object") return null;
+                const content = (raw as { content?: unknown }).content;
+                if (typeof content !== "string") return null;
+                return /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(content) ? content : null;
+              };
+              const front = safeCard((insurance as Record<string, unknown>).cardFront);
+              const back = safeCard((insurance as Record<string, unknown>).cardBack);
+              const consents = (submission.consents ?? {}) as Record<string, unknown>;
+              const consentList = [
+                consents.hipaa ? "HIPAA" : null,
+                consents.telehealth ? "Telehealth" : null,
+                consents.roi ? "ROI" : null,
+              ].filter(Boolean).join(" · ");
+              return (
+                <div className="stack-item" key={submission.id}>
+                  <strong>Submitted: {formatDate(submission.submittedAt)}</strong>
+                  <span>Signed by: {submission.signatureName ?? "—"}</span>
+                  <span>
+                    PHQ-9: {submission.phq9Score ?? "—"} ({submission.phq9Severity ?? "—"}) ·
+                    GAD-7: {submission.gad7Score ?? "—"} ({submission.gad7Severity ?? "—"})
+                  </span>
+                  <span>Consents on file: {consentList || "—"}</span>
+                  {front || back ? (
+                    <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
+                      {front ? (
+                        <img src={front} alt="Insurance card front" style={{ height: "70px", border: "1px solid var(--border, #ddd)", borderRadius: "4px" }} />
+                      ) : null}
+                      {back ? (
+                        <img src={back} alt="Insurance card back" style={{ height: "70px", border: "1px solid var(--border, #ddd)", borderRadius: "4px" }} />
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        {intakeLinks.length > 0 ? (
+          <div className="stack-list" style={{ marginTop: "12px" }}>
+            <p className="muted" style={{ margin: 0 }}>Recent intake links</p>
+            {intakeLinks.slice(0, 5).map((link) => (
+              <div className="stack-item stack-row" key={link.id}>
+                <div>
+                  <strong>{link.status}</strong>
+                  <span>Created: {formatDate(link.createdAt)} · Expires: {formatDate(link.expiresAt)}</span>
+                  {link.usedAt ? <span>Used: {formatDate(link.usedAt)}</span> : null}
+                </div>
+                <Link className="button button-secondary" href={link.url} target="_blank">Open link</Link>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="panel" style={{ marginBottom: "16px" }}>

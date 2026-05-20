@@ -221,7 +221,7 @@ export function getRouteConfig(path: string): ProtectedRouteConfig | undefined {
  * Routes that do NOT require authentication
  * (public/guest routes)
  */
-export const PUBLIC_ROUTES = ["/", "/help", "/contact-us", "/patient-portal"];
+export const PUBLIC_ROUTES = ["/", "/help", "/contact-us", "/patient-portal", "/intake"];
 
 /**
  * Routes that require specific permissions for visibility

@@ -14,6 +14,8 @@
     "next": "^16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "survey-core": "^2.5.25",
+    "survey-react-ui": "^2.5.25",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

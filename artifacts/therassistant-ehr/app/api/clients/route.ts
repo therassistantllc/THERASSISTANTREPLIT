@@ -118,15 +118,48 @@ export async function GET(request: Request) {
 
     if (!organizationId) return NextResponse.json({ success: false, error: "organizationId is required" }, { status: 400 });
 
-    const { data: clients, error } = await supabase
+    const baseColumns = "id, first_name, last_name, preferred_name, email, phone, archived_at, deceased_at, updated_at";
+    const fullColumns = `${baseColumns}, intake_status`;
+
+    let intakeStatusMissing = false;
+    let clients: Row[] | null;
+    const initial = await supabase
       .from("clients")
-      .select("id, first_name, last_name, preferred_name, email, phone, intake_status, archived_at, deceased_at, updated_at")
+      .select(fullColumns)
       .eq("organization_id", organizationId)
       .is("archived_at", null)
       .order("last_name", { ascending: true })
       .limit(250);
+    let error = initial.error;
+    clients = (initial.data as Row[] | null) ?? null;
 
-    if (error) throw error;
+    if (error) {
+      const errCode = (error as { code?: string }).code ?? "";
+      const errMessage = String((error as { message?: string }).message ?? "");
+      const isMissingIntakeStatus =
+        errCode === "42703" ||
+        /column\s+["']?clients\.intake_status["']?\s+does not exist/i.test(errMessage) ||
+        /intake_status/i.test(errMessage);
+
+      if (!isMissingIntakeStatus) throw error;
+
+      console.warn(
+        "[clients roster] clients.intake_status column missing; degrading gracefully. Apply the patient_intake_workflow migration to restore intake status data.",
+      );
+      intakeStatusMissing = true;
+
+      const fallback = await supabase
+        .from("clients")
+        .select(baseColumns)
+        .eq("organization_id", organizationId)
+        .is("archived_at", null)
+        .order("last_name", { ascending: true })
+        .limit(250);
+
+      if (fallback.error) throw fallback.error;
+      clients = (fallback.data as Row[] | null) ?? null;
+    }
+    void intakeStatusMissing;
 
     const rows = ((clients ?? []) as Row[]).filter((client) => {
       if (!q) return true;

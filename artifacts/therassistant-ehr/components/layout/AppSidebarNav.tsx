@@ -222,7 +222,7 @@ export default function AppSidebarNav() {
       <NavLink href="/calendar" icon={<CalendarIcon />} label="Schedule" prefixes={["/calendar", "/clinician/agenda"]} exact={pathname === "/"} pathname={pathname} />
       <NavLink href="/clients" icon={<UsersIcon />} label="Clients" prefixes={["/clients", "/patients"]} pathname={pathname} />
       <NavLink href="/inbox" icon={<TasksIcon />} label="Inbox" prefixes={["/inbox"]} pathname={pathname} />
-      <NavLink href="/mailroom" icon={<ChatIcon />} label="Chat" prefixes={[]} pathname={pathname} activeOverride={false} disabled />
+      <NavLink href="/chat" icon={<ChatIcon />} label="Chat" prefixes={["/chat"]} pathname={pathname} />
       <NavLink href="/mailroom" icon={<MailIcon />} label="Email" prefixes={[]} pathname={pathname} activeOverride={false} disabled />
       <NavLink href="/mailroom" icon={<InboxIcon />} label="Mailroom" prefixes={["/mailroom"]} pathname={pathname} />
 

@@ -94,6 +94,12 @@ export default function MailroomClient() {
   const [filing, setFiling] = useState(false);
   const [filingError, setFilingError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  type PreviewState =
+    | { kind: "idle" }
+    | { kind: "probing" }
+    | { kind: "ready"; url: string; bucket?: string; path?: string }
+    | { kind: "unavailable"; error: string; bucket?: string; path?: string };
+  const [previewState, setPreviewState] = useState<PreviewState>({ kind: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadDocs = useCallback(async () => {
@@ -155,6 +161,7 @@ export default function MailroomClient() {
 
   useEffect(() => {
     setPreviewOpen(false);
+    setPreviewState({ kind: "idle" });
     setFilingError(null);
     if (!selectedId) return;
     let cancelled = false;
@@ -203,6 +210,43 @@ export default function MailroomClient() {
     }
     setPostingComment(false);
   }
+
+  const probePreview = useCallback(async () => {
+    if (!previewUrl || !selected) return;
+    setPreviewState({ kind: "probing" });
+    try {
+      const res = await fetch(`${previewUrl}&probe=1`, { cache: "no-store" });
+      const json = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        bucket?: string;
+        attemptedPath?: string | null;
+      };
+      if (res.ok && json.success) {
+        setPreviewState({
+          kind: "ready",
+          url: previewUrl,
+          bucket: json.bucket,
+          path: json.attemptedPath ?? undefined,
+        });
+        setPreviewOpen(true);
+      } else {
+        setPreviewState({
+          kind: "unavailable",
+          error: json.error || `Preview failed (HTTP ${res.status}).`,
+          bucket: json.bucket,
+          path: json.attemptedPath ?? undefined,
+        });
+        setPreviewOpen(false);
+      }
+    } catch (err) {
+      setPreviewState({
+        kind: "unavailable",
+        error: err instanceof Error ? err.message : "Network error while loading preview.",
+      });
+      setPreviewOpen(false);
+    }
+  }, [previewUrl, selected]);
 
   async function fileToDestination(destination: "patient_chart" | "practice_documents") {
     if (!selected || filing) return;
@@ -351,15 +395,22 @@ export default function MailroomClient() {
                   {fileExt(doc.fileName)}
                 </div>
                 <div className={styles.docMeta}>
-                  <div className={styles.docFileName}>{doc.fileName}</div>
+                  <div className={styles.docFileName} title={doc.fileName}>{doc.fileName}</div>
                   <div className={styles.docSubRow}>
-                    <span className={styles.docType}>{DOC_TYPE_LABELS[doc.documentType] ?? doc.documentType}</span>
+                    <span className={styles.docType} title={DOC_TYPE_LABELS[doc.documentType] ?? doc.documentType}>
+                      {DOC_TYPE_LABELS[doc.documentType] ?? doc.documentType}
+                    </span>
                     {doc.clientName ? (
-                      <><span style={{ color: "#E2E8F0" }}>·</span><span className={styles.docType}>{doc.clientName}</span></>
+                      <>
+                        <span className={styles.docDot}>·</span>
+                        <span className={styles.docType} title={doc.clientName}>{doc.clientName}</span>
+                      </>
                     ) : null}
-                    <span className={`${styles.docStatus} ${statusClass(doc.status)}`}>{statusLabel(doc.status)}</span>
                   </div>
-                  <div className={styles.docDate}>{fmtDate(doc.createdAt)}</div>
+                </div>
+                <div className={styles.docRight}>
+                  <span className={`${styles.docStatus} ${statusClass(doc.status)}`}>{statusLabel(doc.status)}</span>
+                  <span className={styles.docDate}>{fmtDate(doc.createdAt)}</span>
                 </div>
               </div>
             ))}
@@ -411,24 +462,64 @@ export default function MailroomClient() {
               <div className={styles.previewArea}>
                 <div className={styles.previewHeader}>
                   <span className={styles.previewTitle}>Document Preview</span>
-                  {previewUrl ? (
-                    <a href={previewUrl} target="_blank" rel="noreferrer" className={styles.previewBtn} style={{ marginLeft: "auto" }}>
+                  {previewState.kind === "ready" ? (
+                    <a
+                      href={previewState.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={styles.previewBtn}
+                      style={{ marginLeft: "auto" }}
+                    >
                       Open in new tab
                     </a>
                   ) : null}
                 </div>
-                {previewUrl && previewOpen ? (
+
+                {previewState.kind === "ready" && previewOpen ? (
                   isImagePreview ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={previewUrl} alt={selected.fileName} style={{ width: "100%", maxHeight: 520, objectFit: "contain", background: "#0F172A", borderRadius: 8 }} />
+                    <img
+                      src={previewState.url}
+                      alt={selected.fileName}
+                      style={{ width: "100%", maxHeight: 520, objectFit: "contain", background: "#0F172A", borderRadius: 8 }}
+                    />
                   ) : isPdfPreview ? (
-                    <iframe src={previewUrl} title={selected.fileName} style={{ width: "100%", height: 520, border: "none", borderRadius: 8, background: "#0F172A" }} />
+                    <iframe
+                      src={previewState.url}
+                      title={selected.fileName}
+                      style={{ width: "100%", height: 520, border: "none", borderRadius: 8, background: "#0F172A" }}
+                    />
                   ) : (
                     <div className={styles.previewPlaceholder}>
                       <div className={styles.previewPlaceholderText}>{selected.fileName}</div>
-                      <a href={previewUrl} target="_blank" rel="noreferrer" className={styles.previewBtn}>Download Document</a>
+                      <a href={previewState.url} target="_blank" rel="noreferrer" className={styles.previewBtn}>
+                        Download Document
+                      </a>
                     </div>
                   )
+                ) : previewState.kind === "unavailable" ? (
+                  <div className={styles.previewPlaceholder}>
+                    <div className={styles.previewIcon}>
+                      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                    </div>
+                    <div className={styles.previewPlaceholderText} style={{ fontWeight: 600, color: "#0F172A" }}>
+                      Preview unavailable
+                    </div>
+                    <div className={styles.previewErrorMsg}>{previewState.error}</div>
+                    {previewState.path ? (
+                      <div className={styles.previewPathBox}>
+                        <span className={styles.previewPathLabel}>Bucket</span>
+                        <code className={styles.previewPathValue}>{previewState.bucket ?? "mailroom-documents"}</code>
+                        <span className={styles.previewPathLabel}>Object</span>
+                        <code className={styles.previewPathValue}>{previewState.path}</code>
+                      </div>
+                    ) : null}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" className={styles.previewBtn} onClick={() => void probePreview()}>
+                        Retry
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <div className={styles.previewPlaceholder}>
                     <div className={styles.previewIcon}>
@@ -436,7 +527,14 @@ export default function MailroomClient() {
                     </div>
                     <div className={styles.previewPlaceholderText}>{selected.fileName}</div>
                     {previewUrl ? (
-                      <button type="button" className={styles.previewBtn} onClick={() => setPreviewOpen(true)}>Open Full Document</button>
+                      <button
+                        type="button"
+                        className={styles.previewBtn}
+                        onClick={() => void probePreview()}
+                        disabled={previewState.kind === "probing"}
+                      >
+                        {previewState.kind === "probing" ? "Loading…" : "Open Full Document"}
+                      </button>
                     ) : (
                       <div style={{ fontSize: 12, color: "#94A3B8" }}>No file attached to this item.</div>
                     )}

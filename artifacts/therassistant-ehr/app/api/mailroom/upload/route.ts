@@ -4,6 +4,39 @@ import { DEFAULT_ORG_ID } from "@/lib/config";
 
 const BUCKET = "mailroom-documents";
 
+function logCtx(label: string, ctx: Record<string, unknown>) {
+  const parts = Object.entries(ctx)
+    .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
+    .join(" ");
+  console.log(`[mailroom.upload] ${label} ${parts}`);
+}
+
+/**
+ * Ensure the mailroom storage bucket exists (idempotent, best-effort).
+ * Service-role can list/create buckets. We ignore "already exists" errors.
+ */
+async function ensureBucket(supabase: ReturnType<typeof createServerSupabaseAdminClient>) {
+  if (!supabase) return;
+  try {
+    const { data: buckets } = await supabase.storage.listBuckets();
+    if (buckets && buckets.some((b) => b.name === BUCKET)) return;
+    const { error } = await supabase.storage.createBucket(BUCKET, {
+      public: false,
+      fileSizeLimit: 25 * 1024 * 1024, // 25 MB cap on individual mailroom files
+    });
+    if (error && !/already exists/i.test(error.message)) {
+      logCtx("ensure-bucket-error", { bucket: BUCKET, err: error.message });
+    } else {
+      logCtx("ensure-bucket-created", { bucket: BUCKET });
+    }
+  } catch (err) {
+    logCtx("ensure-bucket-exception", {
+      bucket: BUCKET,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = createServerSupabaseAdminClient();
@@ -26,12 +59,31 @@ export async function POST(req: NextRequest) {
     const safeName = fileName.replace(/[^\w.\-]+/g, "_");
     const storagePath = `${organizationId}/${Date.now()}-${safeName}`;
 
+    await ensureBucket(supabase);
+
+    logCtx("upload-start", {
+      organizationId,
+      bucket: BUCKET,
+      path: storagePath,
+      mime: mimeType,
+      size: blob.size ?? 0,
+    });
+
     const arrayBuffer = await blob.arrayBuffer();
     const { error: upErr } = await supabase.storage
       .from(BUCKET)
       .upload(storagePath, new Uint8Array(arrayBuffer), { contentType: mimeType, upsert: false });
     if (upErr) {
-      return NextResponse.json({ success: false, error: `Storage upload failed: ${upErr.message}` }, { status: 500 });
+      logCtx("upload-failed", {
+        organizationId,
+        bucket: BUCKET,
+        path: storagePath,
+        err: upErr.message,
+      });
+      return NextResponse.json(
+        { success: false, error: `Storage upload failed: ${upErr.message}`, bucket: BUCKET, attemptedPath: storagePath },
+        { status: 500 },
+      );
     }
 
     const now = new Date().toISOString();
@@ -55,11 +107,24 @@ export async function POST(req: NextRequest) {
 
     if (error || !data) {
       await supabase.storage.from(BUCKET).remove([storagePath]).catch(() => {});
+      logCtx("db-insert-failed", {
+        organizationId,
+        bucket: BUCKET,
+        path: storagePath,
+        err: error?.message || "no-data",
+      });
       return NextResponse.json(
         { success: false, error: error?.message || "Failed to create mailroom item" },
         { status: 422 },
       );
     }
+
+    logCtx("upload-ok", {
+      organizationId,
+      bucket: BUCKET,
+      path: storagePath,
+      itemId: String(data.id),
+    });
 
     return NextResponse.json({
       success: true,

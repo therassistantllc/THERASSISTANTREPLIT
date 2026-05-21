@@ -60,7 +60,20 @@ export async function GET(request: Request) {
     const status = url.searchParams.get("status") || "active";
     const workType = url.searchParams.get("workType") || "";
     const priority = url.searchParams.get("priority") || "";
+    const audience = (url.searchParams.get("audience") || "").toLowerCase();
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 50), 1), 100);
+
+    // Clinician-facing work types belong in the Clinician Inbox.
+    // Everything else (billing, ERA, AR aging, denials, eligibility ops, etc.)
+    // belongs in the Operations Workqueues.
+    const CLINICIAN_WORK_TYPES = [
+      "documentation_needed",
+      "signature_needed",
+      "chart_question",
+      "clinician_review",
+      "clinician_routed_question",
+      "note_cosign_needed",
+    ];
 
     if (!organizationId) {
       return NextResponse.json({ success: false, error: "organizationId is required" }, { status: 400 });
@@ -102,7 +115,13 @@ export async function GET(request: Request) {
       query = query.eq("status", status);
     }
 
-    if (workType) query = query.eq("work_type", workType);
+    if (workType) {
+      query = query.eq("work_type", workType);
+    } else if (audience === "clinician") {
+      query = query.in("work_type", CLINICIAN_WORK_TYPES);
+    } else if (audience === "operations") {
+      query = query.not("work_type", "in", `(${CLINICIAN_WORK_TYPES.join(",")})`);
+    }
     if (priority) query = query.eq("priority", priority);
 
     const { data, error } = await query;

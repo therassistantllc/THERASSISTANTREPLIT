@@ -300,9 +300,9 @@ export default function WorkqueueClient() {
     <main className="app-shell">
       <section className="hero-panel">
         <div>
-          <p className="eyebrow">Billing/Admin Workqueue</p>
+          <p className="eyebrow">Operations Workqueues</p>
           <h1>Resolve routed revenue-cycle work</h1>
-          <p className="hero-copy">Manage eligibility issues, claim rejections, ERA exceptions, denials, recoupments, and clinician-routed questions.</p>
+          <p className="hero-copy">Eligibility, claim rejections, ERA exceptions, denials, recoupments, and other billing/admin queues. Clinician-only items (notes, signatures, chart questions) live in the <Link className="inline-link" href="/inbox">Clinician Inbox</Link>.</p>
         </div>
         <div className="hero-actions">
           <Link className="button button-secondary" href="/clinician/agenda">Clinician Agenda</Link>

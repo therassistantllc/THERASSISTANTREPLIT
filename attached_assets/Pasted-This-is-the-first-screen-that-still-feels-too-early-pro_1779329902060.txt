@@ -1,0 +1,411 @@
+This is the first screen that still feels too “early prototype” compared to the maturity of the rest of your revenue cycle stack.
+
+The architecture behind it is becoming excellent.
+But the UI has not caught up yet.
+
+Right now it feels like:
+
+> internal admin dashboard.
+
+It needs to feel like:
+
+> claims operations command center.
+
+---
+
+# Biggest issue:
+
+# This is metrics-only, not workflow-driven
+
+Current screen answers:
+
+```text
+How many claims exist?
+```
+
+But enterprise claim centers answer:
+
+```text
+What requires action RIGHT NOW?
+```
+
+That’s the missing shift.
+
+---
+
+# The correct mental model
+
+This page should become:
+
+# Claims Operations Workspace
+
+NOT:
+
+# Claim Submission Dashboard
+
+Very important distinction.
+
+---
+
+# What’s missing structurally
+
+# 1. Action queues must dominate
+
+Right now:
+
+```text
+Ready to Submit
+Validation Errors
+Submitted Claims
+```
+
+are passive counters.
+
+Enterprise systems surface:
+
+* operational queues
+* exceptions
+* aging
+* acknowledgments
+* stuck claims
+
+as PRIMARY.
+
+---
+
+# Recommended layout
+
+## LEFT SIDEBAR
+
+Operational queues:
+
+```text
+Needs Validation
+Ready to Submit
+Awaiting 999
+Awaiting 277CA
+Rejected
+ERA Exceptions
+Timely Filing Risk
+Secondary Claims
+```
+
+THIS becomes the heart of the screen.
+
+---
+
+# 2. The center should be a real claims worklist
+
+Right now there’s no throughput workspace.
+
+You need:
+
+```text
+Patient
+DOS
+Payer
+Claim #
+Status
+Last Event
+Aging
+Assigned To
+```
+
+with:
+
+* sorting
+* filtering
+* bulk actions
+* keyboard navigation
+
+THIS is the core workflow.
+
+---
+
+# 3. Claim Inspector is too weak
+
+This should become:
+
+# a forensic event timeline.
+
+Example:
+
+```text
+05/20 10:22 Claim generated
+05/20 10:24 Validation passed
+05/20 10:25 Submitted to Office Ally
+05/20 10:26 999 accepted
+05/20 10:31 277CA accepted
+```
+
+OR:
+
+```text
+05/20 10:31 Rejected
+Reason:
+Invalid taxonomy
+```
+
+THAT is enterprise claims UX.
+
+---
+
+# 4. Missing acknowledgment lifecycle
+
+Critical missing concept.
+
+Claims systems revolve around:
+
+```text
+837
+↓
+999
+↓
+277CA
+↓
+835
+```
+
+This lifecycle should visually drive the app.
+
+---
+
+# Add pipeline stages
+
+```text
+Draft
+Validated
+Submitted
+999 Accepted
+277 Accepted
+ERA Received
+Posted
+```
+
+THIS is the claims lifecycle.
+
+---
+
+# 5. Need severity-based operational alerts
+
+Examples:
+
+## RED
+
+No 999 after 24h
+
+## ORANGE
+
+277 rejection
+
+## YELLOW
+
+Timely filing risk
+
+## BLUE
+
+Awaiting payer response
+
+This is essential.
+
+---
+
+# 6. Missing batch-level intelligence
+
+You already have:
+
+```text
+B2026-01
+```
+
+But batches need operational details:
+
+```text
+Batch B2026-01
+2 claims
+Accepted
+Submitted 2h ago
+Office Ally
+```
+
+OR:
+
+```text
+Awaiting 999
+```
+
+This is huge operationally.
+
+---
+
+# 7. Missing throughput actions
+
+Need:
+
+```text
+Submit selected
+Retry rejected
+Revalidate
+Assign
+Export batch
+View 999
+View 277CA
+```
+
+Enterprise systems are action-heavy.
+
+---
+
+# 8. Need claim aging intelligence
+
+VERY important.
+
+Current aging queue is hidden.
+
+Instead:
+
+```text
+Claims at Risk
+7+ days no response
+15+ days no ERA
+30+ days unresolved
+```
+
+This becomes management-critical.
+
+---
+
+# 9. Missing payer-level visibility
+
+Huge opportunity.
+
+Examples:
+
+```text
+BCBS Colorado
+Avg response: 5.2 days
+Current rejections: 3
+Most common issue:
+taxonomy mismatch
+```
+
+Now the product becomes operationally strategic.
+
+---
+
+# 10. Most important missing concept:
+
+# claim state machine
+
+You are READY for this architecture now.
+
+You should formally model:
+
+```text
+claim_state
+```
+
+Transitions:
+
+```text
+draft
+validated
+ready
+submitted
+accepted_999
+accepted_277
+rejected
+paid
+partially_paid
+denied
+appealed
+closed
+```
+
+THIS becomes:
+
+* UI
+* workflows
+* queues
+* automations
+* alerts
+
+Everything.
+
+---
+
+# This should eventually feel like:
+
+## LEFT
+
+Operational queues
+
+## CENTER
+
+Claims worklist
+
+## RIGHT
+
+Claim event inspector
+
+Exactly like:
+
+* Epic Resolute
+* payer ops tooling
+* clearinghouse operations systems
+
+---
+
+# Biggest strategic insight
+
+You are no longer building:
+
+> billing pages
+
+You are building:
+
+# a healthcare transaction operating system.
+
+That’s why:
+
+* timelines
+* queues
+* validations
+* events
+* state machines
+
+are becoming central.
+
+---
+
+# Immediate next priorities
+
+## 1.
+
+Claim state machine architecture
+
+## 2.
+
+Operational queues
+
+## 3.
+
+999 / 277CA lifecycle visibility
+
+## 4.
+
+Claim event timelines
+
+## 5.
+
+Batch operations
+
+## 6.
+
+Retry/revalidation workflows
+
+## 7.
+
+Denial/rejection resolution queues
+
+That’s the correct next evolution.

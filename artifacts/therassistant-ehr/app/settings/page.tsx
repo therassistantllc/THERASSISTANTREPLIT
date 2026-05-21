@@ -2,9 +2,14 @@ import Link from "next/link";
 
 const SETTINGS_SECTIONS = [
   {
+    label: "Organizations",
+    href: "/settings/organizations",
+    description: "Create multiple organizations and assign providers to each one.",
+  },
+  {
     label: "Organization Settings",
     href: "/settings/organization",
-    description: "Practice name, address, NPI, tax ID, and billing configuration.",
+    description: "Practice name, address, NPI, tax ID, and billing configuration for the active org.",
   },
   {
     label: "Staff & Users",

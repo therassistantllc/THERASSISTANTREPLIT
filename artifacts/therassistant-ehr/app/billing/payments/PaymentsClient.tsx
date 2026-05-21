@@ -500,6 +500,7 @@ export default function PaymentsClient() {
     { id: string; message: string; tone: "ok" | "err" } | null
   >(null);
   const [expandedLines, setExpandedLines] = useState<Record<string, boolean>>({});
+  const [matchingId, setMatchingId] = useState<string | null>(null);
 
   const loadPayments = useCallback(async () => {
     if (!organizationId) return;
@@ -637,6 +638,34 @@ export default function PaymentsClient() {
       }
     },
     [organizationId, loadPayments],
+  );
+
+  const handleMatchClaim = useCallback(
+    async (id: string) => {
+      if (matchingId) return;
+      const claimNumber = typeof window !== "undefined"
+        ? window.prompt("Enter the claim number to match this ERA payment to:")
+        : null;
+      if (!claimNumber || !claimNumber.trim()) return;
+      setMatchingId(id);
+      setPostFeedback(null);
+      try {
+        const res = await fetch(`/api/billing/era-payments/${encodeURIComponent(id)}/match`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ organizationId, claimNumber: claimNumber.trim() }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.error ?? "Match failed");
+        setPostFeedback({ id, message: `Matched to claim ${claimNumber.trim()}.`, tone: "ok" });
+        await loadPayments();
+      } catch (err) {
+        setPostFeedback({ id, message: err instanceof Error ? err.message : "Match failed", tone: "err" });
+      } finally {
+        setMatchingId(null);
+      }
+    },
+    [matchingId, organizationId, loadPayments],
   );
 
   /* Derived ledger for the selected ERA */
@@ -915,9 +944,11 @@ export default function PaymentsClient() {
                   </div>
                   <button
                     type="button"
-                    className="shrink-0 rounded border border-rose-300 bg-white px-2.5 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
+                    onClick={() => handleMatchClaim(selected.id)}
+                    disabled={matchingId === selected.id}
+                    className="shrink-0 rounded border border-rose-300 bg-white px-2.5 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50"
                   >
-                    Match claim →
+                    {matchingId === selected.id ? "Matching…" : "Match claim →"}
                   </button>
                 </div>
               ) : null}
@@ -1455,7 +1486,9 @@ function InlineAction({
   return (
     <button
       type="button"
-      className="inline-flex items-center gap-1 rounded border border-transparent px-1.5 py-0.5 text-[10px] text-slate-600 hover:border-slate-300 hover:bg-white"
+      disabled
+      title="Coming soon — use the chart's claim editor to make these adjustments today"
+      className="inline-flex items-center gap-1 rounded border border-transparent px-1.5 py-0.5 text-[10px] text-slate-400 cursor-not-allowed"
     >
       <Icon className="h-3 w-3" strokeWidth={2.2} />
       {label}

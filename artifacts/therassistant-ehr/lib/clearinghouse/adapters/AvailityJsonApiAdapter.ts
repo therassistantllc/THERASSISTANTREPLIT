@@ -3,6 +3,14 @@
 // Uses v2 for real-time eligibility/claim status and v1 for claims/health/payer-search where needed.
 
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
+import {
+  getAvailityAccessToken,
+  type AvailityOAuthConfig,
+} from "@/lib/edi/availity270/availityOAuth";
+import { mapAvailityJsonTo271 } from "@/lib/edi/availity270/jsonToParsed271";
+import { parsed271ToLegacyNormalized } from "@/lib/edi/availity270/parsedToLegacy";
+import type { Eligibility270Input, Parsed271Response } from "@/lib/edi/availity270/types";
+import type { EligibilityResponseNormalized } from "@/types/clearinghouse";
 import type {
   AvailityApiResponse,
   AvailityClaimStatusRequest,
@@ -651,6 +659,148 @@ export class AvailityJsonApiAdapter {
       contentType: "text/plain",
       idempotencyKey: params.idempotencyKey ?? null,
     });
+  }
+
+  /**
+   * CORE-compliant eligibility via the Availity REST Coverages API
+   * (OAuth2 client_credentials). Returns the same `Parsed271Response`
+   * shape produced by the SOAP/X12 path so downstream consumers can
+   * ignore transport.
+   *
+   * Endpoint defaults to `${baseUrl}/availity/v1/coverages` (overridable
+   * via `AVAILITY_COVERAGES_PATH`). Credentials come from
+   * `AVAILITY_OAUTH_CLIENT_ID` / `AVAILITY_OAUTH_CLIENT_SECRET` unless
+   * passed in via `oauth`. The request body mirrors the rich
+   * `Eligibility270Input` so the same caller can target either transport.
+   */
+  async runCoverages(params: {
+    organizationId: string;
+    clientId: string;
+    appointmentId?: string | null;
+    insurancePolicyId?: string | null;
+    eligibility: Eligibility270Input;
+    oauth?: AvailityOAuthConfig;
+    coveragesPath?: string;
+  }): Promise<{
+    parsed: Parsed271Response;
+    normalized: EligibilityResponseNormalized;
+    raw: string;
+    httpStatus: number;
+    rawJson: AvailityEligibilityResponse;
+  }> {
+    const oauth: AvailityOAuthConfig = params.oauth ?? {
+      clientId: process.env.AVAILITY_OAUTH_CLIENT_ID ?? "",
+      clientSecret: process.env.AVAILITY_OAUTH_CLIENT_SECRET ?? "",
+      tokenUrl: process.env.AVAILITY_OAUTH_TOKEN_URL ?? undefined,
+      scope: process.env.AVAILITY_OAUTH_SCOPE ?? undefined,
+    };
+    if (!oauth.clientId || !oauth.clientSecret) {
+      throw new Error(
+        "Availity Coverages REST requires AVAILITY_OAUTH_CLIENT_ID and AVAILITY_OAUTH_CLIENT_SECRET (or oauth override).",
+      );
+    }
+
+    const token = await getAvailityAccessToken(oauth);
+    // baseUrl already includes `/availity/v1` by default; the Coverages REST
+    // endpoint is therefore just `/coverages` relative to it. Override via
+    // AVAILITY_COVERAGES_PATH if the deployed Availity tenant publishes a
+    // different path (e.g., `/coverages` under a v2 base).
+    const path = params.coveragesPath ?? process.env.AVAILITY_COVERAGES_PATH ?? "/coverages";
+    const endpointUrl = `${this.baseUrl}${path}`;
+    const startedAt = new Date().toISOString();
+    const e = params.eligibility;
+
+    const requestBody = {
+      payerId: e.informationSource.payerId,
+      provider: {
+        npi: e.informationReceiver.npi,
+        lastName: e.informationReceiver.lastNameOrOrg,
+        firstName: e.informationReceiver.firstName ?? undefined,
+      },
+      subscriber: {
+        firstName: e.subscriber.firstName,
+        lastName: e.subscriber.lastName,
+        memberId: e.subscriber.memberId,
+        dob: e.subscriber.dob,
+        gender: e.subscriber.gender ?? undefined,
+      },
+      serviceTypeCodes: e.serviceTypeCodes,
+      asOfDate: e.serviceDate ?? undefined,
+    } satisfies AvailityEligibilityRequest;
+
+    const bodyText = JSON.stringify(requestBody);
+    let response: Response;
+    let rawText = "";
+    try {
+      response = await fetch(endpointUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `${token.tokenType} ${token.accessToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: bodyText,
+      });
+      rawText = await response.text();
+    } catch (err) {
+      await insertApiAudit({
+        organizationId: params.organizationId,
+        operation: "RealTimeV1_Coverages",
+        endpointUrl,
+        httpMethod: "POST",
+        requestPayload: requestBody as Record<string, unknown>,
+        requestBody: bodyText,
+        status: "failed",
+        errorMessage: err instanceof Error ? err.message : "Coverages request failed",
+        startedAt,
+      });
+      throw err;
+    }
+
+    let parsedJson: AvailityEligibilityResponse;
+    try {
+      parsedJson = JSON.parse(rawText) as AvailityEligibilityResponse;
+    } catch {
+      await insertApiAudit({
+        organizationId: params.organizationId,
+        operation: "RealTimeV1_Coverages",
+        endpointUrl,
+        httpMethod: "POST",
+        httpStatus: response.status,
+        requestPayload: requestBody as Record<string, unknown>,
+        requestBody: bodyText,
+        responseBody: rawText,
+        status: "failed",
+        errorMessage: "Coverages response was not JSON",
+        startedAt,
+      });
+      throw new Error(`Availity Coverages response was not JSON (${response.status}): ${rawText.slice(0, 300)}`);
+    }
+
+    await insertApiAudit({
+      organizationId: params.organizationId,
+      operation: "RealTimeV1_Coverages",
+      endpointUrl,
+      httpMethod: "POST",
+      httpStatus: response.status,
+      requestPayload: requestBody as Record<string, unknown>,
+      responsePayload: parsedJson as Record<string, unknown>,
+      requestBody: bodyText,
+      responseBody: rawText,
+      rawResponseJson: parsedJson as Record<string, unknown>,
+      rawResponseX12: parsedJson.x12 ?? null,
+      status: response.ok ? "parsed" : "failed",
+      errorMessage: response.ok ? null : rawText.slice(0, 500),
+      startedAt,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Availity Coverages failed ${response.status}: ${rawText.slice(0, 500)}`);
+    }
+
+    const parsed = mapAvailityJsonTo271(parsedJson);
+    const normalized = parsed271ToLegacyNormalized(parsed, e.serviceTypeCodes[0] ?? "98");
+    return { parsed, normalized, raw: rawText, httpStatus: response.status, rawJson: parsedJson };
   }
 
   async fetchEra835(params: { organizationId: string }): Promise<{ raw835: string; fileName: string }> {

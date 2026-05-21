@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { OfficeAllyJsonApiAdapter } from "@/lib/clearinghouse/adapters/OfficeAllyJsonApiAdapter";
+import { resolveClearinghouseCredential } from "@/lib/clearinghouse/credentials";
+import { assertPayerEnrollmentsForBatch } from "@/lib/clearinghouse/payerEnrollmentGate";
+import { assertClaimSubmissionReady, gateResponse } from "@/lib/validation/claimSubmissionGate";
 
 /**
  * Submits a generated 837P batch to Office Ally via the EDI Services JSON API.
@@ -115,7 +118,61 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       );
     }
 
-    const adapter = new OfficeAllyJsonApiAdapter();
+    // Resolve the credential for this org — Vault first, then legacy JSONB, then env-var fallback.
+    // If none of these returns a key the adapter call below will throw with a clear message.
+    const credential = await resolveClearinghouseCredential({
+      organizationId,
+      vendor: "office_ally",
+    });
+    if (!credential) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "No Office Ally credential configured for this organization. Add an API key on /settings/clearinghouse before submitting claims.",
+        },
+        { status: 412 },
+      );
+    }
+
+    // Trading-partner readiness gate (T002). Blocks transmission if billing NPI/EIN/address
+    // or authorized-representative fields are missing on the org's billing profile.
+    const readiness = await assertClaimSubmissionReady(organizationId);
+    const readinessBlocked = gateResponse(readiness);
+    if (readinessBlocked) return readinessBlocked;
+
+    // Per-payer trading-partner enrollment gate (T003). Production-only.
+    // Sandbox submissions are allowed to run without enrollments so operators
+    // can validate the full round-trip before completing payer enrollment.
+    const enrollmentGate = await assertPayerEnrollmentsForBatch({
+      supabase,
+      organizationId,
+      batchId: id,
+      transactionType: "837P",
+      environment: credential.environment,
+    });
+    if (!enrollmentGate.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: enrollmentGate.message,
+          gate: {
+            blocked: true,
+            reason: "payer_not_enrolled",
+            transactionType: "837P",
+            environment: credential.environment,
+            missing: enrollmentGate.missing,
+            fixRoute: "/settings/payer-enrollments",
+          },
+        },
+        { status: 422 },
+      );
+    }
+
+    const adapter = new OfficeAllyJsonApiAdapter({
+      apiKey: credential.apiKey,
+      baseUrl: credential.baseUrl,
+    });
     const endpointUrl = `${adapter.baseUrl}/v1/claims/professional/x12`;
 
     try {

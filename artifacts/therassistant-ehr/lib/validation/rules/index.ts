@@ -6,6 +6,7 @@ import payers from "./payers.json";
 import clearinghouse from "./clearinghouse.json";
 import feeSchedules from "./feeSchedules.json";
 import billingDefaults from "./billingDefaults.json";
+import tradingPartner from "./tradingPartner.json";
 
 /**
  * Aggregated rule registry. Each entry is a serializable JSON rule that the
@@ -26,4 +27,5 @@ export const allRules: RuleSpec[] = [
   ...(clearinghouse as RuleSpec[]),
   ...(feeSchedules as RuleSpec[]),
   ...(billingDefaults as RuleSpec[]),
+  ...(tradingPartner as RuleSpec[]),
 ];

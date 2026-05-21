@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
+import { storeClearinghouseApiKey } from "@/lib/clearinghouse/credentials";
 
 function getOrgId(req: NextRequest) {
   return (
@@ -9,12 +10,20 @@ function getOrgId(req: NextRequest) {
   );
 }
 
-/** Never return encrypted_credentials to the client. */
+/** Never return encrypted_credentials or vault_secret_id to the client; instead expose
+ *  a derived `has_credentials` flag plus a `credential_source` hint so the UI can warn
+ *  when a connection is still on legacy plaintext storage. */
 function sanitizeConnection(row: Record<string, unknown>) {
-  const { encrypted_credentials, ...safe } = row;
+  const { encrypted_credentials, vault_secret_id, vault_secret_name, ...safe } = row;
+  const hasVault = vault_secret_id !== null && vault_secret_id !== undefined;
+  const hasLegacy =
+    encrypted_credentials !== null && encrypted_credentials !== undefined &&
+    typeof encrypted_credentials === "object" &&
+    Object.keys(encrypted_credentials as Record<string, unknown>).length > 0;
   return {
     ...safe,
-    has_credentials: encrypted_credentials !== null && encrypted_credentials !== undefined,
+    has_credentials: hasVault || hasLegacy,
+    credential_source: hasVault ? "vault" : hasLegacy ? "legacy_jsonb" : "none",
   };
 }
 
@@ -37,7 +46,7 @@ export async function GET(req: NextRequest) {
       "x12_version, isa_usage_indicator, sftp_host, sftp_port, sftp_username, " +
       "inbound_folder, outbound_folder, api_base_url, auth_type, " +
       "eligibility_service_type_code, eligibility_transaction_set, " +
-      "is_active, encrypted_credentials, created_at, updated_at",
+      "is_active, encrypted_credentials, vault_secret_id, vault_secret_name, created_at, updated_at",
     )
     .eq("organization_id", organizationId)
     .order("created_at", { ascending: true });
@@ -74,8 +83,10 @@ export async function POST(req: NextRequest) {
 
   const now = new Date().toISOString();
 
-  // sftp_password is stored in encrypted_credentials, never echoed back
-  const { sftp_password, ...rest } = body;
+  // sftp_password is stored in encrypted_credentials (legacy path; SFTP is not yet using Vault).
+  // api_key, on the other hand, goes straight into Supabase Vault via the helper below — it is
+  // never persisted to encrypted_credentials and never echoed back to the client.
+  const { sftp_password, api_key, ...rest } = body;
   const encryptedCredentials = sftp_password ? { sftp_password } : null;
 
   const { data, error } = await supabase
@@ -114,6 +125,22 @@ export async function POST(req: NextRequest) {
   if (error) {
     console.error("[POST /api/settings/clearinghouse]", error);
     return NextResponse.json({ error: "Failed to create clearinghouse connection" }, { status: 500 });
+  }
+
+  // After the row exists we can vault the api_key against it. If this fails we still keep the
+  // connection row — the operator can re-save the key — but we surface the error so the UI knows.
+  if (typeof api_key === "string" && api_key.length > 0) {
+    const vaulted = await storeClearinghouseApiKey({ connectionId: data.id, apiKey: api_key });
+    if (!vaulted.ok) {
+      return NextResponse.json(
+        {
+          success: true,
+          id: data.id,
+          warning: `Connection created but API key could not be stored in Vault: ${vaulted.error}`,
+        },
+        { status: 201 },
+      );
+    }
   }
 
   return NextResponse.json({ success: true, id: data.id }, { status: 201 });
@@ -156,7 +183,7 @@ export async function PATCH(req: NextRequest) {
     if (field in body) updates[field] = body[field];
   }
 
-  // Handle password update: store in encrypted_credentials
+  // Handle SFTP password update: store in encrypted_credentials (legacy path).
   if ("sftp_password" in body && body.sftp_password) {
     updates.encrypted_credentials = { sftp_password: body.sftp_password };
   }
@@ -172,6 +199,17 @@ export async function PATCH(req: NextRequest) {
   if (error) {
     console.error("[PATCH /api/settings/clearinghouse]", error);
     return NextResponse.json({ error: "Failed to update clearinghouse connection" }, { status: 500 });
+  }
+
+  // Vault the API key (rotate the existing secret if one is already linked).
+  if ("api_key" in body && typeof body.api_key === "string" && body.api_key.length > 0) {
+    const vaulted = await storeClearinghouseApiKey({ connectionId: id, apiKey: body.api_key });
+    if (!vaulted.ok) {
+      return NextResponse.json({
+        success: true,
+        warning: `Connection updated but API key could not be rotated in Vault: ${vaulted.error}`,
+      });
+    }
   }
 
   return NextResponse.json({ success: true });

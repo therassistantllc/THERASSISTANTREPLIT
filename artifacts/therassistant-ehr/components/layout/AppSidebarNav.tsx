@@ -314,7 +314,7 @@ export default function AppSidebarNav() {
           <SubNavLinkIcon href="/settings/organization" icon={<BuildingIcon />} label="Organization" prefixes={["/settings/organization"]} pathname={pathname} />
           <SubNavLinkIcon href="/settings/payers" icon={<ShieldIcon />} label="Payers" prefixes={["/settings/payers"]} pathname={pathname} />
           <SubNavLinkIcon href="/settings/security" icon={<LockIcon />} label="Security" prefixes={["/settings/security"]} pathname={pathname} />
-          <SubNavLinkIcon href="/settings/system-readiness" icon={<GearIcon />} label="Settings" prefixes={["/settings/system-readiness", "/settings/service-locations", "/settings/billing-defaults", "/settings/clearinghouse", "/settings/mailroom", "/admin"]} pathname={pathname} />
+          <SubNavLinkIcon href="/settings/system-readiness" icon={<GearIcon />} label="Settings" prefixes={["/settings/system-readiness", "/settings/service-locations", "/settings/billing-defaults", "/settings/clearinghouse", "/settings/trading-partner", "/settings/payer-enrollments", "/settings/baa", "/settings/mailroom", "/admin"]} pathname={pathname} />
         </div>
       ) : null}
 

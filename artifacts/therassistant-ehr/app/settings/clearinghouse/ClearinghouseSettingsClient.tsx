@@ -29,9 +29,13 @@ type Connection = {
   eligibility_transaction_set: string;
   is_active: boolean;
   has_credentials: boolean;
+  credential_source: "vault" | "legacy_jsonb" | "none";
 };
 
-type FormState = Omit<Connection, "id" | "has_credentials"> & { sftp_password: string };
+type FormState = Omit<Connection, "id" | "has_credentials" | "credential_source"> & {
+  sftp_password: string;
+  api_key: string;
+};
 
 const EMPTY_FORM: FormState = {
   vendor: "office_ally",
@@ -50,6 +54,7 @@ const EMPTY_FORM: FormState = {
   sftp_port: null,
   sftp_username: null,
   sftp_password: "",
+  api_key: "",
   inbound_folder: null,
   outbound_folder: null,
   api_base_url: "https://edi.officeally.io",
@@ -98,7 +103,7 @@ export default function ClearinghouseSettingsClient() {
   useEffect(() => { loadConnections(); }, [loadConnections]);
 
   function startEdit(c: Connection) {
-    setForm({ ...EMPTY_FORM, ...c, sftp_password: "" });
+    setForm({ ...EMPTY_FORM, ...c, sftp_password: "", api_key: "" });
     setEditingId(c.id);
     setShowNew(false);
   }
@@ -125,6 +130,7 @@ export default function ClearinghouseSettingsClient() {
       const method = editingId ? "PATCH" : "POST";
       const body: Record<string, unknown> = { ...form };
       if (!form.sftp_password) delete body.sftp_password;
+      if (!form.api_key) delete body.api_key;
 
       const res = await fetch(url, {
         method,
@@ -203,7 +209,14 @@ export default function ClearinghouseSettingsClient() {
                     </div>
                     <div style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", marginTop: "2px" }}>
                       SFTP: {c.sftp_host ? `${c.sftp_username}@${c.sftp_host}:${c.sftp_port ?? 22}` : "Not configured"} ·
-                      Credentials: <strong>{c.has_credentials ? "Stored" : "Not set"}</strong>
+                      API key:{" "}
+                      <strong>
+                        {c.credential_source === "vault"
+                          ? "Stored in Vault"
+                          : c.credential_source === "legacy_jsonb"
+                            ? "⚠ Legacy plaintext — re-save to migrate to Vault"
+                            : "Not set"}
+                      </strong>
                     </div>
                     <div style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", marginTop: "2px" }}>
                       Eligibility service type: <strong>{c.eligibility_service_type_code}</strong> ·
@@ -267,6 +280,21 @@ export default function ClearinghouseSettingsClient() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)", marginBottom: "var(--space-5)" }}>
                 {fieldStr("API Base URL", form.api_base_url, f("api_base_url"))}
                 {fieldStr("Auth Type", form.auth_type, f("auth_type"))}
+                <label className="field-label" style={{ gridColumn: "1 / -1" }}>
+                  API Key
+                  <span style={{ color: "var(--text-secondary)", fontSize: "var(--text-xs)", marginLeft: "4px" }}>
+                    {editingId
+                      ? "(leave blank to keep existing; entering a new value rotates the Vault secret)"
+                      : "(stored encrypted in Supabase Vault; never echoed back)"}
+                  </span>
+                  <input
+                    type="password"
+                    value={form.api_key}
+                    autoComplete="new-password"
+                    placeholder={editingId ? "•••••••• (unchanged)" : "Paste Office Ally API key"}
+                    onChange={(e) => setForm((p) => ({ ...p, api_key: e.target.value }))}
+                  />
+                </label>
               </div>
 
               <h3 style={{ marginBottom: "var(--space-3)", fontSize: "var(--text-sm)", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>SFTP</h3>

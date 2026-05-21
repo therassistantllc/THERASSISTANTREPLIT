@@ -1,3 +1,4 @@
 - [Supabase CLI on Replit](supabase-cli-replit.md) — must use `--use-api` for functions deploy; SUPABASE_ACCESS_TOKEN env required; PG 15+ supports `UNIQUE NULLS NOT DISTINCT`.
 - [supabase-js onConflict + partial indexes](supabase-js-onconflict-partial-index.md) — supabase-js cannot emit `index_predicate`, so partial unique indexes can't be ON CONFLICT arbiters; use `NULLS NOT DISTINCT` non-partial instead.
 - [Mailroom items dual schema](mailroom-items-dual-schema.md) — legacy NOT NULL `title` coexists with newer compat `status/source/notes`; any new insert path must populate both groups or it fails.
+- [OA Phase 1 gate lessons](oa-phase1-gate-lessons.md) — enrollment gates must filter status='approved' in SQL (terminated rows are kept for history); raw-X12 endpoints can't enforce per-payer gate and must be sandbox-only.

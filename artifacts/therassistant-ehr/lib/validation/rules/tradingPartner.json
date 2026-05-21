@@ -1,0 +1,89 @@
+[
+  {
+    "id": "tradingPartner.has_billing_npi",
+    "category": "organization",
+    "severity": "blocking",
+    "message": "Billing provider NPI is missing from the trading partner profile.",
+    "fixRoute": "/settings/trading-partner",
+    "whyItMatters": "Office Ally requires a valid type-2 (group) NPI on every 837P claim. Without it, every transmission rejects with 277CA category A7.",
+    "resolution": "Enter the billing provider NPI on the Trading Partner settings page.",
+    "conditions": {
+      "all": [
+        { "fact": "tradingPartner", "path": "$.hasBillingNpi", "operator": "equal", "value": false }
+      ]
+    }
+  },
+  {
+    "id": "tradingPartner.billing_npi_valid",
+    "category": "organization",
+    "severity": "blocking",
+    "message": "Billing provider NPI is present but fails the Luhn checksum.",
+    "fixRoute": "/settings/trading-partner",
+    "whyItMatters": "Office Ally validates the NPI checksum before transmitting; an invalid NPI is rejected at the clearinghouse rather than the payer, costing a full re-submission cycle.",
+    "resolution": "Double-check the 10-digit NPI on the NPPES registry and correct it on the Trading Partner settings page.",
+    "conditions": {
+      "all": [
+        { "fact": "tradingPartner", "path": "$.hasBillingNpi", "operator": "equal", "value": true },
+        { "fact": "tradingPartner", "path": "$.billingNpiValid", "operator": "equal", "value": false }
+      ]
+    }
+  },
+  {
+    "id": "tradingPartner.has_ein",
+    "category": "organization",
+    "severity": "blocking",
+    "message": "Billing tax ID / EIN is missing from the trading partner profile.",
+    "fixRoute": "/settings/trading-partner",
+    "whyItMatters": "Office Ally's trading partner agreement and the 837P REF*EI segment both require the practice EIN. Without it, enrollments and claims cannot be processed.",
+    "resolution": "Enter the 9-digit EIN on the Trading Partner settings page.",
+    "conditions": {
+      "all": [
+        { "fact": "tradingPartner", "path": "$.hasEin", "operator": "equal", "value": false }
+      ]
+    }
+  },
+  {
+    "id": "tradingPartner.ein_valid",
+    "category": "organization",
+    "severity": "blocking",
+    "message": "Billing tax ID / EIN must be exactly 9 digits.",
+    "fixRoute": "/settings/trading-partner",
+    "whyItMatters": "A malformed EIN will be rejected at the clearinghouse 277CA and prevent the claim from ever reaching the payer.",
+    "resolution": "Correct the EIN to 9 numeric digits on the Trading Partner settings page.",
+    "conditions": {
+      "all": [
+        { "fact": "tradingPartner", "path": "$.hasEin", "operator": "equal", "value": true },
+        { "fact": "tradingPartner", "path": "$.einValid", "operator": "equal", "value": false }
+      ]
+    }
+  },
+  {
+    "id": "tradingPartner.has_billing_address",
+    "category": "organization",
+    "severity": "blocking",
+    "message": "Billing pay-to address is incomplete.",
+    "fixRoute": "/settings/trading-partner",
+    "whyItMatters": "The 837P pay-to address (Loop 2010AB / N3-N4) is a required HIPAA segment. A missing line 1, city, state, or ZIP causes a hard 277CA rejection.",
+    "resolution": "Enter the full pay-to street, city, state, and ZIP on the Trading Partner settings page.",
+    "conditions": {
+      "all": [
+        { "fact": "tradingPartner", "path": "$.hasBillingAddress", "operator": "equal", "value": false }
+      ]
+    }
+  },
+  {
+    "id": "tradingPartner.has_authorized_representative",
+    "category": "organization",
+    "severity": "warning",
+    "message": "No authorized representative listed for the Office Ally trading partner agreement.",
+    "fixRoute": "/settings/trading-partner",
+    "whyItMatters": "Office Ally requires a named authorized representative on the TPA. While claims still transmit, enrollment changes and password resets are blocked until a representative is on file.",
+    "resolution": "Enter the authorized representative's name, email, and phone on the Trading Partner settings page.",
+    "conditions": {
+      "any": [
+        { "fact": "tradingPartner", "path": "$.hasAuthorizedRep", "operator": "equal", "value": false },
+        { "fact": "tradingPartner", "path": "$.authorizedRepContactValid", "operator": "equal", "value": false }
+      ]
+    }
+  }
+]

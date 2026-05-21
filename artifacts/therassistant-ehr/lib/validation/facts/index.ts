@@ -6,6 +6,7 @@ import { payersFact } from "./payers";
 import { clearinghouseFact } from "./clearinghouse";
 import { feeSchedulesFact } from "./feeSchedules";
 import { billingDefaultsFact } from "./billingDefaults";
+import { tradingPartnerFact } from "./tradingPartner";
 
 /**
  * All registered fact loaders. The engine registers each as a dynamic fact
@@ -23,4 +24,5 @@ export const factLoaders: FactLoader[] = [
   clearinghouseFact,
   feeSchedulesFact,
   billingDefaultsFact,
+  tradingPartnerFact,
 ];

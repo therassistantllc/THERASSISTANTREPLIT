@@ -41,10 +41,8 @@ function getBaseUrl() {
   return (process.env.OFFICE_ALLY_EDI_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, "");
 }
 
-function getApiKey() {
-  const key = process.env.OFFICE_ALLY_EDI_API_KEY;
-  if (!key) throw new Error("OFFICE_ALLY_EDI_API_KEY is required.");
-  return key;
+function envApiKey() {
+  return process.env.OFFICE_ALLY_EDI_API_KEY ?? null;
 }
 
 function getApiKeyHeaderName() {
@@ -57,12 +55,13 @@ function uuid() {
 }
 
 function buildHeaders(
+  apiKey: string,
   accept: string,
   contentType: "application/json" | "text/plain",
   idempotencyKey?: string | null,
 ) {
   const headers: Record<string, string> = {
-    [getApiKeyHeaderName()]: getApiKey(),
+    [getApiKeyHeaderName()]: apiKey,
     Accept: accept,
     "Content-Type": contentType,
   };
@@ -402,7 +401,27 @@ async function persistClaimStatusResponse(params: {
 
 export class OfficeAllyJsonApiAdapter {
   readonly vendor = "office_ally" as const;
-  readonly baseUrl = getBaseUrl();
+  readonly baseUrl: string;
+  private readonly overrideApiKey: string | null;
+
+  constructor(opts?: { apiKey?: string | null; baseUrl?: string | null }) {
+    this.overrideApiKey = opts?.apiKey ?? null;
+    const rawBase = opts?.baseUrl ?? null;
+    this.baseUrl = rawBase ? rawBase.replace(/\/$/, "") : getBaseUrl();
+  }
+
+  /** Returns the API key for this adapter instance, falling back to the env-var if no
+   *  per-instance credential was injected. Throws when neither source is configured. */
+  private getApiKey(): string {
+    const key = this.overrideApiKey ?? envApiKey();
+    if (!key) {
+      throw new Error(
+        "No Office Ally API key configured. Set one via /settings/clearinghouse (preferred — stored in Vault) " +
+          "or set OFFICE_ALLY_EDI_API_KEY as a legacy fallback.",
+      );
+    }
+    return key;
+  }
 
   private async request<T>(options: ApiRequestOptions): Promise<{ data: T; rawText: string; httpStatus: number }> {
     const startedAt = new Date().toISOString();
@@ -415,7 +434,7 @@ export class OfficeAllyJsonApiAdapter {
     try {
       const response = await fetch(endpointUrl, {
         method,
-        headers: buildHeaders(accept, contentType, options.idempotencyKey),
+        headers: buildHeaders(this.getApiKey(), accept, contentType, options.idempotencyKey),
         body: method === "GET" ? undefined : bodyText,
       });
       const rawText = await response.text();
@@ -473,7 +492,7 @@ export class OfficeAllyJsonApiAdapter {
     const supabase = createServerSupabaseAdminClient();
 
     try {
-      const response = await fetch(endpointUrl, { method: "GET", headers: { [getApiKeyHeaderName()]: getApiKey() } });
+      const response = await fetch(endpointUrl, { method: "GET", headers: { [getApiKeyHeaderName()]: this.getApiKey() } });
       const raw = await response.text();
       const latencyMs = Date.now() - started;
       const result: HealthCheckResult = {

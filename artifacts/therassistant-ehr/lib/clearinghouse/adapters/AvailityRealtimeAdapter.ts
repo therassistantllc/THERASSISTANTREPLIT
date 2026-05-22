@@ -23,6 +23,11 @@ import {
   type CorePayloadType,
 } from "@/lib/edi/availity270/soapEnvelope";
 import type { Eligibility270Input, Parsed271Response } from "@/lib/edi/availity270/types";
+import {
+  EligibilityTimeoutError,
+  resolveRealtimeDeadlineMs,
+} from "@/lib/clearinghouse/eligibilityErrors";
+import { parse999, type Parsed999Result } from "@/lib/edi/availity999/parse999";
 import type {
   ClaimStatusRequestInput,
   ClaimStatusResponseNormalized,
@@ -158,17 +163,60 @@ function normalize277(rawX12: string): ClaimStatusResponseNormalized {
   return { status: "unknown", payerMessage: "277 received; detailed parser pending.", rawStatus: { rawX12 } };
 }
 
-async function postSoapEnvelope(config: RealtimeConfig, envelope: string): Promise<string> {
-  const response = await fetch(config.endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/soap+xml; charset=utf-8; action=RealTimeTransaction;",
-      Action: "RealTimeTransaction",
-      Accept: "application/soap+xml",
-    },
-    body: envelope,
-  });
-  const raw = await response.text();
+async function postSoapEnvelope(
+  config: RealtimeConfig,
+  envelope: string,
+  opts?: { deadlineMs?: number; correlationId?: string | null },
+): Promise<string> {
+  // CAQH CORE Eligibility Infrastructure Rule vEB.2.0 §4: real-time
+  // submitters must observe a 20 second wall-clock deadline. We enforce
+  // it here with an AbortController so the underlying socket is torn
+  // down — leaving the connection open would let a slow payer hold a
+  // request handler past its own deadline.
+  const deadlineMs = opts?.deadlineMs ?? resolveRealtimeDeadlineMs();
+  const controller = new AbortController();
+  const start = Date.now();
+  const timer = setTimeout(() => controller.abort(), deadlineMs);
+  let response: Response;
+  try {
+    response = await fetch(config.endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/soap+xml; charset=utf-8; action=RealTimeTransaction;",
+        Action: "RealTimeTransaction",
+        Accept: "application/soap+xml",
+      },
+      body: envelope,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    const elapsedMs = Date.now() - start;
+    if (controller.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
+      throw new EligibilityTimeoutError({
+        deadlineMs,
+        elapsedMs,
+        correlationId: opts?.correlationId ?? null,
+      });
+    }
+    throw err;
+  }
+  let raw: string;
+  try {
+    raw = await response.text();
+  } catch (err) {
+    const elapsedMs = Date.now() - start;
+    if (controller.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
+      throw new EligibilityTimeoutError({
+        deadlineMs,
+        elapsedMs,
+        correlationId: opts?.correlationId ?? null,
+      });
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!response.ok) {
     throw new Error(`Availity realtime SOAP failed ${response.status}: ${raw.slice(0, 500)}`);
   }
@@ -186,6 +234,45 @@ export interface AvailityRealtimeEligibilityResult {
   rawSoapResponse: string;
   parsed: Parsed271Response;
   normalized: EligibilityResponseNormalized;
+}
+
+export interface AvailityRealtimeAck {
+  status: "accepted" | "accepted_with_errors" | "partially_accepted" | "rejected";
+  hasErrors: boolean;
+  rawPayload: string;
+  parsed: Parsed999Result;
+}
+
+/**
+ * Thrown when Availity answers a 270 with a 999 functional
+ * acknowledgement instead of a 271. Callers should persist
+ * `ack.status` / `ack.rawPayload` on the originating edi_transactions
+ * row and surface the rejection to the user — there is no
+ * eligibility data to display.
+ */
+export class EligibilityAcknowledgementError extends Error {
+  readonly code = "ELIGIBILITY_ACK_999" as const;
+  readonly ack: AvailityRealtimeAck;
+  readonly controlNumber: string;
+  readonly correlationId: string;
+  readonly rawSoapRequest: string;
+  readonly rawSoapResponse: string;
+
+  constructor(opts: {
+    ack: AvailityRealtimeAck;
+    controlNumber: string;
+    correlationId: string;
+    rawSoapRequest: string;
+    rawSoapResponse: string;
+  }) {
+    super(`Availity returned a 999 functional acknowledgement (${opts.ack.status}): ${opts.ack.parsed.message}`);
+    this.name = "EligibilityAcknowledgementError";
+    this.ack = opts.ack;
+    this.controlNumber = opts.controlNumber;
+    this.correlationId = opts.correlationId;
+    this.rawSoapRequest = opts.rawSoapRequest;
+    this.rawSoapResponse = opts.rawSoapResponse;
+  }
 }
 
 export class AvailityRealtimeAdapter {
@@ -217,7 +304,9 @@ export class AvailityRealtimeAdapter {
       password: config.password,
     });
 
-    const rawSoapResponse = await postSoapEnvelope(config, built.envelope);
+    const rawSoapResponse = await postSoapEnvelope(config, built.envelope, {
+      correlationId: generated.payloadId,
+    });
     // Redact WS-Security credentials before returning the envelope to
     // callers — the returned object often ends up in audit logs and DB rows.
     const redactedSoapRequest = built.envelope
@@ -235,10 +324,38 @@ export class AvailityRealtimeAdapter {
 
     const x12Response = extractX12FromSoap(rawSoapResponse);
     if (!x12Response) {
-      throw new Error("Availity SOAP response did not contain an X12 271 payload.");
+      throw new Error("Availity SOAP response did not contain an X12 271 or 999 payload.");
     }
-    const parsed = parseAvaility271(x12Response);
+
+    // The payer is permitted by CAQH CORE Infrastructure Rule vEB.2.0
+    // §2 to return a 999 in place of a 271 when the 270 is structurally
+    // invalid. When that happens, the payload is NOT a 271 — we must
+    // refuse to parse it as one (which would otherwise downgrade a
+    // structural rejection into a silent "unknown" eligibility) and
+    // surface the ack as a typed error so callers persist the right
+    // ack_status on the originating transaction.
+    const looksLike999 =
+      parsedSoap.payloadType === "X12_999_Response_005010X231A1" ||
+      /\b(?:AK|IK)9\*/.test(x12Response) ||
+      /\bST\*999\*/.test(x12Response);
+    if (looksLike999) {
+      const parsed999 = parse999(x12Response);
+      throw new EligibilityAcknowledgementError({
+        ack: {
+          status: parsed999.summary,
+          hasErrors: parsed999.hasErrors,
+          rawPayload: x12Response,
+          parsed: parsed999,
+        },
+        controlNumber: generated.isaControlNumber,
+        correlationId: generated.payloadId,
+        rawSoapRequest: redactedSoapRequest,
+        rawSoapResponse,
+      });
+    }
+
     const fallbackStc = input.serviceTypeCodes?.[0] ?? "98";
+    const parsed = parseAvaility271(x12Response);
     const normalized = parsed271ToLegacyNormalized(parsed, fallbackStc);
 
     return {

@@ -27,7 +27,11 @@ export type CorePayloadType =
   | "X12_270_Request_005010X279A1"
   | "X12_271_Response_005010X279A1"
   | "X12_276_Request_005010X212"
-  | "X12_277_Response_005010X212";
+  | "X12_277_Response_005010X212"
+  // CAQH CORE Eligibility Infrastructure Rule vEB.2.0 §2 — the payer
+  // may answer a 270 with a 999 functional acknowledgement instead of
+  // a 271 when the inbound transaction set is structurally invalid.
+  | "X12_999_Response_005010X231A1";
 
 export type CoreProcessingMode = "RealTime" | "Batch";
 

@@ -84,6 +84,28 @@ export interface ParsedAAAError {
   rejectReason?: string | null;
 }
 
+/**
+ * High-level financial-responsibility category that an EB segment falls
+ * into per CAQH CORE Data Content Rule vEB.2.1 §1.3.2.5–§1.3.2.13.
+ * This is the "what is this benefit telling me" answer the UI needs.
+ */
+export type ParsedEB271Category =
+  | "active_coverage"
+  | "inactive_coverage"
+  | "copay"
+  | "coinsurance"
+  | "deductible"
+  | "out_of_pocket"
+  | "limitation"
+  | "exclusion"
+  | "non_covered"
+  | "max_coverage"
+  | "remaining_coverage"
+  | "telemedicine"
+  | "authorization"
+  | "benefit_description"
+  | "other";
+
 export interface ParsedEB271 {
   eligibilityCode: string;
   eligibilityCodeMeaning: string;
@@ -93,12 +115,55 @@ export interface ParsedEB271 {
   insuranceTypeCode?: string | null;
   planDescription?: string | null;
   timePeriodQualifier?: string | null;
+  /** Human-readable label for the time period qualifier (EB06). */
+  timePeriodQualifierMeaning?: string | null;
   monetaryAmount?: number | null;
   percent?: number | null;
   quantityQualifier?: string | null;
   quantity?: number | null;
+  /** EB11 — Authorization or Certification Indicator (Y/N/U). */
+  authorizationRequiredCode?: "Y" | "N" | "U" | null;
   inPlanNetwork?: "Y" | "N" | "W" | "U" | null;
   followingSegments?: string[][];
+
+  // Phase 5 additions — categorization + extracted hints.
+  /** CORE Data Content Rule categorization for this benefit segment. */
+  category?: ParsedEB271Category;
+  /** True when QTY/MSG context says this is a remaining balance, not a base figure. */
+  isRemaining?: boolean;
+  /** True when EB11 = "Y" OR an attached III/MSG segment signals auth is required. */
+  authorizationRequired?: boolean | null;
+  /** Detected tier label (e.g. "Tier 1") parsed from EB05 plan description or attached MSG. */
+  tier?: string | null;
+  /** True when this benefit, an attached III, or an attached MSG identifies telemedicine. */
+  telemedicineFlag?: boolean;
+  /** Concatenated MSG free-text attached to this benefit. */
+  messageText?: string | null;
+}
+
+/**
+ * Headline patient financial responsibility values rolled up from the
+ * per-segment `benefits` list. Provided as a convenience for callers
+ * that don't want to walk segments themselves; the full per-segment
+ * detail remains on `Parsed271Response.benefits`.
+ */
+export interface Parsed271Financials {
+  copayAmount: number | null;
+  coinsurancePercent: number | null;
+  deductibleTotal: number | null;
+  deductibleRemaining: number | null;
+  outOfPocketTotal: number | null;
+  outOfPocketRemaining: number | null;
+  maxCoverageAmount: number | null;
+  maxCoveragePeriod: string | null;
+  remainingCoverageAmount: number | null;
+  remainingCoveragePeriod: string | null;
+  /** True when any returned benefit requires authorization. */
+  authorizationRequired: boolean | null;
+  /** True when any returned benefit indicates telemedicine is covered. */
+  telemedicineCovered: boolean | null;
+  /** First detected tier label across returned benefits, if any. */
+  benefitTier: string | null;
 }
 
 export interface Parsed271Response {
@@ -116,6 +181,11 @@ export interface Parsed271Response {
   aaaErrors: ParsedAAAError[];
   benefits: ParsedEB271[];
   messages: string[];
+  /**
+   * Headline financial-responsibility rollup. Computed from `benefits`
+   * per CORE Data Content Rule vEB.2.1 §1.3.2.5–§1.3.2.13.
+   */
+  financials?: Parsed271Financials;
   isaControlNumber?: string | null;
   gsControlNumber?: string | null;
   stControlNumber?: string | null;

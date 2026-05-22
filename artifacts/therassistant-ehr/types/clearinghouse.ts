@@ -66,9 +66,79 @@ export interface EligibilityCheck {
   deductible_remaining?: number | null;
   coinsurance_percent?: number | null;
   out_of_pocket_remaining?: number | null;
+  // Phase 5 — CAQH CORE Data Content Rule §1.3.2.5–§1.3.2.13.
+  out_of_pocket_total?: number | null;
+  telemedicine_covered?: boolean | null;
+  authorization_required?: boolean | null;
+  benefit_tier?: string | null;
+  max_coverage_amount?: number | null;
+  max_coverage_period?: string | null;
+  remaining_coverage_amount?: number | null;
+  remaining_coverage_period?: string | null;
   raw_benefits?: Record<string, unknown>;
   checked_at?: string | null;
   created_at?: string | null;
+}
+
+/**
+ * Row shape for `public.eligibility_benefit_segments`. Matches the
+ * legacy schema introduced by `20260505030000_office_ally_response_schemas.sql`
+ * plus the Phase 5 categorization columns added by
+ * `20260522020000_eligibility_financial_responsibility.sql`. Both the
+ * X12 path (ClearinghouseService) and the Coverages JSON path
+ * (AvailityJsonApiAdapter) write into this table.
+ */
+export interface EligibilityBenefitSegment {
+  id?: string;
+  organization_id: string;
+  eligibility_check_id: string;
+  client_id?: string | null;
+  payer_id?: string | null;
+  payer_name?: string | null;
+  service_type_code?: string | null;
+  service_type_description?: string | null;
+  benefit_information_code?: string | null;
+  benefit_description?: string | null;
+  coverage_level_code?: string | null;
+  insurance_type_code?: string | null;
+  plan_coverage_description?: string | null;
+  time_period_qualifier?: string | null;
+  monetary_amount?: number | null;
+  percent_amount?: number | null;
+  quantity_qualifier?: string | null;
+  quantity?: number | null;
+  authorization_or_certification_required?: boolean | null;
+  in_plan_network_indicator?: string | null;
+  eligibility_date_from?: string | null;
+  eligibility_date_to?: string | null;
+  messages?: unknown[];
+  raw_eb_segment?: Record<string, unknown>;
+  // Phase 5 categorization columns (CORE Data Content Rule §1.3.2.5–§1.3.2.13).
+  segment_index?: number | null;
+  category?:
+    | "active_coverage"
+    | "inactive_coverage"
+    | "copay"
+    | "coinsurance"
+    | "deductible"
+    | "out_of_pocket"
+    | "limitation"
+    | "exclusion"
+    | "non_covered"
+    | "max_coverage"
+    | "remaining_coverage"
+    | "telemedicine"
+    | "authorization"
+    | "benefit_description"
+    | "other"
+    | null;
+  is_remaining?: boolean | null;
+  is_in_network?: boolean | null;
+  benefit_tier?: string | null;
+  telemedicine_flag?: boolean | null;
+  message_text?: string | null;
+  created_at?: string | null;
+  archived_at?: string | null;
 }
 
 export interface ClaimStatusInquiry {
@@ -137,6 +207,29 @@ export interface EligibilityRequestInput {
   providerNpi?: string | null;
 }
 
+export interface NormalizedBenefitSegment {
+  segmentIndex: number;
+  category: EligibilityBenefitSegment["category"];
+  isRemaining: boolean;
+  isInNetwork?: boolean | null;
+  eligibilityCode: string;
+  coverageLevelCode?: string | null;
+  serviceTypeCode?: string | null;
+  insuranceTypeCode?: string | null;
+  planCoverageDescription?: string | null;
+  timePeriodQualifier?: string | null;
+  monetaryAmount?: number | null;
+  percent?: number | null;
+  quantityQualifier?: string | null;
+  quantity?: number | null;
+  authorizationRequired?: boolean | null;
+  inPlanNetworkCode?: string | null;
+  benefitTier?: string | null;
+  telemedicineFlag?: boolean | null;
+  messageText?: string | null;
+  raw?: Record<string, unknown>;
+}
+
 export interface EligibilityResponseNormalized {
   status: "active" | "inactive" | "not_found" | "error" | "unknown";
   payerName?: string | null;
@@ -151,6 +244,18 @@ export interface EligibilityResponseNormalized {
   deductibleRemaining?: number | null;
   coinsurancePercent?: number | null;
   outOfPocketRemaining?: number | null;
+  // Phase 5 — additional financial-responsibility values from
+  // CAQH CORE Data Content Rule vEB.2.1 §1.3.2.5–§1.3.2.13.
+  outOfPocketTotal?: number | null;
+  telemedicineCovered?: boolean | null;
+  authorizationRequired?: boolean | null;
+  benefitTier?: string | null;
+  maxCoverageAmount?: number | null;
+  maxCoveragePeriod?: string | null;
+  remainingCoverageAmount?: number | null;
+  remainingCoveragePeriod?: string | null;
+  /** Per-benefit normalized rows to persist into eligibility_benefit_segments. */
+  benefitSegments?: NormalizedBenefitSegment[];
   serviceTypeCode?: string | null;
   /**
    * Coverage type / level returned by the payer (e.g. "individual", "family",

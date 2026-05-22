@@ -242,6 +242,15 @@ export class ClearinghouseService {
       deductible_remaining: result.normalized.deductibleRemaining ?? null,
       coinsurance_percent: result.normalized.coinsurancePercent ?? null,
       out_of_pocket_remaining: result.normalized.outOfPocketRemaining ?? null,
+      // Phase 5 — CAQH CORE Data Content Rule §1.3.2.5–§1.3.2.13.
+      out_of_pocket_total: result.normalized.outOfPocketTotal ?? null,
+      telemedicine_covered: result.normalized.telemedicineCovered ?? null,
+      authorization_required: result.normalized.authorizationRequired ?? null,
+      benefit_tier: result.normalized.benefitTier ?? null,
+      max_coverage_amount: result.normalized.maxCoverageAmount ?? null,
+      max_coverage_period: result.normalized.maxCoveragePeriod ?? null,
+      remaining_coverage_amount: result.normalized.remainingCoverageAmount ?? null,
+      remaining_coverage_period: result.normalized.remainingCoveragePeriod ?? null,
       coverage_level: result.normalized.coverageLevel ?? null,
       raw_benefits: result.normalized.rawBenefits ?? {},
       checked_at: new Date().toISOString(),
@@ -255,6 +264,62 @@ export class ClearinghouseService {
 
     if (eligibilityResp.error) {
       throw new Error(eligibilityResp.error.message);
+    }
+
+    // Phase 5: persist normalized per-segment benefit rows so the UI and
+    // analytics can drill into every benefit the payer returned. Column
+    // names align with the legacy schema (introduced by the Office Ally
+    // migration) plus the Phase 5 categorization additions, so the X12
+    // path and the Coverages JSON path (AvailityJsonApiAdapter) write
+    // into the same canonical table.
+    const benefitSegments = result.normalized.benefitSegments ?? [];
+    if (benefitSegments.length > 0 && eligibilityResp.data?.id) {
+      const checkId = String(eligibilityResp.data.id);
+      const segmentRows = benefitSegments.map((s) => ({
+        eligibility_check_id: checkId,
+        organization_id: organizationId,
+        client_id: patient.id,
+        payer_id: result.normalized.payerId ?? null,
+        payer_name: result.normalized.payerName ?? null,
+        service_type_code: s.serviceTypeCode ?? null,
+        benefit_information_code: s.eligibilityCode,
+        benefit_description:
+          (s.raw && typeof s.raw === "object" && "eligibilityCodeMeaning" in (s.raw as Record<string, unknown>)
+            ? String((s.raw as Record<string, unknown>).eligibilityCodeMeaning)
+            : null) ?? null,
+        coverage_level_code: s.coverageLevelCode ?? null,
+        insurance_type_code: s.insuranceTypeCode ?? null,
+        plan_coverage_description: s.planCoverageDescription ?? null,
+        time_period_qualifier: s.timePeriodQualifier ?? null,
+        monetary_amount: s.monetaryAmount ?? null,
+        percent_amount: s.percent ?? null,
+        quantity_qualifier: s.quantityQualifier ?? null,
+        quantity: s.quantity ?? null,
+        authorization_or_certification_required: s.authorizationRequired ?? null,
+        in_plan_network_indicator: s.inPlanNetworkCode ?? null,
+        messages: s.messageText ? [s.messageText] : [],
+        raw_eb_segment: s.raw ?? {},
+        // Phase 5 categorization columns.
+        segment_index: s.segmentIndex,
+        category: s.category,
+        is_remaining: s.isRemaining,
+        is_in_network: s.isInNetwork ?? null,
+        benefit_tier: s.benefitTier ?? null,
+        telemedicine_flag: s.telemedicineFlag ?? null,
+        message_text: s.messageText ?? null,
+      }));
+      const segResp = await supabase
+        .from("eligibility_benefit_segments")
+        .insert(segmentRows);
+      if (segResp.error) {
+        // Non-fatal: headline columns already landed on eligibility_checks.
+        // Log and continue so a benefit-segments schema gap doesn't break
+        // the user-facing eligibility flow.
+        console.warn(
+          "[ClearinghouseService] eligibility_benefit_segments insert failed:",
+          segResp.error.message,
+        );
+      }
     }
 
     await insertEvent({

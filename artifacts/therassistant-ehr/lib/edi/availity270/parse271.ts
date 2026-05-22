@@ -1,3 +1,4 @@
+import { annotateBenefits } from "./categorizeBenefits";
 import type {
   Parsed271Response,
   ParsedAAAError,
@@ -274,7 +275,14 @@ export function parseAvaility271(raw: string): Parsed271Response {
           percent: toNumberOrNull(seg[8]),
           quantityQualifier: seg[9] || null,
           quantity: toNumberOrNull(seg[10]),
+          authorizationRequiredCode: ((): "Y" | "N" | "U" | null => {
+            // EB11 — Authorization or Certification Indicator.
+            const v = seg[11];
+            if (v === "Y" || v === "N" || v === "U") return v;
+            return null;
+          })(),
           inPlanNetwork: ((): "Y" | "N" | "W" | "U" | null => {
+            // EB12 — In Plan Network Indicator.
             const v = seg[12];
             if (v === "Y" || v === "N" || v === "W" || v === "U") return v;
             return null;
@@ -297,6 +305,14 @@ export function parseAvaility271(raw: string): Parsed271Response {
         break;
       }
       case "REF":
+      case "III":
+      case "HSD":
+      case "LS":
+      case "LE":
+        // III (Healthcare Information Codes), HSD (Health Services
+        // Delivery), and REF (Reference Information) all qualify an
+        // in-flight EB and feed downstream categorization (telemedicine
+        // detection, prior-auth signal, tiered benefit context).
         if (currentEB) {
           currentEB.followingSegments = currentEB.followingSegments ?? [];
           currentEB.followingSegments.push(seg);
@@ -330,6 +346,11 @@ export function parseAvaility271(raw: string): Parsed271Response {
     }
   }
   flushBenefit();
+
+  // Phase 5: categorize each EB segment and produce a headline
+  // financial-responsibility rollup per CORE Data Content Rule
+  // §1.3.2.5–§1.3.2.13. Mutates each benefit in place.
+  result.financials = annotateBenefits(result.benefits);
 
   // Derive coarse status
   if (result.aaaErrors.length > 0) {

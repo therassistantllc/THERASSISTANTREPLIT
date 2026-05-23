@@ -18,6 +18,7 @@ import { parseCompositePostedPaymentId as parseCompositeId } from "../_composite
 interface Body {
   organizationId?: string;
   reason?: string;
+  dryRun?: boolean;
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -40,6 +41,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       organizationId,
       target,
       reason: String(body.reason ?? "").trim(),
+      dryRun: body.dryRun === true,
       actor,
     });
     if (!result.ok) {

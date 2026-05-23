@@ -450,6 +450,43 @@ function useDetail(rowId: string, orgId: string) {
 // Refund modal
 // ─────────────────────────────────────────────────────────────────────────────
 
+interface RefundPreviewShape {
+  source: { kind: string; id: string; label: string };
+  refundType: "insurance" | "patient";
+  amount: number;
+  paymentTotalImpact: number;
+  priorRefundTotal: number;
+  priorRecoupTotal: number;
+  remainingRefundableBefore: number;
+  remainingRefundableAfter: number;
+  initialRefundStatus: "pending" | "issued";
+  compensatingLedgerEntry: {
+    entryType: string;
+    amount: number;
+    description: string;
+  } | null;
+  patientInvoice: {
+    invoiceId: string;
+    currentPaidAmount: number;
+    paidAmountDelta: number;
+    newPaidAmount: number;
+    newBalanceAmount: number;
+    newStatus: string;
+  } | null;
+  stripeRefund: {
+    wouldFire: boolean;
+    reason: string;
+    chargeId: string | null;
+    paymentIntentId: string | null;
+    amountCents: number;
+  } | null;
+  workqueueItem: {
+    wouldOpen: boolean;
+    queueType: string | null;
+    title: string | null;
+  };
+}
+
 function RefundModal({
   row,
   orgId,
@@ -471,6 +508,7 @@ function RefundModal({
   const [reason, setReason] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<RefundPreviewShape | null>(null);
   const [result, setResult] = useState<{
     refundStatus: "pending" | "issued" | "failed" | "cancelled" | null;
     stripeRefundId: string | null;
@@ -493,14 +531,8 @@ function RefundModal({
     return null;
   }, [detail, amountNum, remaining, reason]);
 
-  const submit = useCallback(async () => {
-    if (clientValidation) {
-      setError(clientValidation);
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
+  const callApi = useCallback(
+    async (dryRun: boolean) => {
       const r = await fetch(
         `/api/billing/payments/posted/${encodeURIComponent(row.id)}/refund`,
         {
@@ -511,6 +543,7 @@ function RefundModal({
             refundType,
             amount: amountNum,
             reason: reason.trim(),
+            dryRun,
           }),
         },
       );
@@ -520,6 +553,36 @@ function RefundModal({
           (j?.errors?.[0]?.message as string | undefined) ?? j?.error ?? "Refund failed";
         throw new Error(msg);
       }
+      return j;
+    },
+    [row.id, orgId, refundType, amountNum, reason],
+  );
+
+  const requestPreview = useCallback(async () => {
+    if (clientValidation) {
+      setError(clientValidation);
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const j = await callApi(true);
+      if (!j.preview) throw new Error("Server did not return a preview");
+      setPreview(j.preview as RefundPreviewShape);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Preview failed";
+      setError(msg);
+      onError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [clientValidation, callApi, onError]);
+
+  const confirmLive = useCallback(async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const j = await callApi(false);
       setResult({
         refundStatus: j.refundStatus ?? null,
         stripeRefundId: j.stripeRefundId ?? null,
@@ -535,7 +598,7 @@ function RefundModal({
     } finally {
       setSubmitting(false);
     }
-  }, [clientValidation, row.id, orgId, refundType, amountNum, reason, onError]);
+  }, [callApi, onError]);
 
   if (result) {
     const status = result.refundStatus ?? "pending";
@@ -589,6 +652,94 @@ function RefundModal({
             style={primaryBtn}
           >
             Done
+          </button>
+        </div>
+      </Modal>
+    );
+  }
+
+  if (preview) {
+    return (
+      <Modal title="Confirm refund" onClose={onClose} width={580}>
+        <ErrorBanner message={error} />
+        <div
+          style={{
+            padding: 10,
+            background: "#eff6ff",
+            border: "1px solid #bfdbfe",
+            color: "#1e3a8a",
+            borderRadius: 6,
+            fontSize: 13,
+            marginBottom: 12,
+          }}
+        >
+          <strong>Preview — nothing has been written yet.</strong> Review the impact below,
+          then confirm to actually issue this refund.
+        </div>
+        <InfoLine label="Source" value={preview.source.label} />
+        <InfoLine label="Refund type" value={preview.refundType} />
+        <InfoLine label="Amount" value={fmtMoney(preview.amount)} />
+        <InfoLine
+          label="Refundable balance"
+          value={`${fmtMoney(preview.remainingRefundableBefore)} → ${fmtMoney(preview.remainingRefundableAfter)}`}
+        />
+        <InfoLine
+          label="Initial refund status"
+          value={
+            preview.initialRefundStatus === "issued"
+              ? "issued (no follow-up work item)"
+              : "pending (work item will be opened)"
+          }
+        />
+
+        <StripePreviewLine stripe={preview.stripeRefund} amount={preview.amount} />
+
+        {preview.compensatingLedgerEntry ? (
+          <div style={{ marginTop: 10, fontSize: 13, color: "#374151" }}>
+            <strong>Compensating ledger entry:</strong>
+            <ul style={{ margin: "4px 0 0 18px" }}>
+              <li>
+                {preview.compensatingLedgerEntry.entryType}{" "}
+                {fmtMoney(preview.compensatingLedgerEntry.amount)} —{" "}
+                {preview.compensatingLedgerEntry.description}
+              </li>
+            </ul>
+          </div>
+        ) : (
+          <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
+            No compensating ledger entry will be posted at this step.
+          </div>
+        )}
+
+        {preview.patientInvoice ? (
+          <div style={{ marginTop: 10, fontSize: 13, color: "#374151" }}>
+            <strong>Patient invoice impact:</strong>
+            <ul style={{ margin: "4px 0 0 18px" }}>
+              <li>
+                paid_amount {fmtMoney(preview.patientInvoice.currentPaidAmount)} →{" "}
+                {fmtMoney(preview.patientInvoice.newPaidAmount)} (Δ{" "}
+                {fmtMoney(preview.patientInvoice.paidAmountDelta)})
+              </li>
+              <li>
+                new balance {fmtMoney(preview.patientInvoice.newBalanceAmount)}, status{" "}
+                <code>{preview.patientInvoice.newStatus}</code>
+              </li>
+            </ul>
+          </div>
+        ) : null}
+
+        {preview.workqueueItem.wouldOpen ? (
+          <div style={{ marginTop: 10, fontSize: 12, color: "#92400e" }}>
+            A workqueue follow-up will be opened: {preview.workqueueItem.title ?? "(no title)"}
+          </div>
+        ) : null}
+
+        <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={() => setPreview(null)} style={secondaryBtn} disabled={submitting}>
+            Back
+          </button>
+          <button onClick={confirmLive} style={primaryBtn} disabled={submitting}>
+            {submitting ? "Issuing…" : "Confirm & issue refund"}
           </button>
         </div>
       </Modal>
@@ -661,11 +812,11 @@ function RefundModal({
               Cancel
             </button>
             <button
-              onClick={submit}
+              onClick={requestPreview}
               style={primaryBtn}
               disabled={submitting || Boolean(clientValidation)}
             >
-              {submitting ? "Submitting…" : "Issue refund"}
+              {submitting ? "Loading preview…" : "Preview refund"}
             </button>
           </div>
         </>
@@ -674,9 +825,89 @@ function RefundModal({
   );
 }
 
+function StripePreviewLine({
+  stripe,
+  amount,
+}: {
+  stripe: RefundPreviewShape["stripeRefund"];
+  amount: number;
+}) {
+  if (!stripe) return null;
+  if (stripe.wouldFire) {
+    const target = stripe.chargeId
+      ? `charge ${stripe.chargeId}`
+      : stripe.paymentIntentId
+        ? `payment intent ${stripe.paymentIntentId}`
+        : "the originating charge";
+    return (
+      <div
+        style={{
+          marginTop: 10,
+          padding: 8,
+          background: "#ecfdf5",
+          color: "#065f46",
+          border: "1px solid #a7f3d0",
+          borderRadius: 6,
+          fontSize: 13,
+        }}
+      >
+        <strong>Stripe will issue {fmtMoney(amount)}</strong> to {target}.
+      </div>
+    );
+  }
+  const why: Record<string, string> = {
+    no_stripe_key: "no STRIPE_SECRET_KEY is configured",
+    no_charge_or_intent: "no Stripe charge or payment intent is linked to this payment",
+    not_applicable: "this is an insurance refund (Stripe does not apply)",
+    already_issued: "the caller marked this refund as already issued externally",
+  };
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: 8,
+        background: "#fffbeb",
+        color: "#92400e",
+        border: "1px solid #fde68a",
+        borderRadius: 6,
+        fontSize: 13,
+      }}
+    >
+      <strong>Stripe will NOT fire</strong> because {why[stripe.reason] ?? stripe.reason}.
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Reverse modal
 // ─────────────────────────────────────────────────────────────────────────────
+
+interface ReversalPreviewShape {
+  source: { kind: string; id: string; label: string };
+  paymentTotalImpact: number;
+  ledgerReversalEntries: Array<{
+    entryType: string;
+    amount: number;
+    groupCode: string | null;
+    reasonCode: string | null;
+    description: string;
+  }>;
+  claimStatusChange: { claimId: string; from: string; to: string } | null;
+  patientInvoice: {
+    invoiceId: string;
+    currentPaidAmount: number;
+    paidAmountDelta: number;
+    newPaidAmount: number;
+    newBalanceAmount: number;
+    newStatus: string;
+  } | null;
+  autoPatientRefund: {
+    amount: number;
+    stripeChargeId: string | null;
+    method: string;
+  } | null;
+  workqueueItemsToClose: number;
+}
 
 function ReverseModal({
   row,
@@ -696,13 +927,7 @@ function ReverseModal({
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const ledgerCount = detail
-    ? // ledgerEntries isn't typed; we surface refunds/recoupments + invoice
-      // impact in the confirmation copy instead, which is what the biller
-      // actually needs to see.
-      0
-    : 0;
+  const [preview, setPreview] = useState<ReversalPreviewShape | null>(null);
 
   const downstreamLines: string[] = useMemo(() => {
     if (!detail) return [];
@@ -734,20 +959,14 @@ function ReverseModal({
     return lines;
   }, [detail, row.source]);
 
-  const submit = useCallback(async () => {
-    if (!reason.trim()) {
-      setError("A reversal reason is required.");
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
+  const callApi = useCallback(
+    async (dryRun: boolean) => {
       const r = await fetch(
         `/api/billing/payments/posted/${encodeURIComponent(row.id)}/reverse`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ organizationId: orgId, reason: reason.trim() }),
+          body: JSON.stringify({ organizationId: orgId, reason: reason.trim(), dryRun }),
         },
       );
       const j = await r.json();
@@ -756,6 +975,36 @@ function ReverseModal({
           (j?.errors?.[0]?.message as string | undefined) ?? j?.error ?? "Reversal failed";
         throw new Error(msg);
       }
+      return j;
+    },
+    [row.id, orgId, reason],
+  );
+
+  const requestPreview = useCallback(async () => {
+    if (!reason.trim()) {
+      setError("A reversal reason is required.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const j = await callApi(true);
+      if (!j.preview) throw new Error("Server did not return a preview");
+      setPreview(j.preview as ReversalPreviewShape);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Preview failed";
+      setError(msg);
+      onError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [reason, callApi, onError]);
+
+  const confirmLive = useCallback(async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const j = await callApi(false);
       onDone(
         j.alreadyReversed
           ? "Payment was already reversed."
@@ -768,7 +1017,157 @@ function ReverseModal({
     } finally {
       setSubmitting(false);
     }
-  }, [reason, row.id, orgId, onDone, onError]);
+  }, [callApi, onDone, onError]);
+
+  if (preview) {
+    return (
+      <Modal title="Confirm reversal" onClose={onClose} width={600}>
+        <ErrorBanner message={error} />
+        <div
+          style={{
+            padding: 10,
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            color: "#991b1b",
+            borderRadius: 6,
+            fontSize: 13,
+            marginBottom: 12,
+          }}
+        >
+          <strong>Preview — no rows have been written yet.</strong> The live reverse will
+          post the entries below and restore parent balances.
+        </div>
+        <InfoLine label="Source" value={preview.source.label} />
+        <InfoLine label="Original amount" value={fmtMoney(preview.paymentTotalImpact)} />
+
+        {preview.claimStatusChange ? (
+          <InfoLine
+            label="Claim status change"
+            value={
+              <>
+                {preview.claimStatusChange.claimId.slice(0, 8)}:{" "}
+                <code>{preview.claimStatusChange.from}</code> →{" "}
+                <code>{preview.claimStatusChange.to}</code>
+              </>
+            }
+          />
+        ) : null}
+
+        <div style={{ marginTop: 10, fontSize: 13, color: "#374151" }}>
+          <strong>
+            Compensating ledger entries to be written ({preview.ledgerReversalEntries.length}):
+          </strong>
+          {preview.ledgerReversalEntries.length === 0 ? (
+            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+              No prior ledger entries on this payment — nothing to mirror.
+            </div>
+          ) : (
+            <ul style={{ margin: "4px 0 0 18px", maxHeight: 160, overflowY: "auto" }}>
+              {preview.ledgerReversalEntries.map((e, i) => (
+                <li key={i} style={{ fontSize: 12 }}>
+                  {e.entryType} {fmtMoney(e.amount)}
+                  {e.groupCode ? ` [${e.groupCode}/${e.reasonCode ?? "?"}]` : ""} —{" "}
+                  {e.description}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {preview.patientInvoice ? (
+          <div style={{ marginTop: 10, fontSize: 13, color: "#374151" }}>
+            <strong>Patient invoice impact:</strong>
+            <ul style={{ margin: "4px 0 0 18px" }}>
+              <li>
+                paid_amount {fmtMoney(preview.patientInvoice.currentPaidAmount)} →{" "}
+                {fmtMoney(preview.patientInvoice.newPaidAmount)} (Δ{" "}
+                {fmtMoney(preview.patientInvoice.paidAmountDelta)})
+              </li>
+              <li>
+                new balance {fmtMoney(preview.patientInvoice.newBalanceAmount)}, status{" "}
+                <code>{preview.patientInvoice.newStatus}</code>
+              </li>
+            </ul>
+          </div>
+        ) : null}
+
+        {preview.autoPatientRefund ? (
+          <div
+            style={{
+              marginTop: 10,
+              padding: 8,
+              background: "#ecfdf5",
+              color: "#065f46",
+              border: "1px solid #a7f3d0",
+              borderRadius: 6,
+              fontSize: 13,
+            }}
+          >
+            <strong>
+              Stripe will issue {fmtMoney(preview.autoPatientRefund.amount)}
+            </strong>{" "}
+            {preview.autoPatientRefund.stripeChargeId
+              ? `to charge ${preview.autoPatientRefund.stripeChargeId}`
+              : `(method: ${preview.autoPatientRefund.method})`}{" "}
+            as a pending patient refund.
+          </div>
+        ) : row.source === "patient" ? (
+          <div
+            style={{
+              marginTop: 10,
+              padding: 8,
+              background: "#fffbeb",
+              color: "#92400e",
+              border: "1px solid #fde68a",
+              borderRadius: 6,
+              fontSize: 13,
+            }}
+          >
+            <strong>Stripe will NOT fire</strong> — no Stripe charge is linked, or amount is
+            zero.
+          </div>
+        ) : null}
+
+        {preview.workqueueItemsToClose > 0 ? (
+          <div style={{ marginTop: 10, fontSize: 12, color: "#92400e" }}>
+            {preview.workqueueItemsToClose} open workqueue item(s) on this payment will be
+            resolved.
+          </div>
+        ) : null}
+
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 13,
+            marginTop: 12,
+            color: "#374151",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.target.checked)}
+          />
+          I understand this reverses the financial impact and notifies downstream queues.
+        </label>
+
+        <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={() => setPreview(null)} style={secondaryBtn} disabled={submitting}>
+            Back
+          </button>
+          <button
+            onClick={confirmLive}
+            style={dangerBtn}
+            disabled={submitting || !confirmed}
+          >
+            {submitting ? "Reversing…" : "Confirm & reverse payment"}
+          </button>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal title="Reverse posted payment" onClose={onClose}>
@@ -791,14 +1190,14 @@ function ReverseModal({
             }}
           >
             <strong>Destructive action.</strong> Reversing writes paired negative ledger
-            entries and restores parent balances. This cannot be silently undone.
+            entries and restores parent balances. Review the preview before confirming.
           </div>
           <InfoLine label="Source" value={row.source} />
           <InfoLine label="Original amount" value={fmtMoney(row.amount)} />
           <InfoLine label="Current status" value={row.postingStatus} />
           {downstreamLines.length > 0 ? (
             <div style={{ marginTop: 10, fontSize: 13, color: "#374151" }}>
-              <strong>Downstream effects:</strong>
+              <strong>Likely downstream effects:</strong>
               <ul style={{ margin: "4px 0 0 18px" }}>
                 {downstreamLines.map((l, i) => (
                   <li key={i}>{l}</li>
@@ -806,7 +1205,6 @@ function ReverseModal({
               </ul>
             </div>
           ) : null}
-          {ledgerCount > 0 ? null : null}
 
           <label style={{ ...fieldLabel, marginTop: 14 }}>
             <span>Reversal reason (required)</span>
@@ -818,34 +1216,17 @@ function ReverseModal({
               placeholder="Why is this payment being reversed?"
             />
           </label>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 13,
-              marginTop: 8,
-              color: "#374151",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={confirmed}
-              onChange={(e) => setConfirmed(e.target.checked)}
-            />
-            I understand this reverses the financial impact and notifies downstream queues.
-          </label>
 
           <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button onClick={onClose} style={secondaryBtn} disabled={submitting}>
               Cancel
             </button>
             <button
-              onClick={submit}
-              style={dangerBtn}
-              disabled={submitting || !confirmed || !reason.trim()}
+              onClick={requestPreview}
+              style={primaryBtn}
+              disabled={submitting || !reason.trim()}
             >
-              {submitting ? "Reversing…" : "Reverse payment"}
+              {submitting ? "Loading preview…" : "Preview reversal"}
             </button>
           </div>
         </>

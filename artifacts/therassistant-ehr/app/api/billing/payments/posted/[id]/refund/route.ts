@@ -24,6 +24,7 @@ interface Body {
   reason?: string;
   stripeRefundId?: string | null;
   alreadyIssued?: boolean;
+  dryRun?: boolean;
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -52,6 +53,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       reason: String(body.reason ?? "").trim(),
       stripeRefundId: body.stripeRefundId ?? null,
       alreadyIssued: body.alreadyIssued === true,
+      dryRun: body.dryRun === true,
       actor,
     });
     if (!result.ok) {

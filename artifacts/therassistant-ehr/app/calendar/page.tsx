@@ -1,5 +1,5 @@
-import ScheduleClient from "./ScheduleClient";
+import MonthCalendarClient from "./MonthCalendarClient";
 
 export default function CalendarPage() {
-  return <ScheduleClient />;
+  return <MonthCalendarClient />;
 }

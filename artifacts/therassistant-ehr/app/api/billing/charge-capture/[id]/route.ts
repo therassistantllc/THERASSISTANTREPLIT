@@ -48,8 +48,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
 
     let payer: { id: string; name: string; payerType: string | null } | null = null;
     if (policy?.payer_id) {
-      const { data: p } = await supabase.from("payers").select("id, payer_name, payer_type").eq("id", policy.payer_id).maybeSingle();
-      if (p) payer = { id: text(p.id), name: text(p.payer_name), payerType: (p.payer_type as string) ?? null };
+      const { data: p } = await supabase.from("insurance_payers").select("id, payer_name, payer_category").eq("id", policy.payer_id).maybeSingle();
+      if (p) payer = { id: text(p.id), name: text(p.payer_name), payerType: (p.payer_category as string) ?? null };
     }
 
     const serviceLines = Array.isArray(charge.service_lines) ? (charge.service_lines as DbRow[]) : [];

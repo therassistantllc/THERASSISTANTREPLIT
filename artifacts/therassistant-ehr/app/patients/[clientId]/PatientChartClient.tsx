@@ -1381,6 +1381,7 @@ export default function PatientChartClient({
             plan_name: p.plan_name ?? null,
             policy_number: p.policy_number ?? null,
             priority: p.priority ?? null,
+            payer_name: p.payer_name ?? null,
           }))}
         />
       </section>

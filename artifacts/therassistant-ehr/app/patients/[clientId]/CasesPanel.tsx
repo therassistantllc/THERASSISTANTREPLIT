@@ -39,6 +39,7 @@ interface PolicyOption {
   plan_name?: string | null;
   policy_number?: string | null;
   priority?: string | null;
+  payer_name?: string | null;
 }
 
 const CASE_TYPE_LABELS: Record<CaseType, string> = {
@@ -445,7 +446,7 @@ function AttachPolicyForm({
       <select value={policyId} onChange={(e) => setPolicyId(e.target.value)} disabled={disabled}>
         {availablePolicies.map((p) => (
           <option key={p.id} value={p.id}>
-            {p.plan_name ?? "Policy"}
+            {p.payer_name ?? p.plan_name ?? "Policy"}
             {p.policy_number ? ` (#${p.policy_number})` : ""}
           </option>
         ))}

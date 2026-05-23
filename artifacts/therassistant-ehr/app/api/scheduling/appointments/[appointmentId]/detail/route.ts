@@ -138,9 +138,11 @@ export async function GET(
     let payer: Row | null = null;
     if (primaryPolicy?.payer_id) {
       const { data: payerRow } = await supabase
-        .from("payers")
-        .select("id, name, payer_id_code")
+        .from("insurance_payers")
+        .select("id, payer_name, payer_id")
+        .eq("organization_id", organizationId)
         .eq("id", primaryPolicy.payer_id)
+        .is("archived_at", null)
         .maybeSingle();
       payer = (payerRow ?? null) as Row | null;
     }
@@ -234,8 +236,8 @@ export async function GET(
               policyNumber: primaryPolicy.policy_number ?? null,
               priority: primaryPolicy.priority ?? null,
               payerId: primaryPolicy.payer_id ?? null,
-              payerName: payer?.name ?? null,
-              payerCode: payer?.payer_id_code ?? null,
+              payerName: payer?.payer_name ?? null,
+              payerCode: payer?.payer_id ?? null,
             }
           : null,
       },

@@ -580,9 +580,13 @@ export default function MonthCalendarClient() {
                       <>
                         <div className={styles.sectionValue}>
                           {detail.insurance.primaryPolicy.payerName ??
-                            detail.insurance.primaryPolicy.planName ??
-                            "Primary policy"}
+                            "Unknown payer"}
                         </div>
+                        {detail.insurance.primaryPolicy.planName ? (
+                          <div className={styles.sectionMuted}>
+                            Plan: {detail.insurance.primaryPolicy.planName}
+                          </div>
+                        ) : null}
                         <div className={styles.sectionMuted}>
                           Member ID:{" "}
                           {detail.insurance.primaryPolicy.policyNumber ?? "—"}

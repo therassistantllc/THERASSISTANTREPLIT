@@ -12,8 +12,9 @@
 | Outlook OAuth callback | **Built (new in this change)** | `supabase/functions/outlook-oauth-callback/index.ts` |
 | Outlook poller | **Built (new in this change)** | `supabase/functions/outlook-poll-inbox/index.ts` (Microsoft Graph delta queries) |
 | `outlook_oauth_tokens` table | **Built (new migration)** | `supabase/migrations/20260521000000_outlook_oauth_tokens.sql` |
-| Email list & detail UI | **Built** | `app/email/EmailClient.tsx` — Outlook button now enabled. |
 | Inbound webhook (Resend delivery status) | **Built** | `app/api/intake/email-webhook/route.ts` |
+
+> Note: The standalone Email page (`app/email`) and its `/api/email/*` routes have been removed. Inbound patient email now surfaces through the Inbox / workqueue flow; the Gmail/Outlook OAuth + poller functions above continue to feed it.
 
 ## Architecture note (please read)
 

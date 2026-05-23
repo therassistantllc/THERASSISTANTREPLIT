@@ -67,6 +67,47 @@ export async function intakeEra835(input: IntakeEra835Input): Promise<IntakeEra8
   }
 
   const parsed = parseEra835(input.rawContent);
+
+  // ── Duplicate-ERA detection (Task #107 foundation). ─────────────────────
+  // Pre-check for a same-org batch with identical (payer, EFT#, payment date,
+  // total amount). The DB has a partial unique index as a backstop, but
+  // supabase-js cannot ON CONFLICT a partial index (see memory note), so we
+  // must check explicitly.
+  if (
+    parsed.payerIdentifier &&
+    parsed.traceNumber &&
+    parsed.paymentDate &&
+    parsed.paymentAmount > 0
+  ) {
+    const { data: existingDup } = await supabase
+      .from("era_import_batches")
+      .select("id, file_name, created_at")
+      .eq("organization_id", input.organizationId)
+      .eq("payer_identifier", parsed.payerIdentifier)
+      .eq("eft_or_check_number", parsed.traceNumber)
+      .eq("payment_date", parsed.paymentDate)
+      .eq("total_payment_amount", parsed.paymentAmount)
+      .is("archived_at", null)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingDup?.id) {
+      return {
+        ok: false,
+        batchId: String(existingDup.id),
+        totalClaims: parsed.claims.length,
+        matchedClaims: 0,
+        unmatchedClaims: parsed.claims.length,
+        errors: [
+          {
+            field: "duplicate_era",
+            message: `Duplicate ERA detected: an import batch with the same payer (${parsed.payerName ?? parsed.payerIdentifier}), EFT/check ${parsed.traceNumber}, payment date ${parsed.paymentDate}, and amount ${parsed.paymentAmount.toFixed(2)} already exists (batch ${String(existingDup.id).slice(0, 8)}).`,
+          },
+        ],
+      };
+    }
+  }
+
   const { data: batch, error: batchError } = await supabase
     .from("era_import_batches")
     .insert({
@@ -79,12 +120,21 @@ export async function intakeEra835(input: IntakeEra835Input): Promise<IntakeEra8
         paymentMethod: parsed.paymentMethod,
         traceNumber: parsed.traceNumber,
         segmentCount: parsed.segmentCount,
+        paymentDate: parsed.paymentDate,
+        payerName: parsed.payerName,
+        payerIdentifier: parsed.payerIdentifier,
       },
       import_status: "parsed",
       total_claims: parsed.claims.length,
       total_payment_amount: parsed.paymentAmount,
       total_patient_responsibility: sumPatientResponsibility(parsed.claims),
-    })
+      // Dedupe identity columns (Task #107).
+      payer_identifier: parsed.payerIdentifier,
+      payer_name: parsed.payerName,
+      eft_or_check_number: parsed.traceNumber,
+      payment_date: parsed.paymentDate,
+      payment_method_code: parsed.paymentMethod,
+    } as never)
     .select("id")
     .single();
 

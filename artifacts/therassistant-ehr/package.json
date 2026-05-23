@@ -8,7 +8,7 @@
     "start": "next start --port ${PORT:-22803}",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test lib/edi/availity270/__tests__/*.test.ts lib/clearinghouse/__tests__/*.test.ts"
+    "test": "node --import tsx --test lib/edi/availity270/__tests__/*.test.ts lib/clearinghouse/__tests__/*.test.ts lib/payments/postingEngine/__tests__/*.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.104.1",

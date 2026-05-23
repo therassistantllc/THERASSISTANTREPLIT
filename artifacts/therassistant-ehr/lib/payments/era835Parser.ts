@@ -31,6 +31,12 @@ export type Era835ParsedFile = {
   paymentAmount: number;
   paymentMethod: string | null;
   traceNumber: string | null;
+  /** BPR16 — settlement effective date (YYYYMMDD from 835). */
+  paymentDate: string | null;
+  /** N1*PR NM103 — payer name. */
+  payerName: string | null;
+  /** N1*PR NM109 — payer identifier (typically tax ID or assigned payer ID). */
+  payerIdentifier: string | null;
   claims: Era835ClaimPayment[];
   segmentCount: number;
 };
@@ -102,6 +108,10 @@ export function parseEra835(rawContent: string): Era835ParsedFile {
   let paymentAmount = 0;
   let paymentMethod: string | null = null;
   let traceNumber: string | null = null;
+  let paymentDate: string | null = null;
+  let payerName: string | null = null;
+  let payerIdentifier: string | null = null;
+  let inPayerN1 = false;
 
   for (const segment of segments) {
     const elements = splitElements(segment);
@@ -111,8 +121,24 @@ export function parseEra835(rawContent: string): Era835ParsedFile {
     if (segmentId === "BPR") {
       paymentAmount = toNumber(elements[2]);
       paymentMethod = clean(elements[4]) || null;
+      // BPR16 — settlement effective date (YYYYMMDD).
+      const rawDate = clean(elements[16]);
+      if (/^\d{8}$/.test(rawDate)) {
+        paymentDate = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`;
+      }
     }
     if (segmentId === "TRN") traceNumber = clean(elements[2]) || null;
+
+    // N1*PR*PAYER NAME*XV*ID  → payer identity for dedupe key.
+    if (segmentId === "N1" && clean(elements[1]) === "PR") {
+      payerName = clean(elements[2]) || null;
+      payerIdentifier = clean(elements[4]) || null;
+      inPayerN1 = true;
+    } else if (segmentId === "N1") {
+      inPayerN1 = false;
+    } else if (inPayerN1 && segmentId === "REF" && !payerIdentifier) {
+      payerIdentifier = clean(elements[2]) || null;
+    }
 
     if (segmentId === "CLP") {
       finalizeServiceLine(currentServiceLine, currentClaim?.serviceLines ?? []);
@@ -170,6 +196,9 @@ export function parseEra835(rawContent: string): Era835ParsedFile {
     paymentAmount,
     paymentMethod,
     traceNumber,
+    paymentDate,
+    payerName,
+    payerIdentifier,
     claims,
     segmentCount: segments.length,
   };

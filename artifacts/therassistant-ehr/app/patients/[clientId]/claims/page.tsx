@@ -14,6 +14,7 @@ type ClaimItem = {
   submittedAt: string | null;
   appointmentId: string | null;
   encounterId: string | null;
+  payerName: string | null;
 };
 
 function formatDate(v: string | null | undefined) {
@@ -129,6 +130,7 @@ export default function ClaimsPage() {
               <tr>
                 <th>Claim #</th>
                 <th>Status</th>
+                <th>Payer</th>
                 <th>Total Charge</th>
                 <th>Diagnoses</th>
                 <th>Created</th>
@@ -141,6 +143,7 @@ export default function ClaimsPage() {
                 <tr key={claim.id}>
                   <td><strong>{claim.claimNumber ?? claim.id.slice(0, 8)}</strong></td>
                   <td><span className={statusClass(claim.status)}>{claim.status ?? "—"}</span></td>
+                  <td>{claim.payerName ?? <span className="muted">—</span>}</td>
                   <td>{formatMoney(claim.totalCharge)}</td>
                   <td>{claim.diagnosisCodes.join(", ") || "—"}</td>
                   <td>{formatDate(claim.createdAt)}</td>

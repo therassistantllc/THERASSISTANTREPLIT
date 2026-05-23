@@ -112,6 +112,7 @@ type ProviderOption = {
 type MePayload = {
   staffId?: string;
   email?: string | null;
+  providerId?: string | null;
 };
 
 const PROVIDER_FILTER_STORAGE_KEY = "clinicianAgenda.providerFilter";
@@ -286,11 +287,12 @@ export default function ClinicianAgendaClient() {
   }, []);
 
   const myProviderId = useMemo(() => {
-    if (!me?.email || providers.length === 0) return null;
-    const email = me.email.toLowerCase();
-    const match = providers.find((p) => (p.email ?? "").toLowerCase() === email);
-    return match?.id ?? null;
-  }, [me, providers]);
+    // Prefer the explicit staff->provider link from /api/auth/me. This is
+    // robust to login emails that diverge from provider profile emails
+    // (e.g. after a name change or when a shared inbox is used).
+    if (me?.providerId) return me.providerId;
+    return null;
+  }, [me]);
 
   const updateSelectedClinician = useCallback((next: string) => {
     setSelectedClinicianId(next);

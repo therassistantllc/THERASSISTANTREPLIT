@@ -112,6 +112,37 @@ export async function getStaffProfileByAuthUser(
 }
 
 /**
+ * Get the provider row id linked to a given auth user, scoped to an org.
+ *
+ * Staff logins link to provider records via providers.user_id = auth.users.id.
+ * Returns null when the user has no provider profile in that org (e.g. front
+ * desk, billers) or when the provider row is archived/inactive.
+ *
+ * Use this anywhere you want a "mine only" view keyed off the logged-in user
+ * — do NOT fall back to email matching, which silently breaks when a
+ * clinician's login email differs from their provider profile email.
+ */
+export async function getProviderIdForUser(
+  userId: string,
+  organizationId: string,
+): Promise<string | null> {
+  const supabase = createServerSupabaseAdminClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("providers")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("organization_id", organizationId)
+    .is("archived_at", null)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data.id;
+}
+
+/**
  * Get staff profile by ID
  */
 export async function getStaffProfileById(

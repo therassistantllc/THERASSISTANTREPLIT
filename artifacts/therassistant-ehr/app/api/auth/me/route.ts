@@ -8,6 +8,7 @@
 
 import { NextResponse } from "next/server";
 import { requireAuthentication } from "@/lib/rbac/middleware";
+import { getAuthenticatedUser, getProviderIdForUser } from "@/lib/rbac/auth";
 
 export async function GET() {
   const contextOrError = await requireAuthentication();
@@ -18,6 +19,11 @@ export async function GET() {
 
   const { staffId, organizationId, email, firstName, lastName, roles, permissions } = contextOrError;
 
+  const authUser = await getAuthenticatedUser();
+  const providerId = authUser
+    ? await getProviderIdForUser(authUser.userId, organizationId)
+    : null;
+
   return NextResponse.json({
     staffId,
     organizationId,
@@ -26,5 +32,6 @@ export async function GET() {
     lastName,
     roles,
     permissions,
+    providerId,
   });
 }

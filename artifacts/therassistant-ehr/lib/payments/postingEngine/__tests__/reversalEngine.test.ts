@@ -1275,15 +1275,15 @@ describe("recordRecoupment", () => {
     assert.equal(fake.tables.workqueue_items[0].source_object_type, "payment_posting");
   });
 
-  it("dry-run returns a preview without writing any rows (Task #172)", async () => {
+  it("dryRun: returns preview without writing rows", async () => {
     const fake = makeFakeSupabase({
       era_claim_payments: [
         {
-          id: "era-r3",
+          id: "era-r-dry",
           organization_id: ORG,
           client_id: "c-1",
           professional_claim_id: "claim-1",
-          clp01_claim_control_number: "PCN-R3",
+          clp01_claim_control_number: "PCN-DRY",
           clp04_payment_amount: 100,
           posting_status: "posted",
           archived_at: null,
@@ -1293,9 +1293,9 @@ describe("recordRecoupment", () => {
     const r = await recordRecoupment(
       {
         organizationId: ORG,
-        target: { kind: "era_835", id: "era-r3" },
-        amount: 25,
-        reason: "Payer takeback preview",
+        target: { kind: "era_835", id: "era-r-dry" },
+        amount: 40,
+        reason: "Payer takeback (preview)",
         reasonCode: "WO",
         actor: ACTOR,
         dryRun: true,
@@ -1306,22 +1306,53 @@ describe("recordRecoupment", () => {
     assert.equal(r.recoupmentId, null);
     assert.equal(r.ledgerEntryId, null);
     assert.equal(r.workqueueItemId, null);
-    // No writes against any table.
+    // No rows written.
     assert.equal(fake.tables.payment_recoupments.length, 0);
     assert.equal(fake.tables.era_posting_ledger_entries.length, 0);
     assert.equal(fake.tables.workqueue_items.length, 0);
-    // Preview surfaces every field a confirm modal needs.
-    assert.ok(r.preview, "preview must be populated in dry-run mode");
-    assert.equal(r.preview.amount, 25);
-    assert.equal(r.preview.paymentTotalImpact, 100);
-    assert.equal(r.preview.remainingRecoupableBefore, 100);
-    assert.equal(r.preview.remainingRecoupableAfter, 75);
-    assert.equal(r.preview.compensatingLedgerEntry.amount, -25);
-    assert.equal(r.preview.compensatingLedgerEntry.groupCode, "OA");
-    assert.equal(r.preview.compensatingLedgerEntry.reasonCode, "WO");
-    assert.equal(r.preview.workqueueItem.wouldOpen, true);
-    assert.equal(r.preview.workqueueItem.workType, "recoupment_review");
-    assert.ok(r.preview.workqueueItem.title?.includes("25.00"));
+    // Preview describes what would be written.
+    assert.ok(r.preview);
+    assert.equal(r.preview!.amount, 40);
+    assert.equal(r.preview!.paymentTotalImpact, 100);
+    assert.equal(r.preview!.remainingRecoupableBefore, 100);
+    assert.equal(r.preview!.remainingRecoupableAfter, 60);
+    assert.equal(r.preview!.ledgerEntry.amount, -40);
+    assert.equal(r.preview!.ledgerEntry.groupCode, "OA");
+    assert.equal(r.preview!.ledgerEntry.reasonCode, "WO");
+    assert.equal(r.preview!.workqueueItem.wouldOpen, true);
+    assert.equal(r.preview!.workqueueItem.workType, "recoupment_review");
+  });
+
+  it("dryRun: surfaces over-cap error and writes nothing", async () => {
+    const fake = makeFakeSupabase({
+      era_claim_payments: [
+        {
+          id: "era-r-dry2",
+          organization_id: ORG,
+          client_id: "c-1",
+          professional_claim_id: "claim-1",
+          clp01_claim_control_number: "PCN-DRY2",
+          clp04_payment_amount: 100,
+          posting_status: "posted",
+          archived_at: null,
+        },
+      ],
+    });
+    const r = await recordRecoupment(
+      {
+        organizationId: ORG,
+        target: { kind: "era_835", id: "era-r-dry2" },
+        amount: 150,
+        reason: "Too big",
+        actor: ACTOR,
+        dryRun: true,
+      },
+      fake.client,
+    );
+    assert.equal(r.ok, false);
+    assert.equal(r.errors[0].field, "amount");
+    assert.equal(fake.tables.payment_recoupments.length, 0);
+    assert.equal(fake.tables.era_posting_ledger_entries.length, 0);
   });
 });
 

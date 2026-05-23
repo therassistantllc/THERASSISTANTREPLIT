@@ -20,6 +20,7 @@ interface Body {
   reason?: string;
   reasonCode?: string | null;
   offsetEraClaimPaymentId?: string | null;
+  dryRun?: boolean;
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -45,6 +46,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       reason: String(body.reason ?? "").trim(),
       reasonCode: body.reasonCode ?? null,
       offsetEraClaimPaymentId: body.offsetEraClaimPaymentId ?? null,
+      dryRun: body.dryRun === true,
       actor,
     });
     if (!result.ok) {

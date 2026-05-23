@@ -692,6 +692,29 @@ export default function PaymentsDashboard() {
 
 // ── Record Recoupment modal ─────────────────────────────────────────────────
 
+interface RecoupPreview {
+  source: { kind: string; id: string; label: string };
+  amount: number;
+  paymentTotalImpact: number;
+  priorRefundTotal: number;
+  priorRecoupTotal: number;
+  remainingRecoupableBefore: number;
+  remainingRecoupableAfter: number;
+  ledgerEntry: {
+    entryType: string;
+    amount: number;
+    groupCode: string;
+    reasonCode: string | null;
+    description: string;
+  };
+  workqueueItem: {
+    wouldOpen: boolean;
+    workType: string | null;
+    title: string | null;
+    priority: string | null;
+  };
+}
+
 interface RecoupResult {
   success: boolean;
   recoupment?: {
@@ -702,6 +725,7 @@ interface RecoupResult {
   recoupmentId?: string | null;
   ledgerEntryId?: string | null;
   workqueueItemId?: string | null;
+  preview?: RecoupPreview;
   errors?: Array<{ field: string; message: string }>;
   error?: string;
 }
@@ -729,6 +753,12 @@ function RecoupmentModal({
   const [offsetEra, setOffsetEra] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // Two-step UX: fill the form → request a server-validated preview →
+  // confirm to actually write. `step="form"` shows inputs; `step="preview"`
+  // shows the dry-run summary; on cancel from preview we drop back to form
+  // without writing anything.
+  const [step, setStep] = useState<"form" | "preview">("form");
+  const [preview, setPreview] = useState<RecoupPreview | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -774,32 +804,53 @@ function RecoupmentModal({
   const canSubmit =
     !submitting && amtValid && reasonValid && !loadingRemaining && (remaining ?? 0) > 0;
 
+  const callRecoup = async (dryRun: boolean): Promise<RecoupResult> => {
+    const r = await fetch(
+      `/api/billing/payments/posted/${encodeURIComponent(row.id)}/recoup`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          amount: amtNum,
+          reason: reason.trim(),
+          reasonCode: reasonCode.trim() || null,
+          offsetEraClaimPaymentId: offsetEra.trim() || null,
+          dryRun,
+        }),
+      },
+    );
+    const j: RecoupResult = await r.json();
+    if (!r.ok || !j.success) {
+      const msg =
+        j.errors?.[0]?.message ??
+        j.error ??
+        `Recoupment failed (HTTP ${r.status})`;
+      throw new Error(msg);
+    }
+    return j;
+  };
+
+  const requestPreview = async () => {
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const j = await callRecoup(true);
+      if (!j.preview) throw new Error("Preview unavailable");
+      setPreview(j.preview);
+      setStep("preview");
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "Preview failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const submit = async () => {
     setSubmitting(true);
     setFormError(null);
     try {
-      const r = await fetch(
-        `/api/billing/payments/posted/${encodeURIComponent(row.id)}/recoup`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            organizationId,
-            amount: amtNum,
-            reason: reason.trim(),
-            reasonCode: reasonCode.trim() || null,
-            offsetEraClaimPaymentId: offsetEra.trim() || null,
-          }),
-        },
-      );
-      const j: RecoupResult = await r.json();
-      if (!r.ok || !j.success) {
-        const msg =
-          j.errors?.[0]?.message ??
-          j.error ??
-          `Recoupment failed (HTTP ${r.status})`;
-        throw new Error(msg);
-      }
+      const j = await callRecoup(false);
       const rec = j.recoupment ?? {
         recoupmentId: j.recoupmentId ?? null,
         ledgerEntryId: j.ledgerEntryId ?? null,
@@ -812,6 +863,9 @@ function RecoupmentModal({
       onSuccess(parts.join(" · "));
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Recoupment failed");
+      // Drop back to form so biller can correct (e.g. concurrent over-cap).
+      setStep("form");
+      setPreview(null);
     } finally {
       setSubmitting(false);
     }
@@ -842,7 +896,7 @@ function RecoupmentModal({
         }}
       >
         <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 600 }}>
-          Record Recoupment
+          {step === "preview" ? "Preview Recoupment" : "Record Recoupment"}
         </h2>
         <p style={{ margin: "0 0 12px", color: "#6b7280", fontSize: 12 }}>
           Payer takeback against{" "}
@@ -851,27 +905,31 @@ function RecoupmentModal({
           {fmtMoney(row.amount)}
         </p>
 
-        <div
-          style={{
-            padding: 8,
-            background: "#f3f4f6",
-            borderRadius: 6,
-            marginBottom: 12,
-            fontSize: 12,
-            color: "#374151",
-          }}
-        >
-          Remaining recoupable:{" "}
-          <strong>
-            {loadingRemaining
-              ? "loading…"
-              : remaining === null
-                ? "unknown"
-                : fmtMoney(remaining)}
-          </strong>
-        </div>
+        {step === "form" ? (
+          <div
+            style={{
+              padding: 8,
+              background: "#f3f4f6",
+              borderRadius: 6,
+              marginBottom: 12,
+              fontSize: 12,
+              color: "#374151",
+            }}
+          >
+            Remaining recoupable:{" "}
+            <strong>
+              {loadingRemaining
+                ? "loading…"
+                : remaining === null
+                  ? "unknown"
+                  : fmtMoney(remaining)}
+            </strong>
+          </div>
+        ) : null}
 
-        {!loadingRemaining && (remaining ?? 0) <= 0 ? (
+        {step === "preview" && preview ? (
+          <RecoupPreviewBlock preview={preview} />
+        ) : !loadingRemaining && (remaining ?? 0) <= 0 ? (
           <div
             style={{
               padding: 10,
@@ -884,7 +942,7 @@ function RecoupmentModal({
           >
             This payment has no remaining recoupable balance.
           </div>
-        ) : (
+        ) : step === "form" ? (
           <>
             <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
               <Field label="Amount (USD)">
@@ -935,7 +993,7 @@ function RecoupmentModal({
               ) : null}
             </div>
           </>
-        )}
+        ) : null}
 
         {formError ? (
           <div
@@ -953,24 +1011,196 @@ function RecoupmentModal({
         ) : null}
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={btnStyle(false)} disabled={submitting}>
-            Cancel
-          </button>
           <button
-            onClick={submit}
-            style={{
-              ...btnStyle(false),
-              opacity: canSubmit ? 1 : 0.5,
-              cursor: canSubmit ? "pointer" : "not-allowed",
-              background: canSubmit ? "#2563eb" : "#9ca3af",
-              color: "white",
-              border: `1px solid ${canSubmit ? "#1d4ed8" : "#9ca3af"}`,
-            }}
-            disabled={!canSubmit}
+            onClick={
+              step === "preview"
+                ? () => {
+                    // Cancel from preview returns to form; per task spec,
+                    // cancel writes nothing.
+                    setStep("form");
+                    setPreview(null);
+                    setFormError(null);
+                  }
+                : onClose
+            }
+            style={btnStyle(false)}
+            disabled={submitting}
           >
-            {submitting ? "Recording…" : "Record Recoupment"}
+            {step === "preview" ? "Back" : "Cancel"}
           </button>
+          {step === "form" ? (
+            <button
+              onClick={requestPreview}
+              style={{
+                ...btnStyle(false),
+                opacity: canSubmit ? 1 : 0.5,
+                cursor: canSubmit ? "pointer" : "not-allowed",
+                background: canSubmit ? "#2563eb" : "#9ca3af",
+                color: "white",
+                border: `1px solid ${canSubmit ? "#1d4ed8" : "#9ca3af"}`,
+              }}
+              disabled={!canSubmit}
+            >
+              {submitting ? "Previewing…" : "Preview"}
+            </button>
+          ) : (
+            <button
+              onClick={submit}
+              style={{
+                ...btnStyle(false),
+                opacity: submitting ? 0.5 : 1,
+                cursor: submitting ? "not-allowed" : "pointer",
+                background: "#dc2626",
+                color: "white",
+                border: "1px solid #b91c1c",
+              }}
+              disabled={submitting}
+            >
+              {submitting ? "Recording…" : "Confirm & Record"}
+            </button>
+          )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Recoupment preview block ────────────────────────────────────────────────
+
+function RecoupPreviewBlock({ preview }: { preview: RecoupPreview }) {
+  const rowStyle: React.CSSProperties = {
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: 12,
+    padding: "3px 0",
+  };
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div
+        style={{
+          padding: 10,
+          background: "#eff6ff",
+          border: "1px solid #bfdbfe",
+          color: "#1e3a8a",
+          borderRadius: 6,
+          marginBottom: 10,
+          fontSize: 12,
+        }}
+      >
+        Review what will be written. No changes have been made yet — click{" "}
+        <strong>Confirm &amp; Record</strong> to post, or <strong>Back</strong> to edit.
+      </div>
+
+      <div
+        style={{
+          padding: 10,
+          background: "#f9fafb",
+          border: "1px solid #e5e7eb",
+          borderRadius: 6,
+          marginBottom: 10,
+        }}
+      >
+        <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6, color: "#111827" }}>
+          Balance impact
+        </div>
+        <div style={rowStyle}>
+          <span style={{ color: "#6b7280" }}>Original payment</span>
+          <span>{fmtMoney(preview.paymentTotalImpact)}</span>
+        </div>
+        <div style={rowStyle}>
+          <span style={{ color: "#6b7280" }}>Prior recoupments</span>
+          <span>{fmtMoney(preview.priorRecoupTotal)}</span>
+        </div>
+        <div style={rowStyle}>
+          <span style={{ color: "#6b7280" }}>Prior refunds</span>
+          <span>{fmtMoney(preview.priorRefundTotal)}</span>
+        </div>
+        <div style={rowStyle}>
+          <span style={{ color: "#6b7280" }}>Remaining before</span>
+          <span>{fmtMoney(preview.remainingRecoupableBefore)}</span>
+        </div>
+        <div style={{ ...rowStyle, fontWeight: 600, color: "#991b1b" }}>
+          <span>This recoupment</span>
+          <span>−{fmtMoney(preview.amount)}</span>
+        </div>
+        <div
+          style={{
+            ...rowStyle,
+            fontWeight: 600,
+            borderTop: "1px solid #e5e7eb",
+            marginTop: 4,
+            paddingTop: 6,
+          }}
+        >
+          <span>Remaining after</span>
+          <span>{fmtMoney(preview.remainingRecoupableAfter)}</span>
+        </div>
+      </div>
+
+      <div
+        style={{
+          padding: 10,
+          background: "#f9fafb",
+          border: "1px solid #e5e7eb",
+          borderRadius: 6,
+          marginBottom: 10,
+        }}
+      >
+        <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6, color: "#111827" }}>
+          Ledger entry that will be written
+        </div>
+        <div style={rowStyle}>
+          <span style={{ color: "#6b7280" }}>Type</span>
+          <span>{preview.ledgerEntry.entryType}</span>
+        </div>
+        <div style={rowStyle}>
+          <span style={{ color: "#6b7280" }}>Amount</span>
+          <span style={{ color: "#991b1b", fontWeight: 600 }}>
+            {fmtMoney(preview.ledgerEntry.amount)}
+          </span>
+        </div>
+        <div style={rowStyle}>
+          <span style={{ color: "#6b7280" }}>Group / Reason</span>
+          <span>
+            {preview.ledgerEntry.groupCode}
+            {preview.ledgerEntry.reasonCode ? ` · ${preview.ledgerEntry.reasonCode}` : ""}
+          </span>
+        </div>
+        <div style={{ fontSize: 12, color: "#374151", marginTop: 4 }}>
+          {preview.ledgerEntry.description}
+        </div>
+      </div>
+
+      <div
+        style={{
+          padding: 10,
+          background: "#f9fafb",
+          border: "1px solid #e5e7eb",
+          borderRadius: 6,
+        }}
+      >
+        <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6, color: "#111827" }}>
+          Workqueue item that will be opened
+        </div>
+        {preview.workqueueItem.wouldOpen ? (
+          <>
+            <div style={rowStyle}>
+              <span style={{ color: "#6b7280" }}>Type</span>
+              <span>{preview.workqueueItem.workType}</span>
+            </div>
+            <div style={rowStyle}>
+              <span style={{ color: "#6b7280" }}>Priority</span>
+              <span>{preview.workqueueItem.priority}</span>
+            </div>
+            <div style={{ fontSize: 12, color: "#374151", marginTop: 4 }}>
+              {preview.workqueueItem.title}
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12, color: "#6b7280" }}>
+            No workqueue item — source payment has no linked claim.
+          </div>
+        )}
       </div>
     </div>
   );

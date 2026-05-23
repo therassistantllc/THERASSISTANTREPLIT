@@ -68,15 +68,27 @@ for (const [name, extras] of Object.entries(EXTRA_ENUM_VALUES)) {
  * client_credits, client_credit_applications, payment_transfers) no
  * longer need an overlay. The remaining entries cover columns from
  * non-payment migrations that the types file still doesn't reflect.
+ *
+ * RULE (Task #303): every entry below MUST cite the migration filename
+ * that actually creates the column in the database. Adding an entry
+ * without a matching `alter table ... add column` in
+ * `supabase/migrations/` will mask a Task #300-class prod bug (writes
+ * silently dropped because the column does not really exist). When in
+ * doubt, write the migration first, then add the overlay.
  */
 const EXTRA_COLUMNS: Record<string, string[]> = {
   insurance_policies: [
+    // migration: 20260529000000_insurance_policy_group_number.sql
     "group_number",
+    // migration: 20260603000000_insurance_policy_subscriber_relationship.sql
     "subscriber_relationship",
   ],
   professional_claims: [
+    // migration: 20260525020000_client_cases.sql
     "case_id",
+    // migration: 20260517021446_claim_canonical_compatibility.sql
     "client_id",
+    // migration: 20260517021446_claim_canonical_compatibility.sql
     "legacy_claim_id",
   ],
 };

@@ -229,18 +229,49 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     }
     const { data: auditRows } = await auditQuery.order("created_at", { ascending: true });
 
-    // Claim summary (for header context, denied/paid status)
+    // Claim summary (for header context, denied/paid status). Includes
+    // billing_notes + denial_reason_code/description so the detail UI can
+    // render the biller-notes and denial-action context required by spec
+    // without an extra round trip.
     let claim: Record<string, unknown> | null = null;
     if (professionalClaimId) {
       const { data: claimRow } = await supabase
         .from("professional_claims")
         .select(
-          "id, claim_number, claim_status, total_charge, patient_responsibility_amount, date_of_service_from, date_of_service_to, submitted_at, paid_at, denied_at",
+          "id, claim_number, claim_status, total_charge, patient_responsibility_amount, date_of_service_from, date_of_service_to, submitted_at, paid_at, denied_at, denial_reason, denial_reason_code, denial_reason_description, billing_notes",
         )
         .eq("id", professionalClaimId)
         .eq("organization_id", organizationId)
         .maybeSingle();
       claim = (claimRow as Record<string, unknown> | null) ?? null;
+    }
+
+    // Attachments: documents tied to this claim (claim_id direct or via
+    // document_links polymorphic link), plus any documents linked to the
+    // mailroom item for paper EOB sources. Best-effort, non-fatal.
+    let attachments: Array<Record<string, unknown>> = [];
+    try {
+      const mrId =
+        parsed.kind === "insurance_manual"
+          ? ((header as { mailroom_item_id?: string | null })?.mailroom_item_id ?? null)
+          : null;
+      const claimIdForDocs = professionalClaimId && UUID_RE.test(professionalClaimId) ? professionalClaimId : null;
+      if (claimIdForDocs || mrId) {
+        const orParts: string[] = [];
+        if (claimIdForDocs) orParts.push(`claim_id.eq.${claimIdForDocs}`);
+        if (mrId && UUID_RE.test(mrId)) orParts.push(`mailroom_item_id.eq.${mrId}`);
+        const { data: docs } = await supabase
+          .from("documents")
+          .select("id, document_type, title, file_name, mime_type, file_size_bytes, created_at, storage_path")
+          .eq("organization_id", organizationId)
+          .or(orParts.join(","))
+          .is("archived_at", null)
+          .order("created_at", { ascending: false })
+          .limit(50);
+        attachments = (docs ?? []) as Array<Record<string, unknown>>;
+      }
+    } catch {
+      attachments = [];
     }
 
     // Patient-side context (invoice + payments) for the right rail
@@ -281,6 +312,17 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       payerProfileId,
       clientId,
       professionalClaimId,
+      attachments,
+      billingNotes: claim ? (claim as { billing_notes?: string | null }).billing_notes ?? null : null,
+      denial: claim
+        ? {
+            reason: (claim as { denial_reason?: string | null }).denial_reason ?? null,
+            reasonCode: (claim as { denial_reason_code?: string | null }).denial_reason_code ?? null,
+            reasonDescription:
+              (claim as { denial_reason_description?: string | null }).denial_reason_description ?? null,
+            deniedAt: (claim as { denied_at?: string | null }).denied_at ?? null,
+          }
+        : null,
     });
   } catch (error) {
     if (error instanceof PaymentPostingUnauthenticatedError) {

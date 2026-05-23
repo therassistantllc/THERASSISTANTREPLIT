@@ -456,6 +456,62 @@ describe("reversePostedPayment", () => {
   });
 });
 
+describe("reversePostedPayment — patient refund initiation (fail-closed)", () => {
+  it("rolls the reversal back when the auto-refund insert fails", async () => {
+    const fake = makeFakeSupabase({
+      client_payments: [
+        {
+          id: "cp-fc-1",
+          organization_id: ORG,
+          client_id: "c-1",
+          claim_id: null,
+          amount: 75,
+          payment_method: "stripe",
+          stripe_charge_id: "ch_test_1",
+          patient_invoice_id: null,
+          posting_status: "posted",
+          archived_at: null,
+        },
+      ],
+    });
+    // Force the payment_refunds insert to error to simulate a DB-side failure.
+    const client = fake.client as { from: (t: string) => unknown };
+    const origFrom = client.from.bind(client);
+    client.from = ((t: string) => {
+      const b = origFrom(t);
+      if (t !== "payment_refunds") return b;
+      const wrapped = b as unknown as { insert: (p: unknown) => unknown };
+      const origInsert = wrapped.insert.bind(wrapped);
+      wrapped.insert = (p: unknown) => {
+        const chain = origInsert(p) as { single: () => Promise<unknown>; then: unknown; select: (c: string) => unknown };
+        const failResult = { data: null, error: { message: "payment_refunds insert blocked by test" } };
+        chain.single = async () => failResult;
+        chain.select = () => ({
+          single: async () => failResult,
+          maybeSingle: async () => failResult,
+          then: (cb: (v: unknown) => unknown) => Promise.resolve(failResult).then(cb),
+        });
+        return chain;
+      };
+      return b;
+    }) as typeof origFrom;
+
+    const r = await reversePostedPayment(
+      { organizationId: ORG, target: { kind: "client_payment", id: "cp-fc-1" }, reason: "patient dispute", actor: ACTOR },
+      fake.client,
+    );
+    assert.equal(r.ok, false, "reversal must fail when refund init fails");
+    assert.ok(
+      r.errors.some((e) => /Auto-refund initiation failed/.test(e.message)),
+      "must surface auto-refund failure in errors",
+    );
+    // Header status must have been restored to 'posted' (compensating rollback).
+    const cp = fake.tables.client_payments[0] as Record<string, unknown>;
+    assert.equal(cp.posting_status, "posted", "posting_status must be restored after failed refund init");
+    assert.equal(cp.reversed_at, null, "reversed_at must be cleared by restoreStatus()");
+  });
+});
+
 describe("voidPostedPayment", () => {
   it("refuses to void a posted payment with ledger impact", async () => {
     const fake = makeFakeSupabase({

@@ -41,6 +41,14 @@ type DetailResponse = {
   auditChain: Array<Record<string, unknown>>;
   sourceLink?: { kind: string; id: string; label: string } | null;
   casAdjustments?: unknown;
+  attachments?: Array<Record<string, unknown>>;
+  billingNotes?: string | null;
+  denial?: {
+    reason: string | null;
+    reasonCode: string | null;
+    reasonDescription: string | null;
+    deniedAt: string | null;
+  } | null;
   error?: string;
 };
 
@@ -250,6 +258,59 @@ export default function PostedPaymentDetailClient({ compositeId }: { compositeId
               fmtCurrency(c.amount ?? c.cas03),
               String(c.quantity ?? c.cas04 ?? "—"),
               String(c.description ?? "—"),
+            ])}
+          />
+        </Section>
+      ) : null}
+
+      {/* Denial info (when claim was denied or has CARC denial codes) */}
+      {detail.denial && (detail.denial.reason || detail.denial.reasonCode || detail.denial.reasonDescription) ? (
+        <Section title="Denial / payer action">
+          <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+            {detail.denial.deniedAt ? (
+              <div>
+                <strong>Denied at:</strong> {fmtDate(detail.denial.deniedAt)}
+              </div>
+            ) : null}
+            {detail.denial.reasonCode ? (
+              <div>
+                <strong>Reason code:</strong> {detail.denial.reasonCode}
+              </div>
+            ) : null}
+            {detail.denial.reasonDescription ? (
+              <div>
+                <strong>Description:</strong> {detail.denial.reasonDescription}
+              </div>
+            ) : null}
+            {detail.denial.reason ? (
+              <div>
+                <strong>Reason:</strong> {detail.denial.reason}
+              </div>
+            ) : null}
+          </div>
+        </Section>
+      ) : null}
+
+      {/* Biller notes pulled from the linked claim */}
+      {detail.billingNotes ? (
+        <Section title="Biller notes">
+          <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 13, margin: 0 }}>
+            {detail.billingNotes}
+          </pre>
+        </Section>
+      ) : null}
+
+      {/* Attachments — claim/mailroom-linked documents */}
+      {Array.isArray(detail.attachments) && detail.attachments.length > 0 ? (
+        <Section title={`Attachments (${detail.attachments.length})`}>
+          <Table
+            cols={["Title", "Type", "File", "Size", "Uploaded"]}
+            rows={detail.attachments.map((d) => [
+              String(d.title ?? d.file_name ?? d.id ?? "—"),
+              String(d.document_type ?? "—"),
+              String(d.file_name ?? "—"),
+              d.file_size_bytes ? `${Math.round(Number(d.file_size_bytes) / 1024)} KB` : "—",
+              fmtDate(d.created_at),
             ])}
           />
         </Section>

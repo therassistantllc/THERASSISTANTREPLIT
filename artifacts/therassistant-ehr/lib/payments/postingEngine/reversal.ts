@@ -425,7 +425,10 @@ export async function reversePostedPayment(
     const method = String(cpRow?.payment_method ?? "");
     const needsOutboundRefund = amt > 0 && (cpRow?.stripe_charge_id || method === "card" || method === "stripe");
     if (needsOutboundRefund) {
-      const { data: refundRow } = await supabase
+      // Fail-closed: a patient reversal that did NOT successfully record a
+      // refund-initiation obligation must roll the reversal back. Otherwise
+      // the patient is "owed money" but no system-of-record exists for AR.
+      const { data: refundRow, error: refundErr } = await supabase
         .from("payment_refunds")
         .insert({
           organization_id: input.organizationId,
@@ -441,19 +444,36 @@ export async function reversePostedPayment(
         })
         .select("id")
         .single();
-      const refundId = (refundRow as { id?: string } | null)?.id ?? null;
-      if (refundId) {
-        await supabase.from("workqueue_items").insert({
-          organization_id: input.organizationId,
-          queue_type: "patient_refund",
-          work_type: "patient_refund",
-          status: "open",
-          priority: "high",
-          title: `Issue patient refund $${amt.toFixed(2)} (reversal)`,
-          description: `Patient refund triggered by payment reversal. Stripe charge: ${String(cpRow?.stripe_charge_id ?? "n/a")}.`,
-          source_object_type: "payment_refund",
-          source_object_id: refundId,
-          client_id: (cpRow?.client_id as string | null) ?? payment.clientId,
+      if (refundErr || !refundRow) {
+        await restoreStatus();
+        result.errors.push({
+          field: "payment_refunds",
+          message: `Auto-refund initiation failed: ${refundErr?.message ?? "insert returned no row"}. Reversal rolled back.`,
+        });
+        return result;
+      }
+      const refundId = (refundRow as { id: string }).id;
+      const { error: wqErr } = await supabase.from("workqueue_items").insert({
+        organization_id: input.organizationId,
+        queue_type: "patient_refund",
+        work_type: "patient_refund",
+        status: "open",
+        priority: "high",
+        title: `Issue patient refund $${amt.toFixed(2)} (reversal)`,
+        description: `Patient refund triggered by payment reversal. Stripe charge: ${String(cpRow?.stripe_charge_id ?? "n/a")}.`,
+        source_object_type: "payment_refund",
+        source_object_id: refundId,
+        client_id: (cpRow?.client_id as string | null) ?? payment.clientId,
+      });
+      if (wqErr) {
+        // Refund row exists but workqueue creation failed — append a warning
+        // but DO NOT fail the reversal: the refund row is the source of truth
+        // for the obligation; workqueue is a denormalized convenience and a
+        // sweeper can re-open it. The compensating ledger writes are also
+        // already committed.
+        result.errors.push({
+          field: "workqueue_items",
+          message: `Refund row created but workqueue item failed: ${wqErr.message}. AR queue sweep will recover.`,
         });
       }
     }

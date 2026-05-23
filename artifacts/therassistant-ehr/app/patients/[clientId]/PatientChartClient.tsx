@@ -430,6 +430,10 @@ export default function PatientChartClient({
   const [policyEditDraft, setPolicyEditDraft] = useState<PolicyEditDraft | null>(null);
   const [policySavingId, setPolicySavingId] = useState<string | null>(null);
   const [policyEditError, setPolicyEditError] = useState<string | null>(null);
+  const [eligibilityRefreshPolicyId, setEligibilityRefreshPolicyId] = useState<string | null>(null);
+  const [eligibilityRefreshBusy, setEligibilityRefreshBusy] = useState(false);
+  const [eligibilityRefreshError, setEligibilityRefreshError] = useState<string | null>(null);
+  const [eligibilityRefreshMessage, setEligibilityRefreshMessage] = useState<string | null>(null);
   const [payerOptions, setPayerOptions] = useState<PayerOption[]>([]);
   const [credits, setCredits] = useState<CreditRow[]>([]);
   const [creditsLoading, setCreditsLoading] = useState(false);
@@ -869,10 +873,47 @@ export default function PatientChartClient({
       await refreshSummary();
       void reloadDemoAudit();
       cancelPolicyEdit();
+      if (json.eligibilityRefreshSuggested) {
+        // Payer / effective / termination just changed — surface a
+        // one-click prompt so the latest eligibility check gets re-run
+        // against the corrected policy inputs.
+        setEligibilityRefreshPolicyId(String(json.policyId ?? policy.id));
+        setEligibilityRefreshError(null);
+        setEligibilityRefreshMessage(null);
+      }
     } catch (err) {
       setPolicyEditError(err instanceof Error ? err.message : "Failed to update policy");
     } finally {
       setPolicySavingId(null);
+    }
+  }
+
+  async function runEligibilityRefresh(policyId: string) {
+    setEligibilityRefreshBusy(true);
+    setEligibilityRefreshError(null);
+    setEligibilityRefreshMessage(null);
+    try {
+      const response = await fetch(`/api/clearinghouse/eligibility/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientId: clientId,
+          insurancePolicyId: policyId,
+        }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.success) {
+        throw new Error(json.error ?? "Failed to refresh eligibility");
+      }
+      await refreshSummary();
+      setEligibilityRefreshPolicyId(null);
+      setEligibilityRefreshMessage("Eligibility refreshed.");
+    } catch (err) {
+      setEligibilityRefreshError(
+        err instanceof Error ? err.message : "Failed to refresh eligibility",
+      );
+    } finally {
+      setEligibilityRefreshBusy(false);
     }
   }
 
@@ -2081,6 +2122,47 @@ export default function PatientChartClient({
                 {latestEligibility?.checked_at ? formatDateTime(latestEligibility.checked_at) : dash}
               </strong>
             </div>
+            {eligibilityRefreshPolicyId ? (
+              <div
+                className="alert-panel"
+                style={{ marginTop: 8, fontSize: 13 }}
+                role="status"
+              >
+                <div style={{ marginBottom: 6 }}>
+                  Policy details changed. The last eligibility check may be stale.
+                </div>
+                <button
+                  type="button"
+                  className="button button-primary"
+                  onClick={() => runEligibilityRefresh(eligibilityRefreshPolicyId)}
+                  disabled={eligibilityRefreshBusy}
+                >
+                  {eligibilityRefreshBusy ? "Refreshing…" : "Refresh eligibility"}
+                </button>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  style={{ marginLeft: 6 }}
+                  onClick={() => setEligibilityRefreshPolicyId(null)}
+                  disabled={eligibilityRefreshBusy}
+                >
+                  Dismiss
+                </button>
+                {eligibilityRefreshError ? (
+                  <div style={{ marginTop: 6, color: "var(--danger, #b91c1c)" }}>
+                    {eligibilityRefreshError}
+                  </div>
+                ) : null}
+              </div>
+            ) : eligibilityRefreshMessage ? (
+              <div
+                className="muted"
+                style={{ marginTop: 8, fontSize: 12 }}
+                role="status"
+              >
+                {eligibilityRefreshMessage}
+              </div>
+            ) : null}
           </section>
 
           <section className="summary-financial-section">

@@ -293,10 +293,26 @@ export async function PATCH(
       );
     }
 
+    // Signal to the UI when the change affects who/where we'd run a 270
+    // against, so the chart can prompt for a fresh eligibility check.
+    // Changing payer, effective_date, or termination_date all alter the
+    // payer / coverage-window inputs to the 270, so the latest eligibility
+    // result on file is now stale.
+    const ELIGIBILITY_AFFECTING = new Set([
+      "payer_id",
+      "effective_date",
+      "termination_date",
+    ]);
+    const eligibilityRefreshSuggested = Object.keys(after).some((col) =>
+      ELIGIBILITY_AFFECTING.has(col),
+    );
+
     return NextResponse.json({
       success: true,
       groupNumber: "group_number" in update ? update.group_number : undefined,
       updated: Object.keys(update),
+      eligibilityRefreshSuggested,
+      policyId,
     });
   } catch (error) {
     return NextResponse.json(

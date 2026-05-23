@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactElement } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_ORG_ID } from "@/lib/config";
 import {
@@ -90,8 +91,27 @@ type InsurancePolicySummary = {
   group_number?: string | null;
   priority?: string | null;
   active_flag?: boolean | null;
+  payer_id?: string | null;
   payer_name?: string | null;
+  effective_date?: string | null;
+  termination_date?: string | null;
   copay_amount?: string | number | null;
+};
+
+type PayerOption = {
+  id: string;
+  payer_name: string;
+  payer_id?: string | null;
+};
+
+type PolicyEditDraft = {
+  planName: string;
+  payerId: string;
+  policyNumber: string;
+  groupNumber: string;
+  effectiveDate: string;
+  terminationDate: string;
+  copayAmount: string;
 };
 
 type EligibilitySummary = {
@@ -406,10 +426,11 @@ export default function PatientChartClient({
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditExpanded, setAuditExpanded] = useState(false);
-  const [groupEditPolicyId, setGroupEditPolicyId] = useState<string | null>(null);
-  const [groupEditDraft, setGroupEditDraft] = useState<string>("");
-  const [groupSavingPolicyId, setGroupSavingPolicyId] = useState<string | null>(null);
-  const [groupEditError, setGroupEditError] = useState<string | null>(null);
+  const [policyEditId, setPolicyEditId] = useState<string | null>(null);
+  const [policyEditDraft, setPolicyEditDraft] = useState<PolicyEditDraft | null>(null);
+  const [policySavingId, setPolicySavingId] = useState<string | null>(null);
+  const [policyEditError, setPolicyEditError] = useState<string | null>(null);
+  const [payerOptions, setPayerOptions] = useState<PayerOption[]>([]);
   const [credits, setCredits] = useState<CreditRow[]>([]);
   const [creditsLoading, setCreditsLoading] = useState(false);
   const [creditsError, setCreditsError] = useState<string | null>(null);
@@ -767,22 +788,62 @@ export default function PatientChartClient({
     }
   }
 
-  function startGroupEdit(policy: InsurancePolicySummary | null | undefined) {
+  function startPolicyEdit(policy: InsurancePolicySummary | null | undefined) {
     if (!policy) return;
-    setGroupEditError(null);
-    setGroupEditPolicyId(policy.id);
-    setGroupEditDraft(policy.group_number ?? "");
+    setPolicyEditError(null);
+    setPolicyEditId(policy.id);
+    const copay = policy.copay_amount;
+    setPolicyEditDraft({
+      planName: policy.plan_name ?? "",
+      payerId: policy.payer_id ?? "",
+      policyNumber: policy.policy_number ?? "",
+      groupNumber: policy.group_number ?? "",
+      effectiveDate: policy.effective_date ?? "",
+      terminationDate: policy.termination_date ?? "",
+      copayAmount:
+        copay === null || copay === undefined || copay === "" ? "" : String(copay),
+    });
   }
 
-  function cancelGroupEdit() {
-    setGroupEditPolicyId(null);
-    setGroupEditDraft("");
-    setGroupEditError(null);
+  function cancelPolicyEdit() {
+    setPolicyEditId(null);
+    setPolicyEditDraft(null);
+    setPolicyEditError(null);
   }
 
-  async function saveGroupEdit(policy: InsurancePolicySummary) {
-    setGroupSavingPolicyId(policy.id);
-    setGroupEditError(null);
+  function updatePolicyDraft(patch: Partial<PolicyEditDraft>) {
+    setPolicyEditDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+  }
+
+  async function savePolicyEdit(policy: InsurancePolicySummary) {
+    if (!policyEditDraft) return;
+    const draft = policyEditDraft;
+    const policyNumber = draft.policyNumber.trim();
+    if (!policyNumber) {
+      setPolicyEditError("Policy number is required");
+      return;
+    }
+    if (!draft.payerId) {
+      setPolicyEditError("Payer is required");
+      return;
+    }
+    if (
+      draft.effectiveDate &&
+      draft.terminationDate &&
+      draft.effectiveDate > draft.terminationDate
+    ) {
+      setPolicyEditError("Effective date must be on or before termination date");
+      return;
+    }
+    if (draft.copayAmount.trim()) {
+      const n = Number(draft.copayAmount.trim());
+      if (!Number.isFinite(n) || n < 0) {
+        setPolicyEditError("Copay must be a non-negative number");
+        return;
+      }
+    }
+    setPolicySavingId(policy.id);
+    setPolicyEditError(null);
     try {
       const response = await fetch(
         `/api/clients/${clientId}/policies/${policy.id}`,
@@ -791,22 +852,27 @@ export default function PatientChartClient({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             organizationId,
-            groupNumber: groupEditDraft.trim() || null,
+            planName: draft.planName.trim() || null,
+            payerId: draft.payerId,
+            policyNumber,
+            groupNumber: draft.groupNumber.trim() || null,
+            effectiveDate: draft.effectiveDate.trim() || null,
+            terminationDate: draft.terminationDate.trim() || null,
+            copayAmount: draft.copayAmount.trim() || null,
           }),
         },
       );
       const json = await response.json().catch(() => ({}));
       if (!response.ok || !json.success) {
-        throw new Error(json.error ?? "Failed to update group number");
+        throw new Error(json.error ?? "Failed to update policy");
       }
       await refreshSummary();
       void reloadDemoAudit();
-      setGroupEditPolicyId(null);
-      setGroupEditDraft("");
+      cancelPolicyEdit();
     } catch (err) {
-      setGroupEditError(err instanceof Error ? err.message : "Failed to update group number");
+      setPolicyEditError(err instanceof Error ? err.message : "Failed to update policy");
     } finally {
-      setGroupSavingPolicyId(null);
+      setPolicySavingId(null);
     }
   }
 
@@ -924,6 +990,21 @@ export default function PatientChartClient({
       setIntakeBusy(false);
     }
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!organizationId) return;
+    (async () => {
+      const payers = await fetchList<PayerOption>(
+        `/api/insurance-payers?organizationId=${encodeURIComponent(organizationId)}`,
+        "payers",
+      );
+      if (!cancelled) setPayerOptions(payers);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1491,7 +1572,7 @@ export default function PatientChartClient({
 
           <section className="summary-block" aria-label="Insurance information">
             <h3>Insurance information</h3>
-            {groupEditError ? <div className="alert-panel">{groupEditError}</div> : null}
+            {policyEditError ? <div className="alert-panel">{policyEditError}</div> : null}
             {cases.length === 0 ? (
               <p className="muted" style={{ margin: 0 }}>
                 No cases on file yet.{" "}
@@ -1549,11 +1630,13 @@ export default function PatientChartClient({
                         </tr>,
                       ];
                     }
-                    return visiblePolicies.map((casePolicy, idx) => {
+                    return visiblePolicies.flatMap((casePolicy, idx) => {
                       const matchingPolicy =
                         policies.find((p) => p.id === casePolicy.policyId) ?? null;
                       const isFirst = idx === 0;
-                      return (
+                      const isEditing =
+                        matchingPolicy != null && policyEditId === matchingPolicy.id;
+                      const rows: ReactElement[] = [
                         <tr key={`${c.id}:${casePolicy.policyId}`}>
                           <td>
                             {isFirst ? (
@@ -1579,62 +1662,7 @@ export default function PatientChartClient({
                           </td>
                           <td>{casePolicy.payerName ?? casePolicy.planName ?? dash}</td>
                           <td>{casePolicy.policyNumber ?? dash}</td>
-                          <td>
-                            {matchingPolicy ? (
-                              groupEditPolicyId === matchingPolicy.id ? (
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    gap: 4,
-                                    alignItems: "center",
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  <input
-                                    type="text"
-                                    value={groupEditDraft}
-                                    onChange={(e) => setGroupEditDraft(e.target.value)}
-                                    maxLength={80}
-                                    style={{ width: 110 }}
-                                    disabled={groupSavingPolicyId === matchingPolicy.id}
-                                    aria-label="Group number"
-                                  />
-                                  <button
-                                    type="button"
-                                    className="button button-secondary"
-                                    onClick={() => saveGroupEdit(matchingPolicy)}
-                                    disabled={groupSavingPolicyId === matchingPolicy.id}
-                                  >
-                                    {groupSavingPolicyId === matchingPolicy.id ? "Saving…" : "Save"}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="button button-secondary"
-                                    onClick={cancelGroupEdit}
-                                    disabled={groupSavingPolicyId === matchingPolicy.id}
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : (
-                                <span
-                                  style={{ display: "inline-flex", gap: 6, alignItems: "center" }}
-                                >
-                                  <span>{dashIfNullish(matchingPolicy.group_number ?? null)}</span>
-                                  <button
-                                    type="button"
-                                    className="button button-secondary"
-                                    onClick={() => startGroupEdit(matchingPolicy)}
-                                    aria-label={`Edit ${casePolicy.priority} group number`}
-                                  >
-                                    Edit
-                                  </button>
-                                </span>
-                              )
-                            ) : (
-                              dash
-                            )}
-                          </td>
+                          <td>{dashIfNullish(matchingPolicy?.group_number ?? null)}</td>
                           <td>{formatMoneyOrDash(matchingPolicy?.copay_amount ?? null)}</td>
                           <td>
                             {isFirst ? (
@@ -1648,14 +1676,181 @@ export default function PatientChartClient({
                             ) : null}
                           </td>
                           <td style={{ textAlign: "right" }}>
-                            {isFirst ? (
-                              <a className="button button-secondary" href="#cases-editor">
-                                Open
-                              </a>
-                            ) : null}
+                            <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+                              {matchingPolicy ? (
+                                <button
+                                  type="button"
+                                  className="button button-secondary"
+                                  onClick={() =>
+                                    isEditing ? cancelPolicyEdit() : startPolicyEdit(matchingPolicy)
+                                  }
+                                  aria-label={`${isEditing ? "Close" : "Edit"} ${casePolicy.priority} policy`}
+                                >
+                                  {isEditing ? "Close" : "Edit policy"}
+                                </button>
+                              ) : null}
+                              {isFirst ? (
+                                <a className="button button-secondary" href="#cases-editor">
+                                  Open
+                                </a>
+                              ) : null}
+                            </span>
                           </td>
-                        </tr>
-                      );
+                        </tr>,
+                      ];
+
+                      if (isEditing && matchingPolicy && policyEditDraft) {
+                        const saving = policySavingId === matchingPolicy.id;
+                        rows.push(
+                          <tr key={`${c.id}:${casePolicy.policyId}:edit`}>
+                            <td colSpan={7} style={{ background: "var(--surface-muted, #f9fafb)" }}>
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                                  gap: 12,
+                                  padding: "12px 4px",
+                                }}
+                              >
+                                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                  <span style={{ fontSize: 12, color: "var(--muted-color, #6b7280)" }}>
+                                    Payer
+                                  </span>
+                                  <select
+                                    value={policyEditDraft.payerId}
+                                    onChange={(e) => updatePolicyDraft({ payerId: e.target.value })}
+                                    disabled={saving}
+                                  >
+                                    <option value="">Select a payer…</option>
+                                    {payerOptions.some((p) => p.id === policyEditDraft.payerId) ||
+                                    !policyEditDraft.payerId ? null : (
+                                      <option value={policyEditDraft.payerId}>
+                                        {matchingPolicy.payer_name ?? "Current payer"}
+                                      </option>
+                                    )}
+                                    {payerOptions.map((p) => (
+                                      <option key={p.id} value={p.id}>
+                                        {p.payer_name}
+                                        {p.payer_id ? ` (${p.payer_id})` : ""}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                  <span style={{ fontSize: 12, color: "var(--muted-color, #6b7280)" }}>
+                                    Plan name
+                                  </span>
+                                  <input
+                                    type="text"
+                                    maxLength={200}
+                                    value={policyEditDraft.planName}
+                                    onChange={(e) => updatePolicyDraft({ planName: e.target.value })}
+                                    disabled={saving}
+                                  />
+                                </label>
+                                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                  <span style={{ fontSize: 12, color: "var(--muted-color, #6b7280)" }}>
+                                    Policy #
+                                  </span>
+                                  <input
+                                    type="text"
+                                    maxLength={80}
+                                    value={policyEditDraft.policyNumber}
+                                    onChange={(e) =>
+                                      updatePolicyDraft({ policyNumber: e.target.value })
+                                    }
+                                    disabled={saving}
+                                    required
+                                  />
+                                </label>
+                                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                  <span style={{ fontSize: 12, color: "var(--muted-color, #6b7280)" }}>
+                                    Group #
+                                  </span>
+                                  <input
+                                    type="text"
+                                    maxLength={80}
+                                    value={policyEditDraft.groupNumber}
+                                    onChange={(e) =>
+                                      updatePolicyDraft({ groupNumber: e.target.value })
+                                    }
+                                    disabled={saving}
+                                  />
+                                </label>
+                                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                  <span style={{ fontSize: 12, color: "var(--muted-color, #6b7280)" }}>
+                                    Effective date
+                                  </span>
+                                  <input
+                                    type="date"
+                                    value={policyEditDraft.effectiveDate}
+                                    onChange={(e) =>
+                                      updatePolicyDraft({ effectiveDate: e.target.value })
+                                    }
+                                    disabled={saving}
+                                  />
+                                </label>
+                                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                  <span style={{ fontSize: 12, color: "var(--muted-color, #6b7280)" }}>
+                                    Termination date
+                                  </span>
+                                  <input
+                                    type="date"
+                                    value={policyEditDraft.terminationDate}
+                                    onChange={(e) =>
+                                      updatePolicyDraft({ terminationDate: e.target.value })
+                                    }
+                                    disabled={saving}
+                                  />
+                                </label>
+                                <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                  <span style={{ fontSize: 12, color: "var(--muted-color, #6b7280)" }}>
+                                    Copay ($)
+                                  </span>
+                                  <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={0}
+                                    step="0.01"
+                                    value={policyEditDraft.copayAmount}
+                                    onChange={(e) =>
+                                      updatePolicyDraft({ copayAmount: e.target.value })
+                                    }
+                                    disabled={saving}
+                                  />
+                                </label>
+                              </div>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: 8,
+                                  justifyContent: "flex-end",
+                                  padding: "0 4px 8px",
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  className="button button-secondary"
+                                  onClick={cancelPolicyEdit}
+                                  disabled={saving}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  className="button"
+                                  onClick={() => savePolicyEdit(matchingPolicy)}
+                                  disabled={saving}
+                                >
+                                  {saving ? "Saving…" : "Save policy"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>,
+                        );
+                      }
+
+                      return rows;
                     });
                   })}
                 </tbody>

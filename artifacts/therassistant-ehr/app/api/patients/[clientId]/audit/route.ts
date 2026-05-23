@@ -58,6 +58,9 @@ const TRACKED_ACTIONS = [
   "client_case_created",
   "client_case_updated",
   "client_case_archived",
+  "client_case_policy_attached",
+  "client_case_policy_detached",
+  "client_case_policy_reordered",
 ];
 
 export async function GET(

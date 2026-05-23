@@ -5,6 +5,7 @@ import {
   type PolicyPriority,
 } from "@/lib/cases/clientCasesService";
 import { requireOrgAccess } from "@/lib/auth/requireOrgAccess";
+import { requireAuthenticatedStaff } from "@/lib/rbac/auth";
 
 export async function POST(
   request: Request,
@@ -27,11 +28,13 @@ export async function POST(
         { status: 400 },
       );
     }
+    const staff = await requireAuthenticatedStaff();
     const result = await attachPolicyToCase({
       organizationId: guard.organizationId,
       caseId,
       policyId: body.policyId,
       priority: body.priority,
+      staff,
     });
     if (!result.ok) return NextResponse.json({ success: false, error: result.error }, { status: 400 });
     return NextResponse.json({ success: true });
@@ -63,10 +66,12 @@ export async function PATCH(
         { status: 400 },
       );
     }
+    const staff = await requireAuthenticatedStaff();
     const result = await reorderCasePolicies({
       organizationId: guard.organizationId,
       caseId,
       ordered: body.ordered,
+      staff,
     });
     if (!result.ok) return NextResponse.json({ success: false, error: result.error }, { status: 400 });
     return NextResponse.json({ success: true });

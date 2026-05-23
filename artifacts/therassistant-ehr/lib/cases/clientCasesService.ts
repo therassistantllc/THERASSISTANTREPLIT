@@ -1,4 +1,5 @@
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
+import type { StaffAuthContext } from "@/lib/rbac/auth";
 
 export type CaseType =
   | "commercial"
@@ -346,11 +347,60 @@ export async function archiveCase(params: {
   return { ok: true };
 }
 
+const PRIORITY_LABEL: Record<PolicyPriority, string> = {
+  primary: "Primary policy",
+  secondary: "Secondary policy",
+  tertiary: "Tertiary policy",
+};
+
+async function loadPolicyAuditLabel(
+  supabase: NonNullable<ReturnType<typeof createServerSupabaseAdminClient>>,
+  policyId: string,
+): Promise<{ label: string; planName: string | null; payerName: string | null; policyNumber: string | null }> {
+  const { data } = await supabase
+    .from("insurance_policies")
+    .select("plan_name, policy_number, insurance_payers:payer_id (payer_name)")
+    .eq("id", policyId)
+    .maybeSingle();
+  const row = (data ?? {}) as DbRow;
+  const planName = row.plan_name ? String(row.plan_name) : null;
+  const policyNumber = row.policy_number ? String(row.policy_number) : null;
+  const payerRow = (row.insurance_payers ?? {}) as DbRow;
+  const payerName = payerRow.payer_name ? String(payerRow.payer_name) : null;
+  const label = [payerName, planName].filter(Boolean).join(" – ") ||
+    planName ||
+    payerName ||
+    (policyNumber ? `Policy ${policyNumber}` : `Policy ${policyId}`);
+  return { label, planName, payerName, policyNumber };
+}
+
+function describeStaff(staff: StaffAuthContext | null) {
+  const userId = staff?.userId ?? null;
+  const userRole = staff?.roles?.[0] ?? null;
+  const actorEmail = staff?.email ?? null;
+  const actorName = staff
+    ? [staff.firstName, staff.lastName].filter(Boolean).join(" ") || null
+    : null;
+  return { userId, userRole, actorEmail, actorName };
+}
+
+async function writeCasePolicyAuditRows(
+  supabase: NonNullable<ReturnType<typeof createServerSupabaseAdminClient>>,
+  rows: Array<Record<string, unknown>>,
+): Promise<void> {
+  if (rows.length === 0) return;
+  const { error } = await supabase.from("audit_logs").insert(rows as never);
+  if (error) {
+    console.error("[clientCasesService] case-policy audit insert failed", error.message);
+  }
+}
+
 export async function attachPolicyToCase(params: {
   organizationId: string;
   caseId: string;
   policyId: string;
   priority: PolicyPriority;
+  staff?: StaffAuthContext | null;
 }): Promise<{ ok: boolean; error?: string }> {
   const supabase = createServerSupabaseAdminClient();
   if (!supabase) return { ok: false, error: "Database connection not available" };
@@ -390,6 +440,16 @@ export async function attachPolicyToCase(params: {
     return { ok: false, error: `Another policy is already attached as ${params.priority}` };
   }
 
+  // Capture the prior priority (if any) for this (case_id, policy_id) so the
+  // audit row can show priority moves (e.g. secondary→primary) as before/after.
+  const { data: priorAttachment } = await supabase
+    .from("client_case_policies")
+    .select("priority")
+    .eq("case_id", params.caseId)
+    .eq("policy_id", params.policyId)
+    .maybeSingle();
+  const priorPriority = priorAttachment?.priority as PolicyPriority | undefined;
+
   const { error } = await supabase
     .from("client_case_policies")
     .upsert(
@@ -402,6 +462,68 @@ export async function attachPolicyToCase(params: {
       { onConflict: "case_id,policy_id" },
     );
   if (error) return { ok: false, error: error.message };
+
+  // Best-effort audit: a failure here must not undo the attach. The chart's
+  // Recent changes view filters by patient_id + action, so we set both.
+  try {
+    const caseRecord = await getCaseById({
+      organizationId: params.organizationId,
+      caseId: params.caseId,
+    });
+    const { label: policyLabel, planName, payerName, policyNumber } = await loadPolicyAuditLabel(
+      supabase,
+      params.policyId,
+    );
+    const { userId, userRole, actorEmail, actorName } = describeStaff(params.staff ?? null);
+    const noPriorityChange = priorPriority && priorPriority === params.priority;
+    const fieldLabel = PRIORITY_LABEL[params.priority];
+    const action = priorPriority && priorPriority !== params.priority
+      ? "client_case_policy_reordered"
+      : "client_case_policy_attached";
+    if (!noPriorityChange) {
+      await writeCasePolicyAuditRows(supabase, [
+        {
+          organization_id: params.organizationId,
+          patient_id: caseRow.client_id,
+          user_id: userId,
+          user_role: userRole,
+          action,
+          object_type: "client_case",
+          object_id: params.caseId,
+          before_value: priorPriority
+            ? { [PRIORITY_LABEL[priorPriority]]: policyLabel }
+            : { [fieldLabel]: null },
+          after_value: { [fieldLabel]: policyLabel },
+          event_type: action,
+          event_summary: priorPriority
+            ? `${caseRecord ? `Case: ${caseRecord.name}` : "Case"}: ${policyLabel} moved from ${priorPriority} to ${params.priority}`
+            : `${caseRecord ? `Case: ${caseRecord.name}` : "Case"}: ${fieldLabel} set to ${policyLabel}`,
+          event_metadata: {
+            field: fieldLabel,
+            field_label: fieldLabel,
+            object_label: caseRecord ? `Case: ${caseRecord.name}` : "Case",
+            actor_email: actorEmail,
+            actor_name: actorName,
+            case_id: params.caseId,
+            case_name: caseRecord?.name ?? null,
+            policy_id: params.policyId,
+            policy_label: policyLabel,
+            plan_name: planName,
+            payer_name: payerName,
+            policy_number: policyNumber,
+            priority: params.priority,
+            prior_priority: priorPriority ?? null,
+          },
+        },
+      ]);
+    }
+  } catch (auditError) {
+    console.error(
+      "[attachPolicyToCase] audit log insert failed after successful attach",
+      auditError instanceof Error ? auditError.message : auditError,
+    );
+  }
+
   return { ok: true };
 }
 
@@ -409,9 +531,24 @@ export async function detachPolicyFromCase(params: {
   organizationId: string;
   caseId: string;
   policyId: string;
+  staff?: StaffAuthContext | null;
 }): Promise<{ ok: boolean; error?: string }> {
   const supabase = createServerSupabaseAdminClient();
   if (!supabase) return { ok: false, error: "Database connection not available" };
+
+  // Capture the prior attachment (priority + client) BEFORE deleting so the
+  // audit row can record the priority slot being freed.
+  const { data: priorRow } = await supabase
+    .from("client_case_policies")
+    .select("priority, client_cases:case_id (client_id, name)")
+    .eq("case_id", params.caseId)
+    .eq("policy_id", params.policyId)
+    .eq("organization_id", params.organizationId)
+    .maybeSingle();
+  const priorPriority = (priorRow?.priority as PolicyPriority | undefined) ?? null;
+  const caseJoin = ((priorRow ?? {}) as DbRow).client_cases as DbRow | undefined;
+  const patientId = caseJoin?.client_id ? String(caseJoin.client_id) : null;
+  const caseName = caseJoin?.name ? String(caseJoin.name) : null;
 
   const { error } = await supabase
     .from("client_case_policies")
@@ -420,6 +557,53 @@ export async function detachPolicyFromCase(params: {
     .eq("policy_id", params.policyId)
     .eq("organization_id", params.organizationId);
   if (error) return { ok: false, error: error.message };
+
+  try {
+    if (priorPriority && patientId) {
+      const { label: policyLabel, planName, payerName, policyNumber } = await loadPolicyAuditLabel(
+        supabase,
+        params.policyId,
+      );
+      const { userId, userRole, actorEmail, actorName } = describeStaff(params.staff ?? null);
+      const fieldLabel = PRIORITY_LABEL[priorPriority];
+      await writeCasePolicyAuditRows(supabase, [
+        {
+          organization_id: params.organizationId,
+          patient_id: patientId,
+          user_id: userId,
+          user_role: userRole,
+          action: "client_case_policy_detached",
+          object_type: "client_case",
+          object_id: params.caseId,
+          before_value: { [fieldLabel]: policyLabel },
+          after_value: { [fieldLabel]: null },
+          event_type: "client_case_policy_detached",
+          event_summary: `${caseName ? `Case: ${caseName}` : "Case"}: ${fieldLabel} cleared (was ${policyLabel})`,
+          event_metadata: {
+            field: fieldLabel,
+            field_label: fieldLabel,
+            object_label: caseName ? `Case: ${caseName}` : "Case",
+            actor_email: actorEmail,
+            actor_name: actorName,
+            case_id: params.caseId,
+            case_name: caseName,
+            policy_id: params.policyId,
+            policy_label: policyLabel,
+            plan_name: planName,
+            payer_name: payerName,
+            policy_number: policyNumber,
+            priority: priorPriority,
+          },
+        },
+      ]);
+    }
+  } catch (auditError) {
+    console.error(
+      "[detachPolicyFromCase] audit log insert failed after successful detach",
+      auditError instanceof Error ? auditError.message : auditError,
+    );
+  }
+
   return { ok: true };
 }
 
@@ -427,6 +611,7 @@ export async function reorderCasePolicies(params: {
   organizationId: string;
   caseId: string;
   ordered: Array<{ policyId: string; priority: PolicyPriority }>;
+  staff?: StaffAuthContext | null;
 }): Promise<{ ok: boolean; error?: string }> {
   const supabase = createServerSupabaseAdminClient();
   if (!supabase) return { ok: false, error: "Database connection not available" };
@@ -438,6 +623,17 @@ export async function reorderCasePolicies(params: {
     if (seenPolicy.has(policyId)) return { ok: false, error: "Duplicate policy in ordering" };
     seenPriority.add(priority);
     seenPolicy.add(policyId);
+  }
+
+  // Snapshot the existing attachments so the audit pass can diff per-policy.
+  const { data: existingAttachments } = await supabase
+    .from("client_case_policies")
+    .select("policy_id, priority")
+    .eq("case_id", params.caseId)
+    .eq("organization_id", params.organizationId);
+  const priorByPolicy = new Map<string, PolicyPriority>();
+  for (const row of (existingAttachments ?? []) as DbRow[]) {
+    priorByPolicy.set(String(row.policy_id), row.priority as PolicyPriority);
   }
 
   // Two-phase: clear priorities to a temporary slot first to avoid colliding
@@ -460,6 +656,71 @@ export async function reorderCasePolicies(params: {
   }));
   const { error: insError } = await supabase.from("client_case_policies").insert(rows);
   if (insError) return { ok: false, error: insError.message };
+
+  // Best-effort audit: one row per policy whose priority actually changed.
+  try {
+    const changed = params.ordered.filter(
+      (r) => (priorByPolicy.get(r.policyId) ?? null) !== r.priority,
+    );
+    if (changed.length > 0) {
+      const caseRecord = await getCaseById({
+        organizationId: params.organizationId,
+        caseId: params.caseId,
+      });
+      if (caseRecord) {
+        const { userId, userRole, actorEmail, actorName } = describeStaff(params.staff ?? null);
+        const auditRows: Array<Record<string, unknown>> = [];
+        for (const r of changed) {
+          const prior = priorByPolicy.get(r.policyId) ?? null;
+          const { label: policyLabel, planName, payerName, policyNumber } = await loadPolicyAuditLabel(
+            supabase,
+            r.policyId,
+          );
+          const fieldLabel = PRIORITY_LABEL[r.priority];
+          auditRows.push({
+            organization_id: params.organizationId,
+            patient_id: caseRecord.clientId,
+            user_id: userId,
+            user_role: userRole,
+            action: "client_case_policy_reordered",
+            object_type: "client_case",
+            object_id: params.caseId,
+            before_value: prior
+              ? { [PRIORITY_LABEL[prior]]: policyLabel }
+              : { [fieldLabel]: null },
+            after_value: { [fieldLabel]: policyLabel },
+            event_type: "client_case_policy_reordered",
+            event_summary: prior
+              ? `Case: ${caseRecord.name}: ${policyLabel} moved from ${prior} to ${r.priority}`
+              : `Case: ${caseRecord.name}: ${fieldLabel} set to ${policyLabel}`,
+            event_metadata: {
+              field: fieldLabel,
+              field_label: fieldLabel,
+              object_label: `Case: ${caseRecord.name}`,
+              actor_email: actorEmail,
+              actor_name: actorName,
+              case_id: params.caseId,
+              case_name: caseRecord.name,
+              policy_id: r.policyId,
+              policy_label: policyLabel,
+              plan_name: planName,
+              payer_name: payerName,
+              policy_number: policyNumber,
+              priority: r.priority,
+              prior_priority: prior,
+            },
+          });
+        }
+        await writeCasePolicyAuditRows(supabase, auditRows);
+      }
+    }
+  } catch (auditError) {
+    console.error(
+      "[reorderCasePolicies] audit log insert failed after successful reorder",
+      auditError instanceof Error ? auditError.message : auditError,
+    );
+  }
+
   return { ok: true };
 }
 

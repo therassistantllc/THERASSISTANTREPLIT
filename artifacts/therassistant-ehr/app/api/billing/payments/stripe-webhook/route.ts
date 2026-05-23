@@ -149,6 +149,22 @@ function extractPaymentDetails(event: StripeEvent): {
   return null;
 }
 
+/**
+ * Persist a Stripe webhook failure as a workqueue_items row so a biller
+ * can manually review/post the payment. Returns true on success, false on
+ * failure — the caller MUST fail-loud (5xx) when this returns false so
+ * Stripe retries the delivery and the obligation is not silently lost.
+ *
+ * Schema notes (Task #114):
+ *   - workqueue_items uses `client_id` (not patient_id) and `work_type`
+ *     (not queue_type).
+ *   - `source_object_type` is an enum — Stripe charges are not first-class
+ *     in that enum, so we use the closest valid value `payment_posting`
+ *     and stash the real Stripe identifiers in `context_payload` (jsonb).
+ *   - `source_object_id` is uuid NOT NULL with a check constraint requiring
+ *     it alongside source_object_type. Stripe ids are not uuids, so we
+ *     generate a synthetic uuid for the review task itself.
+ */
 async function writeUnmatchedWorkqueueItem(
   reason: string,
   context: {
@@ -159,20 +175,25 @@ async function writeUnmatchedWorkqueueItem(
     paymentIntentId: string | null;
     amountCents: number;
   },
-) {
+): Promise<boolean> {
   const supabase = createServerSupabaseAdminClient();
   if (!supabase || !context.organizationId) {
     // No org context = no organization scope to attach the WQ row to.
-    // Log and move on; Stripe Dashboard remains the source of truth.
+    // This is unrecoverable for this delivery; signal failure so the caller
+    // returns 5xx and Stripe retries (giving us a chance to receive the
+    // metadata-bearing delivery if this was a malformed one).
     console.error("[stripe-webhook] cannot create workqueue item (no org):", reason, context);
-    return;
+    return false;
   }
   const amountDollars = (context.amountCents / 100).toFixed(2);
   const labelRef = context.chargeId ?? context.paymentIntentId ?? "unknown";
+  const syntheticId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
   const { error } = await supabase.from("workqueue_items").insert({
     organization_id: context.organizationId,
-    patient_id: context.clientId,
-    queue_type: "patient_payment_review",
+    client_id: context.clientId,
     work_type: "patient_payment_review",
     status: "open",
     priority: "high",
@@ -180,12 +201,22 @@ async function writeUnmatchedWorkqueueItem(
     description: `Stripe webhook could not auto-post this payment: ${reason}. Charge=${
       context.chargeId ?? "n/a"
     }, PaymentIntent=${context.paymentIntentId ?? "n/a"}, Invoice=${context.invoiceId ?? "n/a"}.`,
-    source_object_type: "stripe_charge",
-    source_object_id: context.chargeId ?? context.paymentIntentId ?? null,
+    source_object_type: "payment_posting",
+    source_object_id: syntheticId,
+    context_payload: {
+      origin: "stripe_webhook",
+      reason,
+      stripe_charge_id: context.chargeId,
+      stripe_payment_intent_id: context.paymentIntentId,
+      patient_invoice_id: context.invoiceId,
+      amount_cents: context.amountCents,
+    },
   });
   if (error) {
     console.error("[stripe-webhook] failed to write workqueue item:", error.message);
+    return false;
   }
+  return true;
 }
 
 export async function POST(request: Request) {
@@ -253,22 +284,34 @@ export async function POST(request: Request) {
   }
 
   if (!organizationId || !clientId) {
-    await writeUnmatchedWorkqueueItem("Stripe event missing metadata.organization_id or metadata.client_id", {
-      organizationId,
-      clientId,
-      invoiceId,
-      chargeId: details.chargeId,
-      paymentIntentId: details.paymentIntentId,
-      amountCents: details.amountCents,
-    });
-    // Still 200: Stripe should not retry this event forever; a biller
-    // can resolve the workqueue item by adding metadata on the source
+    const queued = await writeUnmatchedWorkqueueItem(
+      "Stripe event missing metadata.organization_id or metadata.client_id",
+      {
+        organizationId,
+        clientId,
+        invoiceId,
+        chargeId: details.chargeId,
+        paymentIntentId: details.paymentIntentId,
+        amountCents: details.amountCents,
+      },
+    );
+    if (!queued) {
+      // Fail-loud: if we couldn't even persist the review obligation,
+      // return 5xx so Stripe retries instead of silently losing the
+      // payment from our records.
+      return NextResponse.json(
+        { success: false, error: "Failed to record review item; retry expected" },
+        { status: 503 },
+      );
+    }
+    // 200: Stripe should not retry this event forever; a biller can
+    // resolve the workqueue item by adding metadata on the source
     // payment link and re-issuing if needed.
     return NextResponse.json({ success: false, queuedForReview: true });
   }
 
   if (amountDollars <= 0) {
-    await writeUnmatchedWorkqueueItem("Stripe event reported zero amount", {
+    const queued = await writeUnmatchedWorkqueueItem("Stripe event reported zero amount", {
       organizationId,
       clientId,
       invoiceId,
@@ -276,6 +319,12 @@ export async function POST(request: Request) {
       paymentIntentId: details.paymentIntentId,
       amountCents: details.amountCents,
     });
+    if (!queued) {
+      return NextResponse.json(
+        { success: false, error: "Failed to record review item; retry expected" },
+        { status: 503 },
+      );
+    }
     return NextResponse.json({ success: false, queuedForReview: true });
   }
 
@@ -308,7 +357,7 @@ export async function POST(request: Request) {
     }
 
     const errorSummary = result.errors.map((e) => `${e.field}: ${e.message}`).join("; ") || "Unknown commit failure";
-    await writeUnmatchedWorkqueueItem(`commitPatientPayment failed: ${errorSummary}`, {
+    const queued = await writeUnmatchedWorkqueueItem(`commitPatientPayment failed: ${errorSummary}`, {
       organizationId,
       clientId,
       invoiceId,
@@ -316,10 +365,16 @@ export async function POST(request: Request) {
       paymentIntentId: details.paymentIntentId,
       amountCents: details.amountCents,
     });
+    if (!queued) {
+      return NextResponse.json(
+        { success: false, error: "Failed to record review item; retry expected", errors: result.errors },
+        { status: 503 },
+      );
+    }
     return NextResponse.json({ success: false, queuedForReview: true, errors: result.errors });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await writeUnmatchedWorkqueueItem(`Unexpected error: ${message}`, {
+    const queued = await writeUnmatchedWorkqueueItem(`Unexpected error: ${message}`, {
       organizationId,
       clientId,
       invoiceId,
@@ -327,8 +382,14 @@ export async function POST(request: Request) {
       paymentIntentId: details.paymentIntentId,
       amountCents: details.amountCents,
     });
-    // Return 200 so Stripe doesn't pile up retries on a deterministic
-    // bug; the WQ row holds the obligation.
+    if (!queued) {
+      return NextResponse.json(
+        { success: false, error: `Failed to record review item; retry expected. Original: ${message}` },
+        { status: 503 },
+      );
+    }
+    // 200 here: the WQ row holds the obligation, so Stripe doesn't need
+    // to pile up retries on a deterministic bug we already captured.
     return NextResponse.json({ success: false, queuedForReview: true, error: message });
   }
 }

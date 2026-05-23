@@ -1,0 +1,110 @@
+/* TherassistantEHR tokens — mirrors app/globals.css :root */
+.ta-app {
+  --navy: #10243f;
+  --navy-soft: #1a3d68;
+  --sage: #5e8a6a;
+  --sage-soft: #edf3ef;
+  --sage-mid: #c6d8cc;
+  --line: #d8e1e9;
+  --text: #1a2332;
+  --muted: #5c6e82;
+  --danger: #b02020;
+  --warning: #7a5000;
+  --success: #1e5e40;
+  --background: #f2f4f7;
+  --card: #ffffff;
+  --nav-height: 44px;
+
+  color: var(--text);
+  background: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+}
+.ta-app *, .ta-app *::before, .ta-app *::after { box-sizing: border-box; }
+.ta-app h1, .ta-app h2, .ta-app h3, .ta-app p { margin-top: 0; }
+.ta-app a { color: inherit; text-decoration: none; }
+.ta-app button { font: inherit; cursor: pointer; }
+.ta-app input, .ta-app select { font: inherit; }
+
+/* Sidebar (faux) */
+.ta-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--navy);
+  color: #cfd8e3;
+  padding: 18px 0;
+  font-size: 13px;
+}
+.ta-sidebar .ta-brand {
+  padding: 0 18px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 14px;
+}
+.ta-sidebar .ta-brand b { color: #fff; font-size: 13px; letter-spacing: 0.04em; }
+.ta-sidebar .ta-brand .pill {
+  display: inline-block;
+  background: var(--sage);
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 6px;
+  font-weight: 600;
+}
+.ta-sidebar .ta-brand .org { display: block; color: #a9bcd1; font-size: 11px; margin-top: 8px; }
+.ta-sidebar .ta-section { padding: 8px 18px 4px; color: #7a8da3; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+.ta-sidebar .ta-nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 18px;
+  color: #cfd8e3;
+}
+.ta-sidebar .ta-nav-item.active {
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  border-left: 2px solid var(--sage);
+  padding-left: 16px;
+}
+.ta-sidebar .ta-nav-item.sub { padding-left: 36px; font-size: 12px; color: #a9bcd1; }
+.ta-sidebar .ta-nav-item.sub.active { color: #fff; }
+
+/* Main content area */
+.ta-main { flex: 1; padding: 20px 24px; min-width: 0; overflow: auto; }
+
+/* Reusable surfaces (matches app/globals.css) */
+.ta-app .panel,
+.ta-app .metric-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.ta-app .panel { padding: 16px 20px; box-shadow: 0 1px 3px rgba(16, 36, 63, 0.05); margin-bottom: 16px; }
+.ta-app .hero-panel {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 12px 16px; background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--navy);
+  border-radius: 0 3px 3px 0;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+.ta-app .eyebrow {
+  margin-bottom: 3px; color: var(--sage);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.ta-app .hero-copy { max-width: 720px; margin-bottom: 0; color: var(--muted); }
+.ta-app .hero-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ta-app .button {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 30px; padding: 4px 12px;
+  border: 1px solid var(--navy); border-radius: 3px;
+  background: var(--navy); color: #fff;
+  font-size: 13px;
+}
+.ta-app .button-secondary { background: #fff; color: var(--navy); border-color: var(--line); }
+.ta-app .metric-card { padding: 12px 16px; border-top: 2px solid var(--navy); }
+.ta-app h1 { font-size: 22px; font-weight: 600; color: var(--navy); margin: 0; }
+.ta-app h2 { font-size: 14px; font-weight: 600; color: var(--navy); margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.ta-app .muted { color: var(--muted); }

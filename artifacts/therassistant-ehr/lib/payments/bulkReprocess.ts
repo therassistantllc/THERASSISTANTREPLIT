@@ -40,6 +40,14 @@ export interface BulkReprocessDeps {
   ) => Promise<BulkReprocessClaimMatch | null>;
 }
 
+/**
+ * Bounded concurrency for the per-target pool. Tuned to ~8 because each
+ * target does 2–4 sequential Supabase round-trips (~50–200ms each), so
+ * 8-way fan-out keeps the connection pool comfortable while collapsing
+ * 200 targets from ~10–40s of strict-serial wall time down to ~1–5s.
+ */
+const BULK_REPROCESS_CONCURRENCY = 8;
+
 export interface BulkReprocessSummary {
   reprocessed: number;
   itemsCreated: number;
@@ -60,7 +68,7 @@ export async function reprocessBulkTargets(args: {
     errors: [],
   };
 
-  for (const t of targets) {
+  const processOne = async (t: BulkReprocessTarget): Promise<void> => {
     try {
       if (t.kind === "era_835") {
         const { data } = await supabase
@@ -72,7 +80,7 @@ export async function reprocessBulkTargets(args: {
           .eq("id", t.id)
           .is("archived_at", null)
           .maybeSingle();
-        if (!data) continue;
+        if (!data) return;
         const row = data as Record<string, unknown>;
 
         let claimMatchStatus = (row.claim_match_status as string | null) ?? null;
@@ -172,7 +180,7 @@ export async function reprocessBulkTargets(args: {
           .eq("id", t.id)
           .is("archived_at", null)
           .maybeSingle();
-        if (!data) continue;
+        if (!data) return;
         const row = data as Record<string, unknown>;
         const allowed = Number(row.allowed_amount ?? 0);
         const r = await applyWorkqueueRules(supabase, {
@@ -211,7 +219,21 @@ export async function reprocessBulkTargets(args: {
         message: err instanceof Error ? err.message : "reprocess failed",
       });
     }
-  }
+  };
+
+  // Bounded-concurrency pool: N workers pull from a shared cursor so a
+  // slow target only blocks its own slot, not the whole batch. Workers
+  // never throw (processOne already records its own errors into
+  // summary.errors), so Promise.all here only awaits completion.
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < targets.length) {
+      const i = cursor++;
+      await processOne(targets[i]);
+    }
+  };
+  const poolSize = Math.min(BULK_REPROCESS_CONCURRENCY, targets.length);
+  await Promise.all(Array.from({ length: poolSize }, () => worker()));
 
   return summary;
 }

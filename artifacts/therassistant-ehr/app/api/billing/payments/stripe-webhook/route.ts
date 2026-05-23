@@ -23,6 +23,11 @@
  *   - metadata.client_id         (required)
  *   - metadata.patient_invoice_id (optional, but enables auto-apply)
  *   - metadata.professional_claim_id (optional)
+ *
+ * Operator runbook (setting STRIPE_WEBHOOK_SECRET, choosing events,
+ * required metadata, and how to recover a queued-for-review row):
+ *   ../../../../../STRIPE_WEBHOOK_RUNBOOK.md
+ *   (repo path: artifacts/therassistant-ehr/STRIPE_WEBHOOK_RUNBOOK.md)
  */
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";

@@ -1,18 +1,7 @@
 import { requireOrgAccess } from "@/lib/auth/requireOrgAccess";
 // File: app/api/mailroom/file/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-function getSupabase() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error("Server Supabase configuration is missing");
-  }
-
-  return createClient(supabaseUrl, supabaseServiceRoleKey);
-}
+import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 function clean(value: unknown) {
   return String(value ?? "").trim();
@@ -20,7 +9,13 @@ function clean(value: unknown) {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = getSupabase();
+    const supabase = createServerSupabaseAdminClient();
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "Database connection not available" },
+        { status: 500 }
+      );
+    }
     const body = await req.json();
     const {
       mailroom_item_id,
@@ -43,6 +38,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Destinations that route the document into a specific row (patient chart,
+    // claim, or encounter) MUST carry a target_id. `practice_documents` is the
+    // only destination that legitimately has no target. The UI enforces this
+    // via canFileDocument; the API enforces it here so a hand-rolled POST
+    // can't sneak a document in without a target FK.
+    const targetRequired =
+      filing_destination === "patient_chart" ||
+      filing_destination === "claim" ||
+      filing_destination === "encounter";
+    const cleanedTargetId = clean(target_id) || null;
+    if (targetRequired && !cleanedTargetId) {
+      return NextResponse.json(
+        { error: `target_id is required for filing_destination=${filing_destination}` },
+        { status: 400 }
+      );
+    }
+
     // Get mailroom item, enforcing org ownership
     const { data: mailroomItem, error: mailroomError } = await supabase
       .from("mailroom_items")
@@ -56,6 +68,31 @@ export async function POST(req: NextRequest) {
         { error: "Mailroom item not found" },
         { status: 404 }
       );
+    }
+
+    // Cross-org target_id guard: the FK target row (client / claim / encounter)
+    // must belong to the same organization as the session. Without this an
+    // attacker who knows another tenant's UUID could file a document straight
+    // into their chart.
+    if (targetRequired && cleanedTargetId) {
+      const targetTable =
+        filing_destination === "patient_chart"
+          ? "clients"
+          : filing_destination === "claim"
+          ? "claims"
+          : "encounters";
+      const { data: targetRow, error: targetError } = await supabase
+        .from(targetTable)
+        .select("id")
+        .eq("id", cleanedTargetId)
+        .eq("organization_id", effectiveOrgId)
+        .maybeSingle();
+      if (targetError || !targetRow) {
+        return NextResponse.json(
+          { error: `target_id not found in your organization` },
+          { status: 404 }
+        );
+      }
     }
 
     const mimeType =
@@ -85,13 +122,15 @@ export async function POST(req: NextRequest) {
       notes: admin_comments || null,
     };
 
-    // Set appropriate FK based on filing destination
-    if (filing_destination === "patient_chart" && target_id) {
-      documentData.client_id = target_id;
-    } else if (filing_destination === "claim" && target_id) {
-      documentData.claim_id = target_id;
-    } else if (filing_destination === "encounter" && target_id) {
-      documentData.encounter_id = target_id;
+    // Set appropriate FK based on filing destination. By this point the
+    // target_id has been validated as required (when applicable) and verified
+    // to belong to the session organization, so we can trust cleanedTargetId.
+    if (filing_destination === "patient_chart" && cleanedTargetId) {
+      documentData.client_id = cleanedTargetId;
+    } else if (filing_destination === "claim" && cleanedTargetId) {
+      documentData.claim_id = cleanedTargetId;
+    } else if (filing_destination === "encounter" && cleanedTargetId) {
+      documentData.encounter_id = cleanedTargetId;
     }
 
     const { data: document, error: documentError } = await supabase

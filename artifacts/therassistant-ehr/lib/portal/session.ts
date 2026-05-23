@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
-export const PORTAL_SESSION_COOKIE = "ta_portal_session";
+const PORTAL_SESSION_COOKIE = "ta_portal_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
 
 export type PortalSession = {

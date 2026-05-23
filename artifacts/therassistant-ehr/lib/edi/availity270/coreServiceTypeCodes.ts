@@ -32,7 +32,7 @@
 // X12 defines hundreds of additional STCs; payers may accept them, but
 // the response shape is between the caller and the payer.
 
-export type CoreStcCategory =
+type CoreStcCategory =
   | "generic"
   | "medical"
   | "behavioral_health"
@@ -71,7 +71,7 @@ export interface CoreServiceTypeCode {
 // Appendix Table 1 — canonical CORE Required STC set.
 // Source: CAQH CORE Eligibility & Benefits (270/271) Data Content Rule
 // vEB.2.1, March 2021. Updated through Phase V certification.
-export const CORE_SERVICE_TYPE_CODES: CoreServiceTypeCode[] = [
+const CORE_SERVICE_TYPE_CODES: CoreServiceTypeCode[] = [
   {
     code: "30",
     description: "Health Benefit Plan Coverage",

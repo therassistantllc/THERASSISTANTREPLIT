@@ -18,47 +18,47 @@ import type {
 } from "./types";
 import { BILLER_USER_ID, CURRENT_USER_ID, ORG_ID } from "./seed";
 
-export function makeId(prefix: string): ID {
+function makeId(prefix: string): ID {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}-${Date.now().toString(36)}`;
 }
 
-export function isoNow(): string {
+function isoNow(): string {
   return new Date().toISOString();
 }
 
-export function dateOnly(value: string): string {
+function dateOnly(value: string): string {
   return value.slice(0, 10);
 }
 
-export function patientName(state: CanonicalEhrState, patientId: ID | null): string {
+function patientName(state: CanonicalEhrState, patientId: ID | null): string {
   if (!patientId) return "No patient";
   const patient = state.patients.find((item) => item.id === patientId);
   return patient ? `${patient.preferred_name || patient.first_name} ${patient.last_name}` : "Unknown patient";
 }
 
-export function userName(state: CanonicalEhrState, userId: ID | null): string {
+function userName(state: CanonicalEhrState, userId: ID | null): string {
   if (!userId) return "Unassigned";
   const user = state.users.find((item) => item.id === userId);
   return user ? `${user.full_name}${user.credentials ? `, ${user.credentials}` : ""}` : "Unknown user";
 }
 
-export function payerName(state: CanonicalEhrState, payerId: ID | null): string {
+function payerName(state: CanonicalEhrState, payerId: ID | null): string {
   if (!payerId) return "No payer";
   return state.payers.find((item) => item.id === payerId)?.payer_name ?? "Unknown payer";
 }
 
-export function getPrimaryPolicy(state: CanonicalEhrState, patientId: ID) {
+function getPrimaryPolicy(state: CanonicalEhrState, patientId: ID) {
   return state.insurance_policies.find((item) => item.patient_id === patientId && item.priority === 1) ?? null;
 }
 
-export function latestEligibility(state: CanonicalEhrState, patientId: ID): EligibilityCheck | null {
+function latestEligibility(state: CanonicalEhrState, patientId: ID): EligibilityCheck | null {
   const checks = state.eligibility_checks
     .filter((item) => item.patient_id === patientId)
     .sort((a, b) => b.checked_at.localeCompare(a.checked_at));
   return checks[0] ?? null;
 }
 
-export function getEncounterReadiness(state: CanonicalEhrState, encounterId: ID) {
+function getEncounterReadiness(state: CanonicalEhrState, encounterId: ID) {
   const encounter = state.encounters.find((item) => item.id === encounterId) ?? null;
   const note = state.clinical_notes.find((item) => item.encounter_id === encounterId) ?? null;
   const diagnoses = state.encounter_diagnoses.filter((item) => item.encounter_id === encounterId);
@@ -130,7 +130,7 @@ export function getEncounterReadiness(state: CanonicalEhrState, encounterId: ID)
   };
 }
 
-export function addAudit(state: CanonicalEhrState, entityType: string, entityId: ID, action: "view" | "create" | "update" | "delete" | "sign" | "submit" | "export", afterData: Record<string, unknown>): CanonicalEhrState {
+function addAudit(state: CanonicalEhrState, entityType: string, entityId: ID, action: "view" | "create" | "update" | "delete" | "sign" | "submit" | "export", afterData: Record<string, unknown>): CanonicalEhrState {
   return {
     ...state,
     audit_logs: [
@@ -166,7 +166,7 @@ function closeWorkqueueItemsForEncounter(state: CanonicalEhrState, encounterId: 
   });
 }
 
-export function checkEligibilityForAppointment(state: CanonicalEhrState, appointmentId: ID): CanonicalEhrState {
+function checkEligibilityForAppointment(state: CanonicalEhrState, appointmentId: ID): CanonicalEhrState {
   const appointment = state.appointments.find((item) => item.id === appointmentId);
   if (!appointment) return state;
   const policy = state.insurance_policies.find((item) => item.id === appointment.insurance_policy_id);
@@ -321,7 +321,7 @@ export function startEncounterFromAppointment(state: CanonicalEhrState, appointm
   return addAudit(nextState, "encounter", encounterId, "create", { appointment_id: appointment.id });
 }
 
-export function signClinicalNote(state: CanonicalEhrState, encounterId: ID): CanonicalEhrState {
+function signClinicalNote(state: CanonicalEhrState, encounterId: ID): CanonicalEhrState {
   const now = isoNow();
   const serviceLines = state.encounter_service_lines.map((item) =>
     item.encounter_id === encounterId
@@ -347,7 +347,7 @@ export function signClinicalNote(state: CanonicalEhrState, encounterId: ID): Can
   return autoRouteReadyEncounter(nextState, encounterId);
 }
 
-export function addAddendum(state: CanonicalEhrState, encounterId: ID, message: string): CanonicalEhrState {
+function addAddendum(state: CanonicalEhrState, encounterId: ID, message: string): CanonicalEhrState {
   const note: ClinicalNote = {
     id: makeId("note-addendum"),
     encounter_id: encounterId,
@@ -371,7 +371,7 @@ export function addAddendum(state: CanonicalEhrState, encounterId: ID, message: 
   return addAudit({ ...state, clinical_notes: [note, ...state.clinical_notes] }, "clinical_note", note.id, "create", { type: "addendum" });
 }
 
-export function autoRouteReadyEncounter(state: CanonicalEhrState, encounterId: ID): CanonicalEhrState {
+function autoRouteReadyEncounter(state: CanonicalEhrState, encounterId: ID): CanonicalEhrState {
   const readiness = getEncounterReadiness(state, encounterId);
   const encounter = readiness.encounter;
   if (!encounter) return state;
@@ -448,7 +448,7 @@ export function autoRouteReadyEncounter(state: CanonicalEhrState, encounterId: I
   return addAudit(nextState, "workqueue_item", readyItem.id, "create", { queue_type: "ready_to_bill" });
 }
 
-export function routeToBiller(state: CanonicalEhrState, encounterId: ID, category: SupportTicket["category"], priority: SupportTicket["priority"], message: string): CanonicalEhrState {
+function routeToBiller(state: CanonicalEhrState, encounterId: ID, category: SupportTicket["category"], priority: SupportTicket["priority"], message: string): CanonicalEhrState {
   const encounter = state.encounters.find((item) => item.id === encounterId);
   if (!encounter) return state;
   const ticket: SupportTicket = {
@@ -509,7 +509,7 @@ export function routeToBiller(state: CanonicalEhrState, encounterId: ID, categor
   );
 }
 
-export function scrubWorkqueueItem(state: CanonicalEhrState, workqueueItemId: ID): CanonicalEhrState {
+function scrubWorkqueueItem(state: CanonicalEhrState, workqueueItemId: ID): CanonicalEhrState {
   return addAudit(
     {
       ...state,
@@ -537,7 +537,7 @@ export function scrubWorkqueueItem(state: CanonicalEhrState, workqueueItemId: ID
   );
 }
 
-export function createClaimFromEncounter(state: CanonicalEhrState, encounterId: ID): CanonicalEhrState {
+function createClaimFromEncounter(state: CanonicalEhrState, encounterId: ID): CanonicalEhrState {
   const encounter = state.encounters.find((item) => item.id === encounterId);
   if (!encounter) return state;
   const existing = state.claims.find((item) => item.encounter_id === encounterId);
@@ -602,7 +602,7 @@ export function createClaimFromEncounter(state: CanonicalEhrState, encounterId: 
   return addAudit(nextState, "claim", claim.id, "create", { source: "encounter", transaction: "837P draft" });
 }
 
-export function submitClaim(state: CanonicalEhrState, claimId: ID): CanonicalEhrState {
+function submitClaim(state: CanonicalEhrState, claimId: ID): CanonicalEhrState {
   const claim = state.claims.find((item) => item.id === claimId);
   if (!claim) return state;
   const submission: ClaimSubmission = {
@@ -645,7 +645,7 @@ export function submitClaim(state: CanonicalEhrState, claimId: ID): CanonicalEhr
   );
 }
 
-export function setClaimStatus(state: CanonicalEhrState, claimId: ID, status: Claim["claim_status"]): CanonicalEhrState {
+function setClaimStatus(state: CanonicalEhrState, claimId: ID, status: Claim["claim_status"]): CanonicalEhrState {
   const claim = state.claims.find((item) => item.id === claimId);
   if (!claim) return state;
   const event: ClaimStatusEvent = {
@@ -698,7 +698,7 @@ export function setClaimStatus(state: CanonicalEhrState, claimId: ID, status: Cl
   );
 }
 
-export function importEraAndPostPayment(state: CanonicalEhrState, claimId: ID): CanonicalEhrState {
+function importEraAndPostPayment(state: CanonicalEhrState, claimId: ID): CanonicalEhrState {
   const claim = state.claims.find((item) => item.id === claimId);
   if (!claim) return state;
   const claimLines = state.claim_service_lines.filter((item) => item.claim_id === claimId);

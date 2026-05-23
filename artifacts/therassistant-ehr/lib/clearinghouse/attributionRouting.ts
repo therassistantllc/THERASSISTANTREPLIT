@@ -9,7 +9,7 @@
 
 import type { AttributionDecision } from "@/lib/edi/availity270/attribution";
 
-export type AttributionRoutingUnresolvedReason =
+type AttributionRoutingUnresolvedReason =
   | "no_dependent_match"
   | "ambiguous_dependent_match"
   | "missing_dependent_identity";
@@ -26,7 +26,7 @@ export interface AttributionRoutingDecision {
   candidateIds: string[];
 }
 
-export interface DependentLookupInput {
+interface DependentLookupInput {
   organizationId: string;
   firstName: string | null;
   lastName: string | null;

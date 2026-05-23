@@ -240,7 +240,7 @@ export interface AvailityRealtimeEligibilityResult {
   normalized: EligibilityResponseNormalized;
 }
 
-export interface AvailityRealtimeAck {
+interface AvailityRealtimeAck {
   status: "accepted" | "accepted_with_errors" | "partially_accepted" | "rejected";
   hasErrors: boolean;
   rawPayload: string;
@@ -254,7 +254,7 @@ export interface AvailityRealtimeAck {
  * row and surface the rejection to the user — there is no
  * eligibility data to display.
  */
-export class EligibilityAcknowledgementError extends Error {
+class EligibilityAcknowledgementError extends Error {
   readonly code = "ELIGIBILITY_ACK_999" as const;
   readonly ack: AvailityRealtimeAck;
   readonly controlNumber: string;

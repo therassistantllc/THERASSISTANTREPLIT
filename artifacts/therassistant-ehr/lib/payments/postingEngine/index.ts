@@ -35,18 +35,10 @@ import type {
 
 export * from "./types";
 export * from "./roleGuard";
-export { validateEra835Posting, isAlreadyPosted, POSTING_BALANCE_TOLERANCE } from "./validation";
-export { writePaymentAuditLog } from "./audit";
-export {
-  commitManualInsurancePosting,
-  validateManualInsurancePosting,
-} from "./manualInsurance";
+export { validateEra835Posting } from "./validation";
 export {
   commitPatientPayment,
-  validatePatientPayment,
   applyClientCredit,
-  type CommitPatientPaymentInput,
-  type ApplyClientCreditInput,
   type PatientPaymentApplyTo,
   type PatientPaymentMethod,
 } from "./patientPayment";
@@ -59,24 +51,7 @@ export {
   confirmInsuranceRefund,
   confirmPatientRefund,
   cancelPendingRefund,
-  validateReversalRequest,
-  validateRefundAmount,
-  type ConfirmInsuranceRefundInput,
-  type ConfirmInsuranceRefundResult,
-  type ConfirmPatientRefundInput,
-  type ConfirmPatientRefundResult,
-  type CancelPendingRefundInput,
-  type CancelPendingRefundResult,
   type PostedPaymentKind,
-  type PostedPaymentRef,
-  type ReverseOrVoidInput,
-  type ReversalResult,
-  type VoidResult,
-  type RecordRecoupmentInput,
-  type RecordRecoupmentResult,
-  type RecoupmentPreview,
-  type RecordRefundInput,
-  type RecordRefundResult,
 } from "./reversal";
 
 /** Default actor used when an internal service caller doesn't supply one. */

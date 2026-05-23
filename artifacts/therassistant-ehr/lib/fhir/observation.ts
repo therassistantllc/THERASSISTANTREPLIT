@@ -1,7 +1,7 @@
 import type { FhirCodeableConcept, FhirReference } from "./common";
 import { s } from "./common";
 
-export interface FhirObservationComponent {
+interface FhirObservationComponent {
   code: FhirCodeableConcept;
   valueString?: string;
 }

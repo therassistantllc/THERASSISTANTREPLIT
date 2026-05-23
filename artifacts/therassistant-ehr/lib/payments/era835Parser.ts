@@ -1,11 +1,11 @@
-export type Era835CasAdjustment = {
+type Era835CasAdjustment = {
   groupCode: string;
   reasonCode: string;
   amount: number;
   quantity?: number | null;
 };
 
-export type Era835ServiceLine = {
+type Era835ServiceLine = {
   procedureCode: string | null;
   chargeAmount: number;
   paidAmount: number;

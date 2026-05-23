@@ -43,7 +43,7 @@ export interface DashboardFilters {
   offset?: number | null;
 }
 
-export interface DashboardRow {
+interface DashboardRow {
   /** Composite id `era:|cp:|mi:<uuid>` matching the posted-payment detail. */
   id: string;
   source: PaymentSource;
@@ -69,7 +69,7 @@ export interface DashboardRow {
   remainingRecoupable: number | null;
 }
 
-export interface DashboardTotals {
+interface DashboardTotals {
   imported: number;
   posted: number;
   unmatched: number;

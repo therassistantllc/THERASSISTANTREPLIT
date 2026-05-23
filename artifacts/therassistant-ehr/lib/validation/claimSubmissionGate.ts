@@ -11,7 +11,7 @@ import type { ValidationFinding, ValidationReport, ValidationSummary } from "./t
  * gate actually enforces; the two reports stay grouped separately so the
  * UI can render them under distinct headings.
  */
-export interface CombinedReadinessReport {
+interface CombinedReadinessReport {
   organizationId: string;
   claimId: string | null;
   generatedAt: string;

@@ -26,7 +26,7 @@ export const PATIENT_RESPONSIBILITY_CASE_TYPES: CaseType[] = [
   "charity",
 ];
 
-export interface ClientCasePolicySummary {
+interface ClientCasePolicySummary {
   id: string;
   policyId: string;
   priority: PolicyPriority;

@@ -6,7 +6,7 @@ type Segment = {
   raw: string;
 };
 
-export type Parsed835Adjustment = {
+type Parsed835Adjustment = {
   groupCode: string | null;
   reasonCode: string | null;
   amount: number | null;
@@ -14,7 +14,7 @@ export type Parsed835Adjustment = {
   raw: string;
 };
 
-export type Parsed835ServiceLine = {
+type Parsed835ServiceLine = {
   procedureCode: string | null;
   modifiers: string[];
   chargeAmount: number | null;
@@ -26,7 +26,7 @@ export type Parsed835ServiceLine = {
   raw: Record<string, unknown>;
 };
 
-export type Parsed835ClaimPayment = {
+type Parsed835ClaimPayment = {
   patientControlNumber: string | null;
   claimStatusCode: string | null;
   totalChargeAmount: number | null;

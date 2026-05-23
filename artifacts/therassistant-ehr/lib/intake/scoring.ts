@@ -1,4 +1,4 @@
-export type ScreenerAnswer = 0 | 1 | 2 | 3;
+type ScreenerAnswer = 0 | 1 | 2 | 3;
 
 export const PHQ9_QUESTIONS: string[] = [
   "Little interest or pleasure in doing things",
@@ -22,7 +22,7 @@ export const GAD7_QUESTIONS: string[] = [
   "Feeling afraid as if something awful might happen",
 ];
 
-export const SCREENER_OPTIONS: { value: ScreenerAnswer; label: string }[] = [
+const SCREENER_OPTIONS: { value: ScreenerAnswer; label: string }[] = [
   { value: 0, label: "Not at all" },
   { value: 1, label: "Several days" },
   { value: 2, label: "More than half the days" },

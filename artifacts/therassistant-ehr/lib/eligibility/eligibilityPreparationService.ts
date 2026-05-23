@@ -122,7 +122,7 @@ function normalizeResult(row: Record<string, unknown>, isMock: boolean): Prepare
   };
 }
 
-export function createMockEligibilityResponse(
+function createMockEligibilityResponse(
   input: MockEligibilityResponseInput
 ): Record<string, JsonLike> {
   const today = new Date();

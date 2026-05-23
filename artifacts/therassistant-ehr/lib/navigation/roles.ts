@@ -1,6 +1,6 @@
 export type AppRole = "admin_biller" | "clinician" | "credentialing" | "owner_executive" | "support_read_only";
 
-export type ModuleKey =
+type ModuleKey =
   | "scheduling"
   | "patients"
   | "billing"
@@ -69,7 +69,7 @@ const moduleAccessByRole: Record<AppRole, Record<ModuleKey, boolean>> = {
   },
 };
 
-export function canAccessModule(role: AppRole, module: ModuleKey) {
+function canAccessModule(role: AppRole, module: ModuleKey) {
   return moduleAccessByRole[role]?.[module] ?? false;
 }
 
@@ -81,7 +81,7 @@ export function normalizeRole(value: string | null | undefined): AppRole {
   return "admin_biller";
 }
 
-export function roleLabel(role: AppRole) {
+function roleLabel(role: AppRole) {
   if (role === "admin_biller") return "Admin / Biller";
   if (role === "clinician") return "Clinician";
   if (role === "credentialing") return "Credentialing";

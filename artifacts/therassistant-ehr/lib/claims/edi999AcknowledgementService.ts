@@ -1,7 +1,7 @@
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { routeRejectedClaimsToWorkqueue } from "@/lib/workqueue/claimRejectionWorkqueueService";
 
-export type Edi999Outcome = "accepted" | "rejected" | "partial" | "unknown";
+type Edi999Outcome = "accepted" | "rejected" | "partial" | "unknown";
 
 export interface Intake999AcknowledgementInput {
   organizationId: string;
@@ -274,4 +274,5 @@ export async function intake999Acknowledgement(
   };
 }
 
+// Test-only: exposes the internal parser to unit tests.
 export const __private999ParserForTests = { parse999 };

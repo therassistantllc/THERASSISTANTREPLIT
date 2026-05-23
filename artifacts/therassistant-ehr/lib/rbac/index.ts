@@ -1,6 +1,11 @@
 /**
  * RBAC Module - Role-Based Access Control
- * Exports all RBAC utilities for easy importing
+ * Exports all RBAC utilities for easy importing.
+ *
+ * NOTE: This is the public RBAC API surface. Symbols here may appear unused
+ * to static analysis (e.g. knip) when consumers import directly from the
+ * sibling modules; the barrel is kept intentionally so external callers have
+ * one stable entry point.
  */
 
 // Constants and type definitions

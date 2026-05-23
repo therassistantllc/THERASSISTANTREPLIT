@@ -1,12 +1,12 @@
-export type UUID = string;
+type UUID = string;
 
-export type AppointmentStatus = "scheduled" | "checked_in" | "completed" | "cancelled" | "no_show";
-export type EncounterStatus = "draft" | "in_review" | "signed" | "ready_to_bill" | "billed" | "corrected" | "voided";
-export type DocumentationStatus = "not_started" | "in_progress" | "complete" | "signed" | "addendum_needed";
-export type BillingStatus = "hold" | "ready" | "scrubbed" | "claim_created" | "submitted" | "paid" | "denied";
-export type ClaimStatus = "draft" | "ready" | "submitted" | "accepted" | "rejected" | "denied" | "paid" | "appealed" | "voided";
+type AppointmentStatus = "scheduled" | "checked_in" | "completed" | "cancelled" | "no_show";
+type EncounterStatus = "draft" | "in_review" | "signed" | "ready_to_bill" | "billed" | "corrected" | "voided";
+type DocumentationStatus = "not_started" | "in_progress" | "complete" | "signed" | "addendum_needed";
+type BillingStatus = "hold" | "ready" | "scrubbed" | "claim_created" | "submitted" | "paid" | "denied";
+type ClaimStatus = "draft" | "ready" | "submitted" | "accepted" | "rejected" | "denied" | "paid" | "appealed" | "voided";
 
-export interface PatientChartSummary {
+interface PatientChartSummary {
   patient: Record<string, unknown>;
   documents: Record<string, unknown>[];
   policies: Record<string, unknown>[];

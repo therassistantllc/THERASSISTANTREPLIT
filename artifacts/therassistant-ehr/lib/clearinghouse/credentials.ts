@@ -159,6 +159,6 @@ export async function storeClearinghouseApiKey(params: {
   return { ok: true, vaultSecretId: data };
 }
 
-export function modeToEnvironment(mode: string | null | undefined): CredentialEnvironment {
+function modeToEnvironment(mode: string | null | undefined): CredentialEnvironment {
   return MODE_TO_ENVIRONMENT[String(mode ?? "sandbox")] ?? "sandbox";
 }

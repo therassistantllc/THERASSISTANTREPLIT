@@ -4,7 +4,7 @@
 // invariant ("parent and child rows must share the same client_id")
 // is unit-testable without spinning up Supabase.
 
-export interface BenefitSegmentInput {
+interface BenefitSegmentInput {
   serviceTypeCode?: string | null;
   eligibilityCode: string;
   coverageLevelCode?: string | null;

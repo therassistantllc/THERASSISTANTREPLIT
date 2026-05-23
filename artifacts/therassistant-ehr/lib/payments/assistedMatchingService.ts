@@ -18,7 +18,7 @@
 
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 
-export type MatchStrategy =
+type MatchStrategy =
   | "payer_claim_control_number"
   | "claim_number"
   | "patient_account_number"

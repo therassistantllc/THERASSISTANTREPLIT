@@ -43,7 +43,7 @@ export interface ExternalTransaction {
   updated_at?: string;
 }
 
-export interface ExternalTransactionAttempt {
+interface ExternalTransactionAttempt {
   id: string;
   external_transaction_id: string;
   attempt_number: number;
@@ -59,7 +59,7 @@ export interface ExternalTransactionAttempt {
   created_at?: string;
 }
 
-export interface ExternalMessageEnvelope {
+interface ExternalMessageEnvelope {
   id: string;
   external_transaction_id?: string | null;
   envelope_type: "isa_gs" | "soap" | "json_wrapper" | "none";
@@ -74,7 +74,7 @@ export interface ExternalMessageEnvelope {
   created_at?: string;
 }
 
-export interface TestConnectionRequest {
+interface TestConnectionRequest {
   organizationId: string;
   integrationName?: string;
 }
@@ -87,7 +87,7 @@ export interface TestConnectionResponse {
   lastCheckedAt?: string;
 }
 
-export interface EligibilityCheckRequest {
+interface EligibilityCheckRequest {
   appointmentId?: string | null;
   eligibilityCheckId?: string | null;
   organizationId: string;

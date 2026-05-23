@@ -19,7 +19,7 @@
 //
 // Security: WS-Security UsernameToken (plaintext password over TLS).
 
-export const CORE_RULE_VERSION = "2.2.0";
+const CORE_RULE_VERSION = "2.2.0";
 export const AVAILITY_CORE_RECEIVER_ID = "030240928";
 export const AVAILITY_CORE_SOAP_ENDPOINT = "https://gateway.availity.com:2021/core";
 
@@ -33,7 +33,7 @@ export type CorePayloadType =
   // a 271 when the inbound transaction set is structurally invalid.
   | "X12_999_Response_005010X231A1";
 
-export type CoreProcessingMode = "RealTime" | "Batch";
+type CoreProcessingMode = "RealTime" | "Batch";
 
 export interface CoreSoapBuildInput {
   payload: string;

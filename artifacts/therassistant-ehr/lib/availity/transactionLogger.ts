@@ -215,7 +215,7 @@ interface UpdateTransactionLogInput {
 /**
  * Update an existing Availity transaction log entry
  */
-export async function updateAvailityTransactionLog(
+async function updateAvailityTransactionLog(
   input: UpdateTransactionLogInput
 ): Promise<boolean> {
   const supabase = createServerSupabaseAdminClient();

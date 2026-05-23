@@ -26,7 +26,7 @@ function str(v: unknown): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface RenderingProviderIdentity {
+interface RenderingProviderIdentity {
   /** Individual NPI (10-digit). Null if not resolved. */
   npi: string | null;
   firstName: string | null;
@@ -38,7 +38,7 @@ export interface RenderingProviderIdentity {
   sameAsBilling: boolean;
 }
 
-export interface ResolveRenderingProviderInput {
+interface ResolveRenderingProviderInput {
   organizationId: string;
   /** NPI already known — fastest path. */
   renderingProviderNpi?: string | null;
@@ -63,13 +63,13 @@ export interface ResolveBillingProviderInput {
   renderingProviderId?: string | null;
 }
 
-export interface ProviderTaxonomyResult {
+interface ProviderTaxonomyResult {
   taxonomyCode: string | null;
   /** Which table the value was resolved from. */
   source: "credentialing_profile" | "providers_table" | "none";
 }
 
-export interface ResolveProviderTaxonomyInput {
+interface ResolveProviderTaxonomyInput {
   organizationId: string;
   /** Individual NPI for direct credentialing profile lookup. */
   npi?: string | null;
@@ -77,7 +77,7 @@ export interface ResolveProviderTaxonomyInput {
   providerId?: string | null;
 }
 
-export interface ProviderMedicaidIdentity {
+interface ProviderMedicaidIdentity {
   individualMedicaidId: string | null;
   groupMedicaidId: string | null;
   /**
@@ -88,7 +88,7 @@ export interface ProviderMedicaidIdentity {
   source: "credentialing_profile" | "providers_table" | "none";
 }
 
-export interface ResolveProviderMedicaidInput {
+interface ResolveProviderMedicaidInput {
   organizationId: string;
   /** NPI for credentialing profile lookup (most reliable path). */
   npi?: string | null;
@@ -119,7 +119,7 @@ export interface ResolveProviderMedicaidInput {
  *   // write NM1*82 segment
  * }
  */
-export async function resolveRenderingProviderIdentity(
+async function resolveRenderingProviderIdentity(
   input: ResolveRenderingProviderInput,
 ): Promise<RenderingProviderIdentity> {
   const supabase = createServerSupabaseAdminClient();
@@ -258,7 +258,7 @@ export async function resolveBillingProviderIdentity(
  * @example
  * const { taxonomyCode } = await resolveProviderTaxonomy({ organizationId, npi });
  */
-export async function resolveProviderTaxonomy(
+async function resolveProviderTaxonomy(
   input: ResolveProviderTaxonomyInput,
 ): Promise<ProviderTaxonomyResult> {
   const supabase = createServerSupabaseAdminClient();
@@ -327,7 +327,7 @@ export async function resolveProviderTaxonomy(
  *   npi: rendering.npi,
  * });
  */
-export async function resolveProviderMedicaidIdentity(
+async function resolveProviderMedicaidIdentity(
   input: ResolveProviderMedicaidInput,
 ): Promise<ProviderMedicaidIdentity> {
   const supabase = createServerSupabaseAdminClient();
@@ -414,7 +414,7 @@ const STATE_RE = /^[A-Z]{2}$/;
  *   throw new Error("Billing provider identity is incomplete");
  * }
  */
-export function hasValidClaimIdentity(
+function hasValidClaimIdentity(
   provider: BillingProviderInput | null | undefined,
 ): boolean {
   if (!provider) return false;

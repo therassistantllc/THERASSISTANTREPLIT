@@ -32,7 +32,7 @@ export class EligibilityTimeoutError extends Error {
   }
 }
 
-export function isEligibilityTimeoutError(err: unknown): err is EligibilityTimeoutError {
+function isEligibilityTimeoutError(err: unknown): err is EligibilityTimeoutError {
   return err instanceof EligibilityTimeoutError;
 }
 
@@ -42,7 +42,7 @@ export function isEligibilityTimeoutError(err: unknown): err is EligibilityTimeo
  * leave a small headroom inside that window for the caller to record
  * the timeout before its own request handler is killed.
  */
-export const DEFAULT_REALTIME_DEADLINE_MS = 20_000;
+const DEFAULT_REALTIME_DEADLINE_MS = 20_000;
 
 export function resolveRealtimeDeadlineMs(): number {
   const raw = process.env.AVAILITY_REALTIME_TIMEOUT_MS;

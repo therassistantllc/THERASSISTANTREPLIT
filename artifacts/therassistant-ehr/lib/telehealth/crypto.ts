@@ -16,7 +16,7 @@ function getKey(): Buffer {
   return createHash("sha256").update(raw).digest();
 }
 
-export function isTokenEncryptionConfigured(): boolean {
+function isTokenEncryptionConfigured(): boolean {
   const raw = process.env.TELEHEALTH_TOKEN_ENC_KEY;
   return typeof raw === "string" && raw.length >= 24;
 }

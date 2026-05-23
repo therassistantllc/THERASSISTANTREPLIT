@@ -152,14 +152,14 @@ export async function deleteConnection(
   if (connDel.error) throw connDel.error;
 }
 
-export function isMissingTelehealthTable(error: unknown): boolean {
+function isMissingTelehealthTable(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const code = (error as { code?: string }).code ?? "";
   const message = String((error as { message?: string }).message ?? "");
   return code === "42P01" && /telehealth_oauth_tokens/i.test(message);
 }
 
-export function isMissingDefaultPlatformColumn(error: unknown): boolean {
+function isMissingDefaultPlatformColumn(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const code = (error as { code?: string }).code ?? "";
   const message = String((error as { message?: string }).message ?? "");

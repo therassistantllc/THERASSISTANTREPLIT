@@ -10,7 +10,7 @@ import {
 /**
  * Normalized payer record structure
  */
-export interface NormalizedPayer {
+interface NormalizedPayer {
   payerId: string;
   payerName: string;
   aliases?: string[];
@@ -275,7 +275,7 @@ export async function searchAvailityPayers(
 /**
  * Get a specific payer by ID
  */
-export async function getAvailityPayerById(
+async function getAvailityPayerById(
   payerId: string
 ): Promise<PayerSearchResponse> {
   return searchAvailityPayers({ payerId });

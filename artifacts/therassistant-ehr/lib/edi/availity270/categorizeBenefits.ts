@@ -36,7 +36,7 @@ const TIME_PERIOD_QUALIFIER_MEANINGS: Record<string, string> = {
   "36": "Admission",
 };
 
-export function describeTimePeriodQualifier(code: string | null | undefined): string | null {
+function describeTimePeriodQualifier(code: string | null | undefined): string | null {
   if (!code) return null;
   return TIME_PERIOD_QUALIFIER_MEANINGS[code] ?? code;
 }
@@ -99,7 +99,7 @@ function detectAuthRequired(b: ParsedEB271): boolean | null {
  * on the already-extracted ParsedEB271 (no string parsing of raw EB
  * elements) so callers can reuse it on benefits loaded from the DB.
  */
-export function categorizeBenefit(b: ParsedEB271, isRemaining: boolean): ParsedEB271Category {
+function categorizeBenefit(b: ParsedEB271, isRemaining: boolean): ParsedEB271Category {
   const code = (b.eligibilityCode ?? "").toUpperCase();
   switch (code) {
     case "1":

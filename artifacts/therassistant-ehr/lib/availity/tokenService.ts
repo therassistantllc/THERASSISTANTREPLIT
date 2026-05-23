@@ -105,6 +105,6 @@ export async function getAvailityAccessToken(): Promise<string> {
  * Clear the in-memory token cache.
  * Useful for testing or forcing a fresh token request.
  */
-export function clearAvailityTokenCache(): void {
+function clearAvailityTokenCache(): void {
   tokenCache = null;
 }

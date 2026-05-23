@@ -37,7 +37,7 @@ export function createServerSupabaseAdminClient(): SupabaseClient | null {
   });
 }
 
-export function createServerSupabaseAdminClientTyped(): SupabaseClient<Database> | null {
+function createServerSupabaseAdminClientTyped(): SupabaseClient<Database> | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRole = getServiceRoleKey();
   const anonKey = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -71,7 +71,7 @@ export function createServerSupabaseServiceRoleClient(): SupabaseClient | null {
   });
 }
 
-export function createServerSupabaseServiceRoleClientTyped(): SupabaseClient<Database> | null {
+function createServerSupabaseServiceRoleClientTyped(): SupabaseClient<Database> | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRole = getServiceRoleKey();
 

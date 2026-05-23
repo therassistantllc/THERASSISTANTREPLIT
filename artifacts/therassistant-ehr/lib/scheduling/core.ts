@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type AvailabilityReasonCode =
+type AvailabilityReasonCode =
   | "missing_provider"
   | "outside_availability"
   | "administrative_block"
@@ -13,11 +13,11 @@ export type AvailabilityResult = {
   reasons: string[];
 };
 
-export function isUuid(value: string) {
+function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-export async function resolveOrganizationId(
+async function resolveOrganizationId(
   supabase: SupabaseClient,
   submittedOrganizationId?: string | null,
 ): Promise<string | null> {
@@ -49,7 +49,7 @@ export function addMonthsKeepingClock(source: Date, months: number) {
   return next;
 }
 
-export function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
+function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && aEnd > bStart;
 }
 

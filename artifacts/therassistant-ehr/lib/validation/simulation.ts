@@ -13,9 +13,9 @@ import type { ValidationReport } from "./types";
  * invoked. The output is a report only.
  */
 
-export type SimulationStatus = "pass" | "fail" | "skipped";
+type SimulationStatus = "pass" | "fail" | "skipped";
 
-export interface SimulationCheck {
+interface SimulationCheck {
   id: string;
   label: string;
   status: SimulationStatus;

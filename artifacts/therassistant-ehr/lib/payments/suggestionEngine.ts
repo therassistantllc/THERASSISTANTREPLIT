@@ -20,7 +20,7 @@
  * detection lives in `detectDuplicatePostingSuggestion`.
  */
 
-export type SuggestionCategory =
+type SuggestionCategory =
   | "deductible"
   | "coinsurance"
   | "copay"
@@ -36,9 +36,9 @@ export type SuggestionCategory =
   | "interest"
   | "incentive";
 
-export type SuggestionAction = "auto_apply" | "review" | "block_until_acknowledged";
+type SuggestionAction = "auto_apply" | "review" | "block_until_acknowledged";
 
-export interface CasAdjustmentShape {
+interface CasAdjustmentShape {
   groupCode?: string | null;
   reasonCode?: string | null;
   amount?: number | null;

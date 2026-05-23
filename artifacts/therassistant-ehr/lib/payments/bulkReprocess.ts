@@ -13,7 +13,7 @@ import { applyWorkqueueRules } from "./postingEngine/workqueueRules";
 import { writePaymentAuditLog } from "./postingEngine/audit";
 import type { PostingActor } from "./postingEngine";
 
-export type BulkReprocessTargetKind =
+type BulkReprocessTargetKind =
   | "era_835"
   | "insurance_manual"
   | "client_payment";
@@ -23,7 +23,7 @@ export interface BulkReprocessTarget {
   id: string;
 }
 
-export interface BulkReprocessClaimMatch {
+interface BulkReprocessClaimMatch {
   id: string;
   patient_id: string | null;
 }

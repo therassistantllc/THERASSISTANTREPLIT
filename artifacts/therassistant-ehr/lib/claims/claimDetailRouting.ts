@@ -20,20 +20,20 @@
 // ─── Route constants ──────────────────────────────────────────────────────────
 
 /** Canonical claim workspace (implemented). Links here when no per-claim ID available. */
-export const CANONICAL_CLAIM_WORKSPACE_ROUTE = "/billing/claim-readiness" as const;
+const CANONICAL_CLAIM_WORKSPACE_ROUTE = "/billing/claim-readiness" as const;
 
 /**
  * Canonical per-claim detail route pattern (declared in RBAC protected-routes,
  * page not yet implemented). When the page is built, canonical links will deep-
  * link here instead of the workspace.
  */
-export const CANONICAL_CLAIM_DETAIL_ROUTE_PATTERN = "/billing/claims" as const;
+const CANONICAL_CLAIM_DETAIL_ROUTE_PATTERN = "/billing/claims" as const;
 
 /**
  * Legacy per-claim detail route pattern (declared in RBAC protected-routes,
  * page not yet implemented). Treat as a compatibility route.
  */
-export const LEGACY_CLAIM_DETAIL_ROUTE_PATTERN = "/claims" as const;
+const LEGACY_CLAIM_DETAIL_ROUTE_PATTERN = "/claims" as const;
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
@@ -51,10 +51,10 @@ export interface ClaimDetailRef {
 }
 
 /** Which Supabase table backs the claim detail being resolved. */
-export type ClaimDetailTable = "professional_claims" | "claims";
+type ClaimDetailTable = "professional_claims" | "claims";
 
 /** Result of resolving the best available claim detail reference. */
-export interface ClaimDetailTarget {
+interface ClaimDetailTarget {
   /** Table to query for the claim row. Null when no ID is present. */
   table: ClaimDetailTable | null;
   /** Claim ID to query. Null when no ID is present. */
@@ -80,7 +80,7 @@ export interface ClaimDetailTarget {
  * }
  * ```
  */
-export function resolveClaimDetailTarget(ref: ClaimDetailRef): ClaimDetailTarget {
+function resolveClaimDetailTarget(ref: ClaimDetailRef): ClaimDetailTarget {
   if (ref.professionalClaimId) {
     return {
       table: "professional_claims",
@@ -104,7 +104,7 @@ export function resolveClaimDetailTarget(ref: ClaimDetailRef): ClaimDetailTarget
  * Use this to gate canonical-only actions (e.g., re-submit 837P, apply ERA
  * adjustment) that require a `professional_claims` row.
  */
-export function isCanonicalClaimDetail(ref: ClaimDetailRef): boolean {
+function isCanonicalClaimDetail(ref: ClaimDetailRef): boolean {
   return Boolean(ref.professionalClaimId);
 }
 
@@ -130,7 +130,7 @@ function appendOrgId(base: string, organizationId?: string | null): string {
  * // "/billing/claims/abc-123?organizationId=org-456"
  * ```
  */
-export function getCanonicalClaimDetailRoute(
+function getCanonicalClaimDetailRoute(
   claimId?: string | null,
   organizationId?: string | null,
 ): string {
@@ -155,7 +155,7 @@ export function getCanonicalClaimDetailRoute(
  * // "/claims/old-abc-123?organizationId=org-456"
  * ```
  */
-export function getLegacyClaimDetailRoute(
+function getLegacyClaimDetailRoute(
   claimId?: string | null,
   organizationId?: string | null,
 ): string {

@@ -37,7 +37,7 @@ function isClinicalWorkqueueItem(item: any): boolean {
   return candidates.some((value) => CLINICAL_WORK_TYPES.has(value));
 }
 
-export function getHomeDashboardData() {
+function getHomeDashboardData() {
   const hasSeedData = (canonicalSeed.appointments?.length ?? 0) > 0;
 
   if (!hasSeedData) {

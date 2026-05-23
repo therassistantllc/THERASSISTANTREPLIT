@@ -1,7 +1,7 @@
 // Minimal hand-rolled FHIR R4 typings sufficient for the Patient surface we
 // expose today. Avoids pulling in a heavy FHIR resource library.
 
-export type FhirGender = "male" | "female" | "other" | "unknown";
+type FhirGender = "male" | "female" | "other" | "unknown";
 
 export interface FhirIdentifier {
   use?: "usual" | "official" | "temp" | "secondary" | "old";
@@ -23,7 +23,7 @@ export interface FhirContactPoint {
   use?: "home" | "work" | "temp" | "old" | "mobile";
 }
 
-export interface FhirAddress {
+interface FhirAddress {
   use?: "home" | "work" | "temp" | "old" | "billing";
   type?: "postal" | "physical" | "both";
   line?: string[];
@@ -54,12 +54,12 @@ export interface FhirOperationOutcomeIssue {
   diagnostics?: string;
 }
 
-export interface FhirOperationOutcome {
+interface FhirOperationOutcome {
   resourceType: "OperationOutcome";
   issue: FhirOperationOutcomeIssue[];
 }
 
-export interface FhirBundleEntry<T> {
+interface FhirBundleEntry<T> {
   fullUrl: string;
   resource: T;
   search?: { mode: "match" | "include" | "outcome" };

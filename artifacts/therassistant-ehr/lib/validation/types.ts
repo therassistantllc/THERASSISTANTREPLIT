@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type Severity = "blocking" | "warning" | "info";
+type Severity = "blocking" | "warning" | "info";
 
 export const CATEGORIES = [
   // ---- System / configuration readiness ----
@@ -24,7 +24,7 @@ export const CATEGORIES = [
 export type Category = (typeof CATEGORIES)[number];
 
 /** Categories that belong to system / configuration readiness. */
-export const SYSTEM_READINESS_CATEGORIES: Category[] = [
+const SYSTEM_READINESS_CATEGORIES: Category[] = [
   "organization",
   "providers",
   "locations",

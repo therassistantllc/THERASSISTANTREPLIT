@@ -1,8 +1,8 @@
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 
-export type ClaimReadinessStatus = "ready" | "not_ready";
+type ClaimReadinessStatus = "ready" | "not_ready";
 
-export interface ClaimReadinessError {
+interface ClaimReadinessError {
   field: string;
   message: string;
 }

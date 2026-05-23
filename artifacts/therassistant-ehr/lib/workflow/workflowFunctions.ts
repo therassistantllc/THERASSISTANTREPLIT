@@ -87,7 +87,7 @@ export async function createNote(
 /**
  * Step 4: Create encounter service line
  */
-export async function createServiceLine(
+async function createServiceLine(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
   ctx: WorkflowContext,

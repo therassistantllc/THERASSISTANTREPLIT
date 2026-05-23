@@ -16,7 +16,7 @@
 // standard delimiters (~ * :) and may omit the ISA/GS envelope when
 // the caller hands us only the ST..SE transaction set.
 
-export type Ak9AcknowledgementCode =
+type Ak9AcknowledgementCode =
   | "A" // Accepted
   | "E" // Accepted, but errors were noted
   | "M" // Rejected, message authentication code (MAC) failed
@@ -25,7 +25,7 @@ export type Ak9AcknowledgementCode =
   | "W" // Rejected, assurance failed validity tests
   | "X"; // Rejected, content after decryption could not be analyzed
 
-export type Ak2AcknowledgementCode =
+type Ak2AcknowledgementCode =
   | "A" // Accepted
   | "E" // Accepted but errors were noted
   | "M" // Rejected, message authentication code (MAC) failed
@@ -33,13 +33,13 @@ export type Ak2AcknowledgementCode =
   | "W" // Rejected, assurance failed validity tests
   | "X"; // Rejected, content after decryption could not be analyzed
 
-export type AcknowledgementSummary =
+type AcknowledgementSummary =
   | "accepted"
   | "accepted_with_errors"
   | "partially_accepted"
   | "rejected";
 
-export interface Ak3SegmentError {
+interface Ak3SegmentError {
   /** AK3-01 segment ID (e.g. "NM1"). */
   segmentId: string;
   /** AK3-02 segment position in the transaction set. */
@@ -52,7 +52,7 @@ export interface Ak3SegmentError {
   elementErrors: Ak4ElementError[];
 }
 
-export interface Ak4ElementError {
+interface Ak4ElementError {
   /** AK4-01-01 element position in segment. */
   position: number | null;
   /** AK4-01-02 component position, when the element is composite. */
@@ -65,7 +65,7 @@ export interface Ak4ElementError {
   badValue?: string | null;
 }
 
-export interface Ak2TransactionSetResponse {
+interface Ak2TransactionSetResponse {
   /** AK2-01 transaction set identifier (e.g. "270"). */
   transactionSetId: string;
   /** AK2-02 transaction set control number (matches the inbound ST02). */
@@ -80,7 +80,7 @@ export interface Ak2TransactionSetResponse {
   segmentErrors: Ak3SegmentError[];
 }
 
-export interface Ak1FunctionalGroupResponse {
+interface Ak1FunctionalGroupResponse {
   /** AK1-01 functional ID code (e.g. "HS" for eligibility). */
   functionalIdCode: string;
   /** AK1-02 group control number (matches inbound GS06). */
@@ -89,7 +89,7 @@ export interface Ak1FunctionalGroupResponse {
   implementationConventionReference?: string | null;
 }
 
-export interface Ak9FunctionalGroupSummary {
+interface Ak9FunctionalGroupSummary {
   /** AK9-01 group acknowledgement code. */
   acknowledgementCode: Ak9AcknowledgementCode;
   /** AK9-02 number of transaction sets included. */
@@ -367,7 +367,7 @@ export function parse999(raw: string): Parsed999Result {
  * used in AK3-04 / AK4-03 / AK5-02..06 / AK9-05..09. Returns the raw
  * code when it isn't one of the standard values.
  */
-export function describeSyntaxErrorCode(code: string | null | undefined): string {
+function describeSyntaxErrorCode(code: string | null | undefined): string {
   if (!code) return "";
   return SYNTAX_ERROR_DESCRIPTIONS[code] ?? `Syntax error code ${code}`;
 }

@@ -1,4 +1,4 @@
-export type Availity270Mode = "test" | "production";
+type Availity270Mode = "test" | "production";
 
 export interface Availity270Connection {
   id?: string;
@@ -18,19 +18,19 @@ export interface Availity270Connection {
   submitter_contact_email?: string | null;
 }
 
-export interface Availity270InformationSource {
+interface Availity270InformationSource {
   payerName: string;
   payerId: string;
 }
 
-export interface Availity270InformationReceiver {
+interface Availity270InformationReceiver {
   entityType: "1" | "2";
   lastNameOrOrg: string;
   firstName?: string | null;
   npi: string;
 }
 
-export interface Availity270Subscriber {
+interface Availity270Subscriber {
   lastName: string;
   firstName: string;
   middleName?: string | null;

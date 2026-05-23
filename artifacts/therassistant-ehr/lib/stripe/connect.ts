@@ -8,7 +8,7 @@
  * Idempotency-Key for safe retries.
  */
 
-export const STRIPE_API_BASE = "https://api.stripe.com/v1";
+const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
 export class StripeRequestError extends Error {
   status: number;
@@ -62,14 +62,14 @@ function appendFormParams(form: URLSearchParams, params: Record<string, unknown>
   }
 }
 
-export interface StripeRequestOptions {
+interface StripeRequestOptions {
   method?: "GET" | "POST" | "DELETE";
   stripeAccount?: string | null;
   idempotencyKey?: string | null;
   params?: Record<string, unknown>;
 }
 
-export async function stripeRequest<T = unknown>(path: string, options: StripeRequestOptions = {}): Promise<T> {
+async function stripeRequest<T = unknown>(path: string, options: StripeRequestOptions = {}): Promise<T> {
   const key = getStripeSecretKey();
   if (!key) {
     throw new StripeRequestError("STRIPE_SECRET_KEY not configured", 503);

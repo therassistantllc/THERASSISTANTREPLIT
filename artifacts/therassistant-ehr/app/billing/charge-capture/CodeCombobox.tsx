@@ -66,7 +66,7 @@ function classifyOption(kind: Props["kind"], opt: CodeOption): CodeValidation {
   };
 }
 
-export function describeValidation(v: CodeValidation): string {
+function describeValidation(v: CodeValidation): string {
   if (v.status === "active") return "";
   return v.reason;
 }

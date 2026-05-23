@@ -10,7 +10,7 @@
  * insurance / patient / reversal sources land in Tasks #109 & #110.
  */
 
-export type PostingSourceType =
+type PostingSourceType =
   | "era_835"
   | "manual_insurance"
   | "patient_payment"
@@ -148,7 +148,7 @@ export interface CommitPostingInput {
   dryRun?: boolean;
 }
 
-export type ValidationSeverity = "blocking" | "warning";
+type ValidationSeverity = "blocking" | "warning";
 
 export interface ValidationIssue {
   severity: ValidationSeverity;

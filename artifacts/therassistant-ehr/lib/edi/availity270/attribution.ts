@@ -17,7 +17,7 @@ export interface RequestedPatientIdentity {
   memberId?: string | null;
 }
 
-export type AttributionMismatchReason =
+type AttributionMismatchReason =
   | "name_mismatch"
   | "dob_mismatch"
   | "member_id_mismatch"

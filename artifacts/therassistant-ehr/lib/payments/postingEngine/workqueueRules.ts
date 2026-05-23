@@ -32,7 +32,7 @@ import type { PostingActor } from "./types";
 // ── Defaults ────────────────────────────────────────────────────────────────
 
 /** Default underpayment threshold: paid/allowed < 0.80 → underpayment item. */
-export const DEFAULT_UNDERPAYMENT_THRESHOLD_PCT = 0.8;
+const DEFAULT_UNDERPAYMENT_THRESHOLD_PCT = 0.8;
 
 /** CARC codes that are denial-class (no payment expected). */
 const DENIAL_CARC_CODES = new Set([
@@ -61,7 +61,7 @@ const APPEAL_CARC_CODES = new Set([
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-export type WorkqueueRuleKind =
+type WorkqueueRuleKind =
   | "denied"
   | "underpayment"
   | "recoupment"
@@ -579,7 +579,7 @@ export async function applyWorkqueueRules(
 // ── Aging scanner (no_response rule, batch) ────────────────────────────────
 
 /** Default no_response threshold: 30 days since submission without ACK/payment. */
-export const DEFAULT_NO_RESPONSE_DAYS = 30;
+const DEFAULT_NO_RESPONSE_DAYS = 30;
 
 export interface RunAgingScanInput {
   organizationId: string;

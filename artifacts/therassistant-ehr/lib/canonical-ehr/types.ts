@@ -1,8 +1,8 @@
 export type ID = string;
 
-export type UserRole = "admin" | "clinician" | "biller" | "supervisor" | "credentialing" | "owner";
+type UserRole = "admin" | "clinician" | "biller" | "supervisor" | "credentialing" | "owner";
 
-export interface Organization {
+interface Organization {
   id: ID;
   legal_name: string;
   dba_name: string;
@@ -21,7 +21,7 @@ export interface Organization {
   updated_at: string;
 }
 
-export interface AppUser {
+interface AppUser {
   id: ID;
   organization_id: ID;
   full_name: string;
@@ -35,7 +35,7 @@ export interface AppUser {
   updated_at: string;
 }
 
-export interface Patient {
+interface Patient {
   id: ID;
   organization_id: ID;
   first_name: string;
@@ -60,7 +60,7 @@ export interface Patient {
   updated_at: string;
 }
 
-export interface Payer {
+interface Payer {
   id: ID;
   payer_name: string;
   payer_type: "medicaid" | "medicare" | "commercial" | "rae" | "tricare";
@@ -70,7 +70,7 @@ export interface Payer {
   is_active: boolean;
 }
 
-export interface InsurancePolicy {
+interface InsurancePolicy {
   id: ID;
   patient_id: ID;
   payer_id: ID;
@@ -110,7 +110,7 @@ export interface EligibilityCheck {
   checked_by: ID;
 }
 
-export interface Appointment {
+interface Appointment {
   id: ID;
   organization_id: ID;
   patient_id: ID;
@@ -170,7 +170,7 @@ export interface ClinicalNote {
   updated_at: string;
 }
 
-export interface EncounterDiagnosis {
+interface EncounterDiagnosis {
   id: ID;
   encounter_id: ID;
   diagnosis_code: string;
@@ -198,7 +198,7 @@ export interface EncounterServiceLine {
   updated_at: string;
 }
 
-export interface TreatmentPlan {
+interface TreatmentPlan {
   id: ID;
   patient_id: ID;
   organization_id: ID;
@@ -213,7 +213,7 @@ export interface TreatmentPlan {
   updated_at: string;
 }
 
-export interface TreatmentPlanGoal {
+interface TreatmentPlanGoal {
   id: ID;
   treatment_plan_id: ID;
   goal_text: string;
@@ -223,7 +223,7 @@ export interface TreatmentPlanGoal {
   status: "active" | "met" | "modified" | "discontinued";
 }
 
-export interface EncounterTreatmentPlanLink {
+interface EncounterTreatmentPlanLink {
   id: ID;
   encounter_id: ID;
   treatment_plan_id: ID;
@@ -332,7 +332,7 @@ export interface EraLinePayment {
   patient_responsibility_amount: number;
 }
 
-export interface ClaimAdjustment {
+interface ClaimAdjustment {
   id: ID;
   claim_id: ID;
   claim_service_line_id: ID | null;
@@ -343,7 +343,7 @@ export interface ClaimAdjustment {
   created_at: string;
 }
 
-export type WorkqueueType =
+type WorkqueueType =
   // AR Aging buckets
   | "no_response"
   | "aging_0_30"
@@ -396,7 +396,7 @@ export interface WorkqueueItem {
   updated_at: string;
 }
 
-export interface WorkqueueEvent {
+interface WorkqueueEvent {
   id: ID;
   workqueue_item_id: ID;
   event_type: "created" | "assigned" | "note_added" | "deferred" | "status_changed" | "resolved";
@@ -431,7 +431,7 @@ export interface TicketMessage {
   created_at: string;
 }
 
-export interface AuditLog {
+interface AuditLog {
   id: ID;
   organization_id: ID;
   user_id: ID;
@@ -445,7 +445,7 @@ export interface AuditLog {
   created_at: string;
 }
 
-export interface DocumentRecord {
+interface DocumentRecord {
   id: ID;
   organization_id: ID;
   patient_id: ID | null;
@@ -489,4 +489,4 @@ export interface CanonicalEhrState {
   documents: DocumentRecord[];
 }
 
-export type CanonicalView = "dashboard" | "scheduling" | "patients" | "patient-chart" | "encounters" | "encounter-workspace" | "claims" | "payments" | "workqueue" | "schema";
+type CanonicalView = "dashboard" | "scheduling" | "patients" | "patient-chart" | "encounters" | "encounter-workspace" | "claims" | "payments" | "workqueue" | "schema";

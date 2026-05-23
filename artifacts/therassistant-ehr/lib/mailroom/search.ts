@@ -51,7 +51,7 @@ type SupabaseLike = {
   from: (table: string) => any;
 };
 
-export async function searchPatients(
+async function searchPatients(
   supabase: SupabaseLike,
   organizationId: string,
   q: string,
@@ -85,7 +85,7 @@ export async function searchPatients(
   });
 }
 
-export async function searchClaims(
+async function searchClaims(
   supabase: SupabaseLike,
   organizationId: string,
   q: string,
@@ -146,7 +146,7 @@ export async function searchClaims(
   });
 }
 
-export async function searchEncounters(
+async function searchEncounters(
   supabase: SupabaseLike,
   organizationId: string,
   q: string,

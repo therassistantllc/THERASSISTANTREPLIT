@@ -1,11 +1,11 @@
 // File: types/availityJsonApi.ts
 
-export type AvailityCode = {
+type AvailityCode = {
   codeValue?: string | null;
   description?: string | null;
 };
 
-export type AvailityAAAError = {
+type AvailityAAAError = {
   loopId?: string | null;
   loopName?: string | null;
   validRequestIndicator?: string | null;
@@ -13,12 +13,12 @@ export type AvailityAAAError = {
   followUpAction?: AvailityCode | null;
 };
 
-export type AvailityPayer = {
+type AvailityPayer = {
   name?: string | null;
   payerId?: string | null;
 };
 
-export type AvailityAddress = {
+type AvailityAddress = {
   line1?: string | null;
   line2?: string | null;
   city?: string | null;
@@ -27,7 +27,7 @@ export type AvailityAddress = {
   countryCode?: string | null;
 };
 
-export type AvailityProvider = {
+type AvailityProvider = {
   npi?: string | null;
   firstName?: string | null;
   lastName?: string | null;
@@ -39,7 +39,7 @@ export type AvailityProvider = {
   address?: AvailityAddress | null;
 };
 
-export type AvailityPerson = {
+type AvailityPerson = {
   firstName?: string | null;
   middleName?: string | null;
   lastName?: string | null;
@@ -98,7 +98,7 @@ export type AvailityBenefitResponse = {
   otherSourceOfData?: AvailityBenefitContent[] | null;
 };
 
-export type AvailityResponsePerson = AvailityPerson & {
+type AvailityResponsePerson = AvailityPerson & {
   memberId?: string | null;
   planName?: string | null;
   groupNumber?: string | null;
@@ -135,7 +135,7 @@ export type AvailityClaimStatusRequest = {
   [key: string]: unknown;
 };
 
-export type AvailityClaimStatusContent = {
+type AvailityClaimStatusContent = {
   statusCategory?: AvailityCode | null;
   statusCode?: AvailityCode | null;
   entityCode?: AvailityCode | null;
@@ -146,7 +146,7 @@ export type AvailityClaimStatusContent = {
   [key: string]: unknown;
 };
 
-export type AvailityClaimStatusServiceLine = {
+type AvailityClaimStatusServiceLine = {
   procedure?: unknown;
   statusInformation?: AvailityClaimStatusContent[] | AvailityClaimStatusContent | null;
   lineStatusInformation?: AvailityClaimStatusContent[] | AvailityClaimStatusContent | null;

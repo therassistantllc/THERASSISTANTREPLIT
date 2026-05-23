@@ -1,5 +1,5 @@
 // File: types/clearinghouse.ts
-export type ClearinghouseVendor = "availity" | "change_healthcare" | "mock";
+type ClearinghouseVendor = "availity" | "change_healthcare" | "mock";
 
 export interface ClearinghouseConnection {
   id: string;
@@ -88,7 +88,7 @@ export interface EligibilityCheck {
  * X12 path (ClearinghouseService) and the Coverages JSON path
  * (AvailityJsonApiAdapter) write into this table.
  */
-export interface EligibilityBenefitSegment {
+interface EligibilityBenefitSegment {
   id?: string;
   organization_id: string;
   eligibility_check_id: string;
@@ -141,7 +141,7 @@ export interface EligibilityBenefitSegment {
   archived_at?: string | null;
 }
 
-export interface ClaimStatusInquiry {
+interface ClaimStatusInquiry {
   id: string;
   organization_id: string;
   claim_id: string;

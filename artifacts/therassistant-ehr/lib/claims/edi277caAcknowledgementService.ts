@@ -1,7 +1,7 @@
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { routeRejectedClaimsToWorkqueue } from "@/lib/workqueue/claimRejectionWorkqueueService";
 
-export type Edi277CAOutcome = "accepted" | "rejected" | "partial" | "unknown";
+type Edi277CAOutcome = "accepted" | "rejected" | "partial" | "unknown";
 
 export interface Intake277CAAcknowledgementInput {
   organizationId: string;
@@ -255,4 +255,5 @@ export async function intake277CAAcknowledgement(
   };
 }
 
+// Test-only: exposes the internal parser to unit tests.
 export const __private277CAParserForTests = { parse277CA };

@@ -40,7 +40,7 @@ export class PaymentPostingUnauthenticatedError extends Error {
  * Use this inside services / server actions when you already have a
  * resolved staffId + organizationId.
  */
-export async function assertCanPostPayments(
+async function assertCanPostPayments(
   organizationId: string,
   staffId: string,
 ): Promise<StaffContextData> {
@@ -128,7 +128,7 @@ export async function requireAuthenticatedPaymentPoster(
  * want to know which staff (if any) triggered an action but should not be
  * blocked by missing perms.
  */
-export async function resolveOptionalPostingActor(
+async function resolveOptionalPostingActor(
   organizationId: string,
   staffId: string | null,
 ): Promise<PostingActor | null> {

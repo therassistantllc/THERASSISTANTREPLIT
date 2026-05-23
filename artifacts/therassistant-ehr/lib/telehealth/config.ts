@@ -79,7 +79,7 @@ export function isTelehealthPlatform(value: unknown): value is TelehealthPlatfor
   return value === "zoom" || value === "google_meet";
 }
 
-export function platformDisplayName(platform: TelehealthPlatform): string {
+function platformDisplayName(platform: TelehealthPlatform): string {
   return platform === "zoom" ? "Zoom" : "Google Meet";
 }
 

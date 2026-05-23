@@ -101,7 +101,7 @@ export async function getAvailityAccessToken(config: AvailityOAuthConfig): Promi
 }
 
 /** Test-only: drop the cached token for a given client to force a refresh. */
-export function clearAvailityTokenCache(clientId?: string): void {
+function clearAvailityTokenCache(clientId?: string): void {
   if (!clientId) {
     tokenCache.clear();
     return;

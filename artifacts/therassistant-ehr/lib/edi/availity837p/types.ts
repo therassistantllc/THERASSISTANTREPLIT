@@ -1,4 +1,4 @@
-export type AvailityClaimMode = "test" | "production";
+type AvailityClaimMode = "test" | "production";
 
 export interface AvailityConnection {
   id?: string;

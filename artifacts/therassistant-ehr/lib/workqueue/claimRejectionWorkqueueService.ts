@@ -1,6 +1,6 @@
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 
-export type RejectionSource = "999" | "277CA";
+type RejectionSource = "999" | "277CA";
 
 export interface RouteRejectedClaimsInput {
   organizationId: string;

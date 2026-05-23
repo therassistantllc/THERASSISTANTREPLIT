@@ -58,7 +58,7 @@ export interface PostPaymentParams {
 /**
  * Create a new appointment
  */
-export async function createAppointment(
+async function createAppointment(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
   params: CreateAppointmentParams
@@ -85,7 +85,7 @@ export async function createAppointment(
 /**
  * Create encounter from appointment
  */
-export async function createEncounter(
+async function createEncounter(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
   params: CreateEncounterParams
@@ -111,7 +111,7 @@ export async function createEncounter(
 /**
  * Create clinical note
  */
-export async function createNote(
+async function createNote(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
   params: CreateNoteParams
@@ -152,7 +152,7 @@ export async function createNote(
 /**
  * Create claim with service lines
  */
-export async function createClaim(
+async function createClaim(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
   params: CreateClaimParams
@@ -208,7 +208,7 @@ export async function createClaim(
 /**
  * Submit claim to clearinghouse
  */
-export async function submitClaim(
+async function submitClaim(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
   claimId: string
@@ -241,7 +241,7 @@ export async function submitClaim(
 /**
  * Post payment to claim
  */
-export async function postPayment(
+async function postPayment(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
   params: PostPaymentParams

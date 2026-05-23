@@ -250,6 +250,6 @@ export async function captureSignedEncounterCharge(
   return { ok: okForFlow, chargeId: String(inserted.id), status, blockers, caseId: resolvedCaseId, routing };
 }
 
-// Re-export so consumers (tests) can detect self-pay routing without importing
-// the cases module directly.
+// Test-only re-export so unit tests can detect self-pay routing without
+// importing the cases module directly.
 export { isPatientResponsibilityCaseType };

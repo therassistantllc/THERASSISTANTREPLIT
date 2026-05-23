@@ -150,3 +150,80 @@ export async function sendIntakeEmail(input: SendIntakeEmailInput): Promise<Send
     return { ok: false, error: message };
   }
 }
+
+export type SendPortalInviteEmailInput = {
+  to: string;
+  patientName: string;
+  practiceName: string;
+  portalUrl: string;
+  expiresAt: string | null;
+};
+
+export type SendPortalInviteEmailResult =
+  | { ok: true; providerId: string | null; fromEmail: string }
+  | { ok: false; error: string };
+
+export async function sendPortalInviteEmail(
+  input: SendPortalInviteEmailInput,
+): Promise<SendPortalInviteEmailResult> {
+  const credentials = await resolveResendCredentials();
+  if (!credentials) {
+    return {
+      ok: false,
+      error:
+        "Email is not configured. Connect Resend in Integrations (or set RESEND_API_KEY) before emailing portal invites.",
+    };
+  }
+
+  const fromEmail =
+    credentials.fromEmail ??
+    process.env.RESEND_FROM_EMAIL?.trim() ??
+    "onboarding@resend.dev";
+
+  const expirationText = formatExpiration(input.expiresAt);
+  const safeName = input.patientName.trim() || "there";
+  const safePractice = input.practiceName.trim() || "your care team";
+
+  const subject = `${safePractice}: your patient portal access`;
+  const textBody =
+    `Hello ${safeName},\n\n` +
+    `${safePractice} has invited you to access your patient portal.\n\n` +
+    `Open your portal: ${input.portalUrl}\n\n` +
+    `This link expires on ${expirationText}. If the link has expired, contact the practice and we'll send a new one.\n\n` +
+    `Thank you,\n${safePractice}`;
+
+  const htmlBody = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #1f2937; max-width: 560px; margin: 0 auto;">
+      <p>Hello ${escapeHtml(safeName)},</p>
+      <p><strong>${escapeHtml(safePractice)}</strong> has invited you to access your patient portal.</p>
+      <p style="margin: 24px 0;">
+        <a href="${escapeHtml(input.portalUrl)}" style="background:#2563eb;color:#ffffff;padding:12px 18px;border-radius:6px;text-decoration:none;display:inline-block;">Open your patient portal</a>
+      </p>
+      <p style="font-size: 13px; color: #4b5563;">Or paste this link into your browser:<br/>
+        <a href="${escapeHtml(input.portalUrl)}">${escapeHtml(input.portalUrl)}</a>
+      </p>
+      <p style="font-size: 13px; color: #4b5563;">This link expires on <strong>${escapeHtml(expirationText)}</strong>. If it has expired by the time you open it, please contact the practice and we will send a fresh link.</p>
+      <p style="margin-top: 32px;">Thank you,<br/>${escapeHtml(safePractice)}</p>
+    </div>
+  `;
+
+  try {
+    const client = new Resend(credentials.apiKey);
+    const result = await client.emails.send({
+      from: fromEmail,
+      to: input.to,
+      subject,
+      text: textBody,
+      html: htmlBody,
+    });
+
+    if (result.error) {
+      const message = result.error.message || "Resend rejected the email";
+      return { ok: false, error: message };
+    }
+    return { ok: true, providerId: result.data?.id ?? null, fromEmail };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to send email";
+    return { ok: false, error: message };
+  }
+}

@@ -579,9 +579,9 @@ export default function PatientChartClient({
     { key: "pay", label: "Enter payment", href: `/billing/payments${orgQ}` },
     { key: "notes", label: "Notes", href: `/clients/${patient.id}/notes${orgQ}` },
     { key: "auth", label: "Authorizations", href: newWorkqueueHref },
-    { key: "portal", label: "Portal access", href: `#` },
+    { key: "portal", label: "Portal access", href: `/clients/${patient.id}/portal${orgQ}` },
   ];
-  const railDisabled: Record<string, boolean> = { portal: true };
+  const railDisabled: Record<string, boolean> = {};
 
   return (
     <>

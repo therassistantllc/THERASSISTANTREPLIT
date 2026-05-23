@@ -8,6 +8,7 @@ import {
   scoreAnswers,
 } from "@/lib/intake/scoring";
 import { writeChartObjectAuditLogs } from "@/lib/audit/chartObjectAudit";
+import { upsertPolicyFromIntake } from "@/lib/intake/upsertPolicyFromIntake";
 
 type Row = Record<string, unknown>;
 
@@ -370,10 +371,20 @@ export async function POST(
 
     await supabase!.from("clients").update(clientPatch).eq("id", clientId);
 
-    // Create or update primary insurance policy if provided
+    // Create or update primary insurance policy if provided. Uses the
+    // race-safe upsert helper so two near-simultaneous intake submits
+    // (slow-network retry, double-click, second tab) converge on a
+    // single insurance_policies row instead of producing two "primary"
+    // policies. See lib/intake/upsertPolicyFromIntake.ts and migration
+    // 20260602000000_insurance_policies_intake_dedupe_unique.sql.
     const planName = value(insurance.planName);
     const policyNumber = value(insurance.policyNumber);
     if (planName && policyNumber) {
+      // Capture the pre-upsert snapshot so the audit log (added in the
+      // chart-object audit work) can record before/after diffs. The
+      // upsert helper itself is race-safe: two near-simultaneous intake
+      // submits converge on a single row via the partial unique index +
+      // 23505 catch instead of creating a duplicate "primary" policy.
       const { data: existing } = await supabase!
         .from("insurance_policies")
         .select(
@@ -382,53 +393,33 @@ export async function POST(
         .eq("client_id", clientId)
         .eq("priority", "primary")
         .maybeSingle();
-      const policyRow: Row = {
+      const policyFields = {
         organization_id: organizationId,
         client_id: clientId,
-        priority: "primary",
+        priority: "primary" as const,
         plan_name: planName,
         policy_number: policyNumber,
         group_number: value(insurance.groupNumber) || null,
         subscriber_relationship: value(insurance.subscriberRelationship) || "self",
         active_flag: true,
       };
-      const afterSnapshot = policySnapshot(policyRow);
-      if (existing && (existing as Row).id) {
-        const policyId = value((existing as Row).id);
-        const beforeSnapshot = policySnapshot(existing as Row);
-        await supabase!
-          .from("insurance_policies")
-          .update(policyRow)
-          .eq("id", policyId);
-        try {
-          await writeChartObjectAuditLogs({
-            supabase: supabase!,
-            organizationId,
-            patientId: clientId,
-            staff: null,
-            objectType: "insurance_policy",
-            objectId: policyId,
-            action: "insurance_policy_updated",
-            objectLabel: "Insurance policy",
-            before: beforeSnapshot,
-            after: afterSnapshot,
-            columnLabels: INTAKE_POLICY_COLUMN_LABELS,
-            contextMetadata: { source: "intake_form" },
-          });
-        } catch (auditError) {
-          console.error(
-            "[intake.submit] audit log insert failed after policy update",
-            auditError instanceof Error ? auditError.message : auditError,
-          );
-        }
+      const upsert = await upsertPolicyFromIntake(
+        supabase! as unknown as Parameters<typeof upsertPolicyFromIntake>[0],
+        policyFields,
+      );
+      if (!upsert.ok) {
+        console.error("Intake policy upsert failed:", upsert.error);
       } else {
-        const { data: inserted } = await supabase!
-          .from("insurance_policies")
-          .insert(policyRow)
-          .select("id")
-          .single();
-        const policyId = inserted ? value((inserted as Row).id) : null;
+        const afterSnapshot = policySnapshot(policyFields as unknown as Row);
+        const policyId = upsert.policyId;
         if (policyId) {
+          const wasExisting = !!(existing && (existing as Row).id);
+          const beforeSnapshot = wasExisting
+            ? policySnapshot(existing as Row)
+            : policySnapshot(null);
+          const action = wasExisting
+            ? "insurance_policy_updated"
+            : "insurance_policy_created";
           try {
             await writeChartObjectAuditLogs({
               supabase: supabase!,
@@ -437,16 +428,16 @@ export async function POST(
               staff: null,
               objectType: "insurance_policy",
               objectId: policyId,
-              action: "insurance_policy_created",
+              action,
               objectLabel: "Insurance policy",
-              before: policySnapshot(null),
+              before: beforeSnapshot,
               after: afterSnapshot,
               columnLabels: INTAKE_POLICY_COLUMN_LABELS,
               contextMetadata: { source: "intake_form" },
             });
           } catch (auditError) {
             console.error(
-              "[intake.submit] audit log insert failed after policy create",
+              `[intake.submit] audit log insert failed after policy ${wasExisting ? "update" : "create"}`,
               auditError instanceof Error ? auditError.message : auditError,
             );
           }

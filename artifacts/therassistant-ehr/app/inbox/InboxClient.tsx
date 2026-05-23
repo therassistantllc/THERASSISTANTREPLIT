@@ -190,20 +190,9 @@ export default function InboxClient() {
 
   return (
     <main className="app-shell">
-      <section className="hero-panel">
-        <div>
-          <p className="eyebrow">Clinical Mailbox</p>
-          <h1>Inbox</h1>
-          <p className="hero-copy">
-            One place for clinical email and tasks — documentation requests,
-            signature follow-ups, co-signs, chart questions, and patient-related
-            messages routed from your synced mailbox.
-          </p>
-        </div>
+      <section className="hero-panel" style={{ justifyContent: "flex-end" }}>
         <div className="hero-actions" style={{ alignItems: "center", gap: 10 }}>
           {connected ? <InboxSyncChip account={connected} /> : null}
-          <Link className="button button-secondary" href="/calendar">Schedule</Link>
-          <Link className="button button-secondary" href="/workqueue">Operations Workqueues</Link>
           <button
             type="button"
             className={`${styles.headerCta} ${connected ? styles.headerCtaGhost : ""}`.trim()}

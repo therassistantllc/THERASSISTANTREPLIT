@@ -309,6 +309,14 @@ export async function POST(request: Request) {
         const scheduledFor = new Date(startAt);
         scheduledFor.setHours(scheduledFor.getHours() - reminderLeadHours);
 
+        // Prefer the per-meeting join URL that the telehealth adapter just
+        // produced; fall back to the legacy static URL only when no
+        // per-appointment link is available. Reminder dispatchers should
+        // read this from the payload so the patient receives the link
+        // that matches the booked appointment.
+        const reminderJoinUrl =
+          serviceLocation === "telehealth" ? autoMeetingJoinUrl ?? teleUrl ?? null : null;
+
         const reminderRows = reminderChannels.map((channel) => ({
           id: generateUuid(),
           organization_id: organizationId,
@@ -321,6 +329,7 @@ export async function POST(request: Request) {
             serviceLocation,
             memo,
             leadHours: reminderLeadHours,
+            telehealthUrl: reminderJoinUrl,
           },
           created_at: now,
           updated_at: now,

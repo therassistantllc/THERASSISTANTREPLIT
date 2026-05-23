@@ -129,6 +129,8 @@ export async function PATCH(
       if (updateError) throw updateError;
 
       let meetingSyncWarning: string | null = null;
+      let refreshedJoinUrl: string | null = null;
+      let refreshedStartAt: string | null = null;
       if (scheduledTimeChanged) {
         try {
           const { data: fresh } = await supabase
@@ -159,7 +161,14 @@ export async function PATCH(
                 .update({ telehealth_url: joinUrl, updated_at: new Date().toISOString() })
                 .eq("id", appointmentId)
                 .eq("organization_id", organizationId);
+              refreshedJoinUrl = joinUrl;
             };
+            refreshedStartAt = appt.scheduledStartAt;
+            // Fallback to the appointment's current telehealth_url so
+            // that even when meeting sync skips/falls back, the reminder
+            // payload below still gets refreshed to the latest URL on
+            // the appointment row.
+            refreshedJoinUrl = appt.telehealthUrl ?? null;
             if (outcome.status === "updated" || outcome.status === "recreated") {
               await applyJoinUrl(outcome.joinUrl);
             } else if (outcome.status === "no_session") {
@@ -191,6 +200,51 @@ export async function PATCH(
         } catch (e) {
           meetingSyncWarning = e instanceof Error ? e.message : "Meeting sync failed";
           console.warn("[appointments/PATCH] syncMeetingForAppointment threw", e);
+        }
+      }
+
+      // If the appointment was rescheduled, refresh any pending reminder
+      // rows so they (a) fire relative to the new start time and (b)
+      // carry the refreshed join URL. Reminders that have already been
+      // sent are left alone.
+      if (scheduledTimeChanged && refreshedStartAt) {
+        try {
+          const { data: pendingReminders } = await supabase
+            .from("appointment_reminders")
+            .select("id, payload")
+            .eq("appointment_id", appointmentId)
+            .eq("organization_id", organizationId)
+            .eq("reminder_status", "scheduled");
+          for (const row of (pendingReminders ?? []) as Array<{
+            id: string;
+            payload: Record<string, unknown> | null;
+          }>) {
+            const payload = (row.payload ?? {}) as Record<string, unknown>;
+            const leadHours = Math.max(1, Number(payload.leadHours ?? 24));
+            const newScheduledFor = new Date(refreshedStartAt);
+            newScheduledFor.setHours(newScheduledFor.getHours() - leadHours);
+            const nextPayload = {
+              ...payload,
+              ...(refreshedJoinUrl !== null ? { telehealthUrl: refreshedJoinUrl } : {}),
+            };
+            await supabase
+              .from("appointment_reminders")
+              .update({
+                scheduled_for: newScheduledFor.toISOString(),
+                payload: nextPayload,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", row.id)
+              .eq("organization_id", organizationId);
+          }
+        } catch (e) {
+          // Best-effort: reminder refresh failures should not fail the
+          // appointment update itself. Surface as a warning instead.
+          const msg = e instanceof Error ? e.message : "Reminder refresh failed";
+          meetingSyncWarning = meetingSyncWarning
+            ? `${meetingSyncWarning} ${msg}`
+            : msg;
+          console.warn("[appointments/PATCH] reminder refresh failed", e);
         }
       }
 

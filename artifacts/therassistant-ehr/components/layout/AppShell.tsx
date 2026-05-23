@@ -1,9 +1,12 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import AppSidebarNav from "./AppSidebarNav";
 import MobileNavButton from "./MobileNavButton";
 import styles from "./AppShell.module.css";
 import { ORGANIZATION_ID } from "@/lib/config";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
+
+const CHROMELESS_PREFIXES = ["/portal"];
 
 async function fetchOrgName(): Promise<string | null> {
   if (!ORGANIZATION_ID) return null;
@@ -24,6 +27,11 @@ async function fetchOrgName(): Promise<string | null> {
 }
 
 export default async function AppShell({ children }: { children: React.ReactNode }) {
+  const hdrs = await headers();
+  const pathname = hdrs.get("x-pathname") ?? "";
+  if (CHROMELESS_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return <>{children}</>;
+  }
   const orgName = await fetchOrgName();
   return (
     <div className={styles.frame}>

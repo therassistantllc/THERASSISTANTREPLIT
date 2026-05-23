@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
-import { DEFAULT_ORG_ID } from "@/lib/config";
+import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
 
 type DbRow = Record<string, unknown>;
 const text = (v: unknown) => String(v ?? "").trim();
@@ -9,15 +9,13 @@ const num = (v: unknown) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-function getOrgId(request: Request) {
-  const { searchParams } = new URL(request.url);
-  return searchParams.get("organizationId") || process.env.NEXT_PUBLIC_ORGANIZATION_ID || DEFAULT_ORG_ID;
-}
-
 export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;
-    const organizationId = getOrgId(request);
+    const { searchParams } = new URL(request.url);
+    const guard = await requireBillingAccess({ requestedOrganizationId: searchParams.get("organizationId") });
+    if (guard instanceof NextResponse) return guard;
+    const organizationId = guard.organizationId;
     const supabase = createServerSupabaseAdminClient();
     if (!supabase) return NextResponse.json({ success: false, error: "Database not available" }, { status: 500 });
 
@@ -144,7 +142,10 @@ interface SaveBody {
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;
-    const organizationId = getOrgId(request);
+    const { searchParams } = new URL(request.url);
+    const guard = await requireBillingAccess({ requestedOrganizationId: searchParams.get("organizationId") });
+    if (guard instanceof NextResponse) return guard;
+    const organizationId = guard.organizationId;
     const supabase = createServerSupabaseAdminClient();
     if (!supabase) return NextResponse.json({ success: false, error: "Database not available" }, { status: 500 });
 

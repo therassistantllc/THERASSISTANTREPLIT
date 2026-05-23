@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseServiceRoleClient } from "@/lib/supabase/server";
-import { DEFAULT_ORG_ID } from "@/lib/config";
+import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
 
 function extractMessage(error: unknown) {
   if (error instanceof Error) return error.message;
@@ -9,6 +9,10 @@ function extractMessage(error: unknown) {
 
 export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const guard = await requireBillingAccess({ requestedOrganizationId: searchParams.get("organizationId") });
+    if (guard instanceof NextResponse) return guard;
+    const organizationId = guard.organizationId;
     const supabase = createServerSupabaseServiceRoleClient();
     if (!supabase) {
       return NextResponse.json(
@@ -16,8 +20,6 @@ export async function GET(request: Request) {
         { status: 503 },
       );
     }
-    const { searchParams } = new URL(request.url);
-    const organizationId = searchParams.get("organizationId") ?? DEFAULT_ORG_ID;
     const appointmentId = searchParams.get("appointmentId");
     const clientId = searchParams.get("clientId");
 
@@ -43,14 +45,6 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const supabase = createServerSupabaseServiceRoleClient();
-    if (!supabase) {
-      return NextResponse.json(
-        { success: false, error: "Service role key is required." },
-        { status: 503 },
-      );
-    }
-
     const body = (await request.json()) as {
       organizationId?: string;
       appointmentId?: string | null;
@@ -65,7 +59,20 @@ export async function POST(request: Request) {
       note?: string | null;
     };
 
-    const organizationId = body.organizationId ?? DEFAULT_ORG_ID;
+    const guard = await requireBillingAccess({
+      requestedOrganizationId: body.organizationId ?? null,
+    });
+    if (guard instanceof NextResponse) return guard;
+    const organizationId = guard.organizationId;
+
+    const supabase = createServerSupabaseServiceRoleClient();
+    if (!supabase) {
+      return NextResponse.json(
+        { success: false, error: "Service role key is required." },
+        { status: 503 },
+      );
+    }
+
     const paymentMethod = String(body.paymentMethod ?? "").trim();
     if (!paymentMethod) {
       return NextResponse.json({ success: false, error: "paymentMethod is required." }, { status: 400 });

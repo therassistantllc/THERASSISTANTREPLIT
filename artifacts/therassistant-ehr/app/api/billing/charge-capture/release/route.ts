@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClaimDraftFromChargeCapture } from "@/lib/claims/chargeCaptureClaimBridgeService";
 import { assertClaimSubmissionReady, gateResponse } from "@/lib/validation/claimSubmissionGate";
+import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
 
 interface ReleaseRequestBody {
   organizationId?: string;
@@ -10,14 +11,14 @@ interface ReleaseRequestBody {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as ReleaseRequestBody;
-    const organizationId = typeof body.organizationId === "string" ? body.organizationId.trim() : "";
+    const requestedOrg = typeof body.organizationId === "string" ? body.organizationId.trim() : "";
+    const guard = await requireBillingAccess({ requestedOrganizationId: requestedOrg || null });
+    if (guard instanceof NextResponse) return guard;
+    const organizationId = guard.organizationId;
     const ids = Array.isArray(body.chargeCaptureIds)
       ? body.chargeCaptureIds.map((v) => String(v ?? "").trim()).filter(Boolean)
       : [];
 
-    if (!organizationId) {
-      return NextResponse.json({ success: false, error: "organizationId is required" }, { status: 400 });
-    }
     if (ids.length === 0) {
       return NextResponse.json({ success: false, error: "chargeCaptureIds is required" }, { status: 400 });
     }

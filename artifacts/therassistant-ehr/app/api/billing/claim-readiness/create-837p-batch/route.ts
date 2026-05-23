@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { assertClaimSubmissionReady, gateResponse } from "@/lib/validation/claimSubmissionGate";
+import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
 
 type DbRow = Record<string, unknown>;
 
@@ -23,11 +24,10 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const organizationId = body.organizationId ? String(body.organizationId) : "";
-
-    if (!organizationId) {
-      return NextResponse.json({ success: false, error: "organizationId is required" }, { status: 400 });
-    }
+    const requestedOrg = body.organizationId ? String(body.organizationId) : "";
+    const guard = await requireBillingAccess({ requestedOrganizationId: requestedOrg || null });
+    if (guard instanceof NextResponse) return guard;
+    const organizationId = guard.organizationId;
 
     const gate = await assertClaimSubmissionReady(organizationId);
     const blocked = gateResponse(gate);

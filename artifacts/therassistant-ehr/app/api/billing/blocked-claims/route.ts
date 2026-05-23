@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
+import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
 import { runClaimContentValidation } from "@/lib/validation/claim/runClaimContentValidation";
 import type { ValidationFinding } from "@/lib/validation/types";
 
@@ -55,15 +56,10 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const organizationId = searchParams.get("organizationId");
+  const guard = await requireBillingAccess({ requestedOrganizationId: searchParams.get("organizationId") });
+  if (guard instanceof NextResponse) return guard;
+  const organizationId = guard.organizationId;
   const singleClaimId = searchParams.get("claimId");
-
-  if (!organizationId) {
-    return NextResponse.json(
-      { success: false, error: "organizationId is required" },
-      { status: 400 },
-    );
-  }
 
   try {
     let claimsQuery = supabase

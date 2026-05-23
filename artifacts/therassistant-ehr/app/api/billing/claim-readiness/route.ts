@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
+import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
 
 type DbRow = Record<string, unknown>;
 
@@ -34,9 +35,9 @@ export async function GET(request: Request) {
     if (!supabase) return NextResponse.json({ success: false, error: "Database connection not available" }, { status: 500 });
 
     const { searchParams } = new URL(request.url);
-    const organizationId = searchParams.get("organizationId");
-
-    if (!organizationId) return NextResponse.json({ success: false, error: "organizationId is required" }, { status: 400 });
+    const guard = await requireBillingAccess({ requestedOrganizationId: searchParams.get("organizationId") });
+    if (guard instanceof NextResponse) return guard;
+    const organizationId = guard.organizationId;
 
     const { data: chargeRows, error: chargeError } = await supabase
       .from("charge_capture_items")

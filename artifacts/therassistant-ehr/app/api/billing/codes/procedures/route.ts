@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
+import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
 
 export async function GET(request: Request) {
   try {
+    const guard = await requireBillingAccess();
+    if (guard instanceof NextResponse) return guard;
+
     const supabase = createServerSupabaseAdminClient();
     if (!supabase) {
       return NextResponse.json({ success: false, error: "Database not available" }, { status: 500 });

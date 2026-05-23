@@ -8,7 +8,7 @@
     "start": "next start --port ${PORT:-22803}",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test lib/edi/availity270/__tests__/*.test.ts lib/clearinghouse/__tests__/*.test.ts lib/payments/postingEngine/__tests__/*.test.ts lib/payments/__tests__/*.test.ts lib/cases/__tests__/*.test.ts scripts/__tests__/*.test.ts",
+    "test": "node --import tsx --test lib/edi/availity270/__tests__/*.test.ts lib/clearinghouse/__tests__/*.test.ts lib/payments/postingEngine/__tests__/*.test.ts lib/payments/__tests__/*.test.ts lib/cases/__tests__/*.test.ts lib/billing/__tests__/*.test.ts scripts/__tests__/*.test.ts",
     "import:billing-codes": "tsx scripts/import-billing-codes.ts"
   },
   "dependencies": {

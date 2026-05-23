@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
-import { DEFAULT_ORG_ID } from "@/lib/config";
+import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
 
 type DbRow = Record<string, unknown>;
 
@@ -24,8 +24,9 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     }
     const { id } = await ctx.params;
     const { searchParams } = new URL(request.url);
-    const organizationId =
-      searchParams.get("organizationId") || process.env.NEXT_PUBLIC_ORGANIZATION_ID || DEFAULT_ORG_ID;
+    const guard = await requireBillingAccess({ requestedOrganizationId: searchParams.get("organizationId") });
+    if (guard instanceof NextResponse) return guard;
+    const organizationId = guard.organizationId;
 
     const { data: batch, error: batchErr } = await supabase
       .from("claim_837p_batches")

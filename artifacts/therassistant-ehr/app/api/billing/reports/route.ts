@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
+import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
 
 type ReportClaims = {
   submitted: number;
@@ -122,11 +123,9 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const organizationId = searchParams.get("organizationId");
-
-    if (!organizationId) {
-      return NextResponse.json({ success: false, error: "organizationId is required" }, { status: 400 });
-    }
+    const guard = await requireBillingAccess({ requestedOrganizationId: searchParams.get("organizationId") });
+    if (guard instanceof NextResponse) return guard;
+    const organizationId = guard.organizationId;
 
     const { month, periodStart, periodEnd } = monthBounds(searchParams.get("month"));
 

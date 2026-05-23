@@ -14,6 +14,7 @@ import { describe, it } from "node:test";
 import {
   computeBaseEmissions,
   applyWorkqueueRules,
+  runNoResponseAgingScan,
   type ApplyWorkqueueRulesContext,
 } from "../workqueueRules";
 import type { PostingActor } from "../types";
@@ -143,13 +144,19 @@ interface FakeRow extends Record<string, unknown> {
   id: string;
 }
 
-function makeFake(seed: { workqueue_items?: FakeRow[] } = {}) {
+function makeFake(
+  seed: {
+    workqueue_items?: FakeRow[];
+    professional_claims?: FakeRow[];
+    eligibility_coverages?: FakeRow[];
+  } = {},
+) {
   const tables: Record<string, FakeRow[]> = {
     workqueue_items: seed.workqueue_items ?? [],
     audit_logs: [],
     organization_settings: [],
-    professional_claims: [],
-    eligibility_coverages: [],
+    professional_claims: seed.professional_claims ?? [],
+    eligibility_coverages: seed.eligibility_coverages ?? [],
   };
 
   function makeQuery(table: string) {
@@ -158,10 +165,22 @@ function makeFake(seed: { workqueue_items?: FakeRow[] } = {}) {
       ins: Array<[string, unknown[]]>;
       neqs: Array<[string, unknown]>;
       iss: Array<[string, unknown]>;
+      ltes: Array<[string, unknown]>;
+      gtes: Array<[string, unknown]>;
       limit: number | null;
       single: boolean;
       maybeSingle: boolean;
-    } = { eqs: [], ins: [], neqs: [], iss: [], limit: null, single: false, maybeSingle: false };
+    } = {
+      eqs: [],
+      ins: [],
+      neqs: [],
+      iss: [],
+      ltes: [],
+      gtes: [],
+      limit: null,
+      single: false,
+      maybeSingle: false,
+    };
 
     const exec = async () => {
       const rows = tables[table] ?? [];
@@ -170,6 +189,8 @@ function makeFake(seed: { workqueue_items?: FakeRow[] } = {}) {
         for (const [c, v] of state.neqs) if (r[c] === v) return false;
         for (const [c, vs] of state.ins) if (!vs.includes(r[c])) return false;
         for (const [c] of state.iss) if (r[c] != null) return false;
+        for (const [c, v] of state.ltes) if (!(r[c] != null && String(r[c]) <= String(v))) return false;
+        for (const [c, v] of state.gtes) if (!(r[c] != null && String(r[c]) >= String(v))) return false;
         return true;
       });
       const limited = state.limit ? filtered.slice(0, state.limit) : filtered;
@@ -194,6 +215,14 @@ function makeFake(seed: { workqueue_items?: FakeRow[] } = {}) {
     };
     builder.is = (c: string, v: unknown) => {
       state.iss.push([c, v]);
+      return builder;
+    };
+    builder.lte = (c: string, v: unknown) => {
+      state.ltes.push([c, v]);
+      return builder;
+    };
+    builder.gte = (c: string, v: unknown) => {
+      state.gtes.push([c, v]);
       return builder;
     };
     builder.limit = (n: number) => {
@@ -291,5 +320,61 @@ describe("applyWorkqueueRules", () => {
     );
     assert.equal(r.itemsCreated, 1);
     assert.equal(fake.tables.workqueue_items[0].work_type, "recoupment");
+  });
+});
+
+describe("runNoResponseAgingScan", () => {
+  it("creates one no_response item per aged claim and dedupes on re-run", async () => {
+    const oldDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    const freshDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    const fake = makeFake({
+      professional_claims: [
+        {
+          id: "claim-aged-1",
+          organization_id: ORG,
+          client_id: "client-1",
+          submitted_at: oldDate,
+          claim_status: "submitted",
+          archived_at: null,
+        },
+        {
+          id: "claim-aged-2",
+          organization_id: ORG,
+          client_id: "client-2",
+          submitted_at: oldDate,
+          claim_status: "accepted",
+          archived_at: null,
+        },
+        {
+          id: "claim-fresh",
+          organization_id: ORG,
+          client_id: "client-3",
+          submitted_at: freshDate,
+          claim_status: "submitted",
+          archived_at: null,
+        },
+      ],
+    });
+
+    const first = await runNoResponseAgingScan(fake.client, {
+      organizationId: ORG,
+      actor: ACTOR,
+      noResponseDays: 30,
+    });
+    assert.equal(first.itemsCreated, 2, "two aged claims should produce two items");
+    assert.equal(fake.tables.workqueue_items.length, 2);
+    assert.ok(
+      fake.tables.workqueue_items.every((r) => r.work_type === "no_response"),
+      "all emissions are no_response",
+    );
+
+    // Second run must be a no-op (dedupe against existing open items).
+    const second = await runNoResponseAgingScan(fake.client, {
+      organizationId: ORG,
+      actor: ACTOR,
+      noResponseDays: 30,
+    });
+    assert.equal(second.itemsCreated, 0, "rerun must dedupe via existingOpenItem");
+    assert.equal(fake.tables.workqueue_items.length, 2);
   });
 });

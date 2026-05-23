@@ -156,6 +156,7 @@ export default function MonthCalendarClient() {
   const [cptDraft, setCptDraft] = useState<string>("90837");
   const [cptFallback, setCptFallback] = useState<string | null>(null);
   const [savingDetail, setSavingDetail] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
 
   const [collectOpen, setCollectOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -336,6 +337,46 @@ export default function MonthCalendarClient() {
         kind: "error",
         text: e instanceof Error ? e.message : "Could not start note",
       });
+    }
+  }
+
+  async function handleCheckIn() {
+    if (!detail) return;
+    setDrawerBanner(null);
+    setCheckingIn(true);
+    try {
+      const res = await fetch(`/api/check-ins/appointment/start-note`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: ORG_ID,
+          appointmentId: detail.appointment.id,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? "Check-in failed");
+      }
+      // Refresh list so the status pill reflects checked_in before navigation.
+      await loadAppointments();
+      const target = typeof json.noteUrl === "string" && json.noteUrl
+        ? json.noteUrl
+        : json.encounterId
+          ? `/encounters/${json.encounterId}`
+          : null;
+      if (target) {
+        window.location.href = target;
+      } else {
+        setDrawerBanner({ kind: "success", text: "Checked in." });
+        await loadDetail(detail.appointment.id);
+      }
+    } catch (e) {
+      setDrawerBanner({
+        kind: "error",
+        text: e instanceof Error ? e.message : "Check-in failed",
+      });
+    } finally {
+      setCheckingIn(false);
     }
   }
 
@@ -636,8 +677,28 @@ export default function MonthCalendarClient() {
                   </div>
 
                   <div className={styles.actions}>
+                    {(() => {
+                      const status = detail.appointment.status;
+                      const alreadyCheckedIn = status === "checked_in" || status === "in_progress" || status === "completed";
+                      const label = checkingIn
+                        ? "Checking in…"
+                        : alreadyCheckedIn
+                          ? "Open note"
+                          : "Check in";
+                      const disabled = checkingIn || !detail.appointment.clientId;
+                      return (
+                        <button
+                          className={styles.primaryBtn}
+                          onClick={handleCheckIn}
+                          disabled={disabled}
+                          title={!detail.appointment.clientId ? "Assign a client before checking in" : undefined}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })()}
                     <button
-                      className={styles.primaryBtn}
+                      className={styles.secondaryBtn}
                       onClick={saveDetailChanges}
                       disabled={savingDetail}
                     >

@@ -120,6 +120,41 @@ export interface RecordRecoupmentInput {
   actor: PostingActor;
   /** Optional — when this recoupment is netted out of a subsequent ERA check. */
   offsetEraClaimPaymentId?: string | null;
+  /**
+   * When true, all validation runs and a `preview` is computed describing
+   * what the live call WOULD do — but NO rows are mutated. Used by the
+   * biller-facing "preview" UI before money actually moves.
+   */
+  dryRun?: boolean;
+}
+
+/**
+ * Shape returned in dry-run mode so the UI can render exactly what a live
+ * recoupment would do (remaining recoupable balance, compensating negative
+ * ledger entry, workqueue follow-up). Mirrors RefundPreview.
+ */
+export interface RecoupmentPreview {
+  source: { kind: PostedPaymentKind; id: string; label: string };
+  amount: number;
+  paymentTotalImpact: number;
+  priorRefundTotal: number;
+  priorRecoupTotal: number;
+  remainingRecoupableBefore: number;
+  remainingRecoupableAfter: number;
+  /** Compensating negative ledger entry the engine would post. */
+  compensatingLedgerEntry: {
+    entryType: string;
+    amount: number;
+    groupCode: string | null;
+    reasonCode: string | null;
+    description: string;
+  };
+  /** Workqueue follow-up that would be opened (only when a claim is linked). */
+  workqueueItem: {
+    wouldOpen: boolean;
+    workType: string | null;
+    title: string | null;
+  };
 }
 
 export interface RecordRecoupmentResult {
@@ -129,6 +164,8 @@ export interface RecordRecoupmentResult {
   ledgerEntryId: string | null;
   auditLogIds: string[];
   errors: Array<{ field: string; message: string }>;
+  /** Populated only when input.dryRun === true and validation passed. */
+  preview?: RecoupmentPreview;
 }
 
 export interface RecordRefundInput {
@@ -1177,6 +1214,40 @@ export async function recordRecoupment(
       field: "amount",
       message: `Recoupment ${amount.toFixed(2)} exceeds remaining recoupable balance ${remaining.toFixed(2)} (original ${payment.totalImpact.toFixed(2)}, prior recoups ${priorRecoupTotal.toFixed(2)}, prior refunds ${priorRefundTotal.toFixed(2)}).`,
     });
+    return result;
+  }
+
+  // ── Dry-run preview ───────────────────────────────────────────────────────
+  // All validation (amount > 0, target.kind allowed, posting_status='posted',
+  // remaining-cap check) has already run above. Build the preview from
+  // already-loaded state — no further reads required.
+  if (input.dryRun) {
+    const remainingAfter = round2(remaining - amount);
+    const wouldOpenWorkqueue = !!payment.professionalClaimId;
+    result.ok = true;
+    result.preview = {
+      source: { kind: payment.kind, id: payment.id, label: payment.rawSourceLabel },
+      amount,
+      paymentTotalImpact: round2(payment.totalImpact),
+      priorRefundTotal: round2(priorRefundTotal),
+      priorRecoupTotal: round2(priorRecoupTotal),
+      remainingRecoupableBefore: remaining,
+      remainingRecoupableAfter: remainingAfter,
+      compensatingLedgerEntry: {
+        entryType: "insurance_payment",
+        amount: -amount,
+        groupCode: "OA",
+        reasonCode: input.reasonCode ?? null,
+        description: `Recoupment: ${input.reason}`,
+      },
+      workqueueItem: {
+        wouldOpen: wouldOpenWorkqueue,
+        workType: wouldOpenWorkqueue ? "recoupment_review" : null,
+        title: wouldOpenWorkqueue
+          ? `Payer recoupment ${amount.toFixed(2)} on ${payment.rawSourceLabel}`
+          : null,
+      },
+    };
     return result;
   }
 

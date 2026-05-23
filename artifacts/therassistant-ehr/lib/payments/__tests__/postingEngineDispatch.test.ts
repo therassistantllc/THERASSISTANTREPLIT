@@ -31,7 +31,12 @@ test("recoupment dispatch reaches recordRecoupment (no longer stubbed)", async (
   }
 });
 
-test("recoupment dry-run short-circuits without errors", async () => {
+test("recoupment dry-run reaches recordRecoupment validation (no longer a stub)", async () => {
+  // Task #172: the old early-return stub that returned ok=true with no
+  // preview is gone. Dry-run now flows into recordRecoupment so billers
+  // get a real preview. Without a real DB the handler surfaces the same
+  // "Database connection not available" error as the live path; the
+  // important assertion is that we no longer see the old stub behaviour.
   const r = await commitPosting({
     organizationId: "org-1",
     dryRun: true,
@@ -42,9 +47,10 @@ test("recoupment dry-run short-circuits without errors", async () => {
       reason: "dry-run smoke",
     },
   });
-  assert.equal(r.ok, true);
   assert.equal(r.posted, false);
-  assert.equal(r.errors.length, 0);
+  for (const e of r.errors) {
+    assert.doesNotMatch(e.message, /not implemented/i);
+  }
 });
 
 test("manual_insurance dispatch reaches the validator (no longer stubbed)", async () => {

@@ -1121,6 +1121,55 @@ describe("recordRecoupment", () => {
     assert.equal(fake.tables.workqueue_items[0].work_type, "recoupment_review");
     assert.equal(fake.tables.workqueue_items[0].source_object_type, "payment_posting");
   });
+
+  it("dry-run returns a preview without writing any rows (Task #172)", async () => {
+    const fake = makeFakeSupabase({
+      era_claim_payments: [
+        {
+          id: "era-r3",
+          organization_id: ORG,
+          client_id: "c-1",
+          professional_claim_id: "claim-1",
+          clp01_claim_control_number: "PCN-R3",
+          clp04_payment_amount: 100,
+          posting_status: "posted",
+          archived_at: null,
+        },
+      ],
+    });
+    const r = await recordRecoupment(
+      {
+        organizationId: ORG,
+        target: { kind: "era_835", id: "era-r3" },
+        amount: 25,
+        reason: "Payer takeback preview",
+        reasonCode: "WO",
+        actor: ACTOR,
+        dryRun: true,
+      },
+      fake.client,
+    );
+    assert.equal(r.ok, true, r.errors.map((e) => e.message).join("; "));
+    assert.equal(r.recoupmentId, null);
+    assert.equal(r.ledgerEntryId, null);
+    assert.equal(r.workqueueItemId, null);
+    // No writes against any table.
+    assert.equal(fake.tables.payment_recoupments.length, 0);
+    assert.equal(fake.tables.era_posting_ledger_entries.length, 0);
+    assert.equal(fake.tables.workqueue_items.length, 0);
+    // Preview surfaces every field a confirm modal needs.
+    assert.ok(r.preview, "preview must be populated in dry-run mode");
+    assert.equal(r.preview.amount, 25);
+    assert.equal(r.preview.paymentTotalImpact, 100);
+    assert.equal(r.preview.remainingRecoupableBefore, 100);
+    assert.equal(r.preview.remainingRecoupableAfter, 75);
+    assert.equal(r.preview.compensatingLedgerEntry.amount, -25);
+    assert.equal(r.preview.compensatingLedgerEntry.groupCode, "OA");
+    assert.equal(r.preview.compensatingLedgerEntry.reasonCode, "WO");
+    assert.equal(r.preview.workqueueItem.wouldOpen, true);
+    assert.equal(r.preview.workqueueItem.workType, "recoupment_review");
+    assert.ok(r.preview.workqueueItem.title?.includes("25.00"));
+  });
 });
 
 describe("recordInsuranceRefund / recordPatientRefund", () => {

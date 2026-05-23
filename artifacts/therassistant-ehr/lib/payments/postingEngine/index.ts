@@ -73,6 +73,7 @@ export {
   type VoidResult,
   type RecordRecoupmentInput,
   type RecordRecoupmentResult,
+  type RecoupmentPreview,
   type RecordRefundInput,
   type RecordRefundResult,
 } from "./reversal";
@@ -170,12 +171,9 @@ export async function commitPosting(
   if (input.source.type === "recoupment") {
     // PP-5: payer takeback. Route through recordRecoupment for atomic
     // ledger compensation (negative entry), workqueue follow-up, and
-    // audit linkage back to the original posted payment.
-    if (input.dryRun) {
-      const out = emptyResult();
-      out.ok = true;
-      return out;
-    }
+    // audit linkage back to the original posted payment. Task #172 threads
+    // dryRun through so billers see a real preview (remaining balance,
+    // compensating ledger row, workqueue item) before the takeback posts.
     const { recordRecoupment } = await import("./reversal");
     const r = await recordRecoupment(
       {
@@ -186,6 +184,7 @@ export async function commitPosting(
         reasonCode: input.source.reasonCode ?? null,
         offsetEraClaimPaymentId: input.source.offsetEraClaimPaymentId ?? null,
         actor,
+        dryRun: input.dryRun,
       },
       injectedSupabase,
     );
@@ -271,7 +270,26 @@ function recoupmentResultToCommitResult(
     recoupmentId: r.recoupmentId,
     ledgerEntryId: r.ledgerEntryId,
     workqueueItemId: r.workqueueItemId,
+    preview: r.preview,
   };
+  // Dry-run: surface the compensating negative ledger entry as `effects`
+  // so existing UI iterating result.effects in its preview modal renders
+  // the takeback row without a special-case branch.
+  if (r.preview) {
+    const e = r.preview.compensatingLedgerEntry;
+    out.effects = [
+      {
+        // entry_type is 'insurance_payment' (a member of the union) but
+        // the negative-amount recoupment row is outside the engine's
+        // happy-path discriminator. Cast to keep types honest.
+        entryType: e.entryType as never,
+        amount: e.amount,
+        groupCode: e.groupCode,
+        reasonCode: e.reasonCode,
+        description: e.description,
+      },
+    ];
+  }
   return out;
 }
 

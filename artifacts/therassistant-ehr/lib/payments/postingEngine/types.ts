@@ -218,6 +218,8 @@ export interface CommitPostingResult {
     recoupmentId: string | null;
     ledgerEntryId: string | null;
     workqueueItemId: string | null;
+    /** Populated when dryRun=true — see RecoupmentPreview in reversal.ts. */
+    preview?: import("./reversal").RecoupmentPreview;
   };
 }
 

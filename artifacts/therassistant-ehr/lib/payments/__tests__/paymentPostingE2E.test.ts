@@ -147,7 +147,7 @@ test("manual EOB with per-line allocation writes one ledger per line and a patie
     id: "pc-1",
     organization_id: ORG,
     patient_id: CLIENT,
-    total_charge_amount: 200,
+    total_charge: 200,
     patient_responsibility_amount: 0,
     claim_status: "submitted",
     archived_at: null,

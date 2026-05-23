@@ -7427,7 +7427,9 @@ export type Database = {
           organization_id: string
           patient_account_number: string | null
           patient_id: string | null
+          patient_responsibility_amount: number
           payer_profile_id: string | null
+          payer_responsibility_amount: number
           place_of_service: string | null
           prior_authorization_number: string | null
           release_of_information: boolean | null
@@ -7459,7 +7461,9 @@ export type Database = {
           organization_id: string
           patient_account_number?: string | null
           patient_id?: string | null
+          patient_responsibility_amount?: number
           payer_profile_id?: string | null
+          payer_responsibility_amount?: number
           place_of_service?: string | null
           prior_authorization_number?: string | null
           release_of_information?: boolean | null
@@ -7491,7 +7495,9 @@ export type Database = {
           organization_id?: string
           patient_account_number?: string | null
           patient_id?: string | null
+          patient_responsibility_amount?: number
           payer_profile_id?: string | null
+          payer_responsibility_amount?: number
           place_of_service?: string | null
           prior_authorization_number?: string | null
           release_of_information?: boolean | null

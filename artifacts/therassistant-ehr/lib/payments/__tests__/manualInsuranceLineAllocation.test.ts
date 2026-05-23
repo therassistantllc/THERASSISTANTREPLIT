@@ -17,7 +17,7 @@ const claim = {
   id: "pc-1",
   organization_id: "org-1",
   patient_id: "client-1",
-  total_charge_amount: 200,
+  total_charge: 200,
   claim_status: "submitted",
 };
 

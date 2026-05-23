@@ -75,9 +75,6 @@ const EXTRA_COLUMNS: Record<string, string[]> = {
     "subscriber_relationship",
   ],
   professional_claims: [
-    "patient_responsibility_amount",
-    "payer_responsibility_amount",
-    "total_charge_amount",
     "case_id",
     "client_id",
     "legacy_claim_id",

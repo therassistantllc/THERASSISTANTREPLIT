@@ -52,7 +52,7 @@ export interface ManualInsuranceHydratedClaim {
   id: string;
   organization_id: string;
   patient_id: string | null;
-  total_charge_amount: number | null;
+  total_charge: number | null;
   payer_responsibility_amount?: number | null;
   patient_responsibility_amount?: number | null;
   claim_status: string;
@@ -114,7 +114,7 @@ export function validateManualInsurancePosting(
   }
 
   const explicitCharge = src.totalChargeAmount != null ? Number(src.totalChargeAmount) : null;
-  const dbCharge = claim.total_charge_amount != null ? Number(claim.total_charge_amount) : null;
+  const dbCharge = claim.total_charge != null ? Number(claim.total_charge) : null;
   const charge = explicitCharge ?? dbCharge ?? round2(paid + adj + pr);
   const expected = round2(paid + adj + pr);
   const variance = round2(expected - charge);
@@ -259,7 +259,7 @@ export async function commitManualInsurancePosting(
 
   const { data: claim, error: claimError } = await supabase
     .from("professional_claims")
-    .select("id, organization_id, patient_id, total_charge_amount, payer_responsibility_amount, patient_responsibility_amount, claim_status")
+    .select("id, organization_id, patient_id, total_charge, payer_responsibility_amount, patient_responsibility_amount, claim_status")
     .eq("organization_id", organizationId)
     .eq("id", src.professionalClaimId)
     .is("archived_at", null)
@@ -436,7 +436,7 @@ export async function commitManualInsurancePosting(
 
     try {
       const { applyWorkqueueRules } = await import("./workqueueRules");
-      const totalCharge = Number(hydrated!.total_charge_amount ?? 0);
+      const totalCharge = Number(hydrated!.total_charge ?? 0);
       const allowed = totalCharge > 0 ? totalCharge - adj : null;
       await applyWorkqueueRules(supabase, {
         organizationId,

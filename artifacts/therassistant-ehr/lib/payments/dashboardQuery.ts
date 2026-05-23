@@ -60,6 +60,13 @@ export interface DashboardRow {
   depositDate: string | null;
   paymentDate: string | null;
   importedAt: string | null;
+  /**
+   * Remaining recoupable balance for ERA-835 and client_payment sources
+   * (amount - prior recoups - prior non-cancelled refunds). `null` for
+   * manual_insurance (recoupments don't apply) and for non-posted rows.
+   * Drives the Record-Recoupment action visibility in the dashboard UI.
+   */
+  remainingRecoupable: number | null;
 }
 
 export interface DashboardTotals {
@@ -214,6 +221,7 @@ function mapEraRow(r: Record<string, unknown>): DashboardRow {
       (r["era_received_date"] as string | null) ?? batch?.received_at ?? null,
     paymentDate: (r["created_at"] as string | null) ?? null,
     importedAt: batch?.received_at ?? (r["created_at"] as string | null) ?? null,
+    remainingRecoupable: null,
   };
 }
 
@@ -289,6 +297,7 @@ function mapManualRow(r: Record<string, unknown>): DashboardRow {
     depositDate: (r["posted_at"] as string | null) ?? null,
     paymentDate: (r["posted_at"] as string | null) ?? null,
     importedAt: (r["created_at"] as string | null) ?? null,
+    remainingRecoupable: null,
   };
 }
 
@@ -355,7 +364,135 @@ function mapPatientRow(r: Record<string, unknown>): DashboardRow {
     depositDate: (r["posted_at"] as string | null) ?? null,
     paymentDate: (r["posted_at"] as string | null) ?? null,
     importedAt: (r["created_at"] as string | null) ?? null,
+    remainingRecoupable: null,
   };
+}
+
+/**
+ * Annotate posted ERA / client_payment rows with the per-row remaining
+ * recoupable balance so the dashboard UI can hide the Record-Recoupment
+ * action when nothing is left to take back. Manual-insurance rows never
+ * carry recoupments, so they stay `null`. Aggregates payment_recoupments
+ * + non-cancelled payment_refunds keyed on the source-payment id.
+ */
+async function annotateRemainingRecoupable(
+  supabase: SupabaseClient,
+  organizationId: string,
+  rows: DashboardRow[],
+): Promise<void> {
+  const eraIds: string[] = [];
+  const cpIds: string[] = [];
+  for (const r of rows) {
+    if (r.postingStatus !== "posted") continue;
+    if (r.source === "era") eraIds.push(r.id.slice(4));
+    else if (r.source === "patient") cpIds.push(r.id.slice(3));
+  }
+  if (eraIds.length === 0 && cpIds.length === 0) return;
+
+  const sumByKey = (
+    rows: Array<Record<string, unknown>>,
+    key: string,
+  ): Map<string, number> => {
+    const out = new Map<string, number>();
+    for (const r of rows) {
+      const id = String(r[key] ?? "");
+      if (!id) continue;
+      const amt = Number(r["amount"] ?? 0);
+      if (!Number.isFinite(amt)) continue;
+      out.set(id, (out.get(id) ?? 0) + amt);
+    }
+    return out;
+  };
+
+  const queries: Array<Promise<{ data?: Array<Record<string, unknown>> | null }>> = [];
+  if (eraIds.length > 0) {
+    queries.push(
+      supabase
+        .from("payment_recoupments")
+        .select("source_era_claim_payment_id, amount")
+        .eq("organization_id", organizationId)
+        .is("archived_at", null)
+        .in("source_era_claim_payment_id", eraIds) as unknown as Promise<{
+        data?: Array<Record<string, unknown>> | null;
+      }>,
+      supabase
+        .from("payment_refunds")
+        .select("source_era_claim_payment_id, amount, refund_status")
+        .eq("organization_id", organizationId)
+        .is("archived_at", null)
+        .neq("refund_status", "cancelled")
+        .in("source_era_claim_payment_id", eraIds) as unknown as Promise<{
+        data?: Array<Record<string, unknown>> | null;
+      }>,
+    );
+  } else {
+    queries.push(Promise.resolve({ data: [] }), Promise.resolve({ data: [] }));
+  }
+  if (cpIds.length > 0) {
+    queries.push(
+      supabase
+        .from("payment_recoupments")
+        .select("source_client_payment_id, amount")
+        .eq("organization_id", organizationId)
+        .is("archived_at", null)
+        .in("source_client_payment_id", cpIds) as unknown as Promise<{
+        data?: Array<Record<string, unknown>> | null;
+      }>,
+      supabase
+        .from("payment_refunds")
+        .select("source_client_payment_id, amount, refund_status")
+        .eq("organization_id", organizationId)
+        .is("archived_at", null)
+        .neq("refund_status", "cancelled")
+        .in("source_client_payment_id", cpIds) as unknown as Promise<{
+        data?: Array<Record<string, unknown>> | null;
+      }>,
+    );
+  } else {
+    queries.push(Promise.resolve({ data: [] }), Promise.resolve({ data: [] }));
+  }
+
+  try {
+    const [eraRecoups, eraRefunds, cpRecoups, cpRefunds] = await Promise.all(queries);
+    const eraRecoupSum = sumByKey(
+      (eraRecoups.data ?? []) as Array<Record<string, unknown>>,
+      "source_era_claim_payment_id",
+    );
+    const eraRefundSum = sumByKey(
+      (eraRefunds.data ?? []) as Array<Record<string, unknown>>,
+      "source_era_claim_payment_id",
+    );
+    const cpRecoupSum = sumByKey(
+      (cpRecoups.data ?? []) as Array<Record<string, unknown>>,
+      "source_client_payment_id",
+    );
+    const cpRefundSum = sumByKey(
+      (cpRefunds.data ?? []) as Array<Record<string, unknown>>,
+      "source_client_payment_id",
+    );
+
+    for (const r of rows) {
+      if (r.postingStatus !== "posted") continue;
+      if (r.source === "era") {
+        const id = r.id.slice(4);
+        const used = (eraRecoupSum.get(id) ?? 0) + (eraRefundSum.get(id) ?? 0);
+        r.remainingRecoupable = Math.max(
+          0,
+          Math.round((Number(r.amount ?? 0) - used) * 100) / 100,
+        );
+      } else if (r.source === "patient") {
+        const id = r.id.slice(3);
+        const used = (cpRecoupSum.get(id) ?? 0) + (cpRefundSum.get(id) ?? 0);
+        r.remainingRecoupable = Math.max(
+          0,
+          Math.round((Number(r.amount ?? 0) - used) * 100) / 100,
+        );
+      }
+    }
+  } catch {
+    // best-effort; on failure the UI just falls back to showing the
+    // button for any posted era/cp row and the API still enforces caps.
+  }
 }
 
 // ── Totals ──────────────────────────────────────────────────────────────────
@@ -643,6 +780,7 @@ export async function queryPaymentsDashboard(
   // consistently regardless of which source dominates a given page.
   const offset = Math.max(0, Math.floor(Number(filters.offset ?? 0)) || 0);
   const merged = sorted.slice(offset, offset + clampLimit(filters.limit));
+  await annotateRemainingRecoupable(supabase, filters.organizationId, merged);
   return {
     rows: merged,
     totals,

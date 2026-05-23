@@ -15,6 +15,7 @@ import {
   recordRecoupment,
   recordInsuranceRefund,
   recordPatientRefund,
+  confirmInsuranceRefund,
   validateReversalRequest,
   validateRefundAmount,
 } from "../reversal";
@@ -509,6 +510,190 @@ describe("reversePostedPayment — patient refund initiation (fail-closed)", () 
     const cp = fake.tables.client_payments[0] as Record<string, unknown>;
     assert.equal(cp.posting_status, "posted", "posting_status must be restored after failed refund init");
     assert.equal(cp.reversed_at, null, "reversed_at must be cleared by restoreStatus()");
+  });
+});
+
+describe("confirmInsuranceRefund (two-step issuance)", () => {
+  it("flips pending→issued, posts compensating ledger row, and writes audit", async () => {
+    const refundId = "11111111-1111-1111-1111-111111111111";
+    const fake = makeFakeSupabase({
+      payment_refunds: [
+        {
+          id: refundId,
+          organization_id: ORG,
+          refund_type: "insurance",
+          amount: 25,
+          refund_status: "pending",
+          source_era_claim_payment_id: "era-conf-1",
+          source_client_payment_id: null,
+          source_insurance_manual_payment_id: null,
+          professional_claim_id: "claim-conf-1",
+          client_id: "c-1",
+          archived_at: null,
+        },
+      ],
+      professional_claims: [{ id: "claim-conf-1", organization_id: ORG, claim_status: "paid" }],
+    });
+    const r = await confirmInsuranceRefund(
+      { organizationId: ORG, refundId, reason: "check #4823", externalReferenceNumber: "4823", actor: ACTOR },
+      fake.client,
+    );
+    assert.equal(r.ok, true, r.errors.map((e) => e.message).join("; "));
+    assert.equal(r.refundStatus, "issued");
+    const refundRow = fake.tables.payment_refunds[0] as Record<string, unknown>;
+    assert.equal(refundRow.refund_status, "issued");
+    assert.ok(refundRow.issued_at);
+    // Compensating ledger entry posted.
+    const led = fake.tables.era_posting_ledger_entries[0] as Record<string, unknown>;
+    assert.equal(led.source_type, "refund");
+    assert.equal(Number(led.amount), -25);
+    assert.equal(led.source_id, refundId);
+    // Claim restored to billed.
+    assert.equal(
+      (fake.tables.professional_claims[0] as Record<string, unknown>).claim_status,
+      "billed",
+    );
+    // Audit log present.
+    assert.equal(fake.tables.audit_logs.length, 1);
+  });
+
+  it("returns ok=false and does not flip status when refund row is not pending", async () => {
+    const refundId = "22222222-2222-2222-2222-222222222222";
+    const fake = makeFakeSupabase({
+      payment_refunds: [
+        {
+          id: refundId,
+          organization_id: ORG,
+          refund_type: "insurance",
+          amount: 25,
+          refund_status: "issued",
+          source_era_claim_payment_id: "era-conf-2",
+          professional_claim_id: "claim-conf-2",
+          client_id: "c-1",
+          archived_at: null,
+        },
+      ],
+    });
+    const r = await confirmInsuranceRefund(
+      { organizationId: ORG, refundId, reason: "dup", actor: ACTOR },
+      fake.client,
+    );
+    assert.equal(r.ok, false);
+    assert.match(r.errors[0].message, /not found, already issued|already issued/i);
+    // No ledger row posted.
+    assert.equal(fake.tables.era_posting_ledger_entries.length, 0);
+  });
+});
+
+describe("integration: reverse → ledger restoration → audit chain", () => {
+  it("posts paired negative ledger rows, marks header reversed, and produces audit trail", async () => {
+    const fake = makeFakeSupabase({
+      era_claim_payments: [
+        {
+          id: "era-int-1",
+          organization_id: ORG,
+          client_id: "c-1",
+          professional_claim_id: "claim-int-1",
+          clp01_claim_control_number: "PCN-INT",
+          clp04_payment_amount: 200,
+          posting_status: "posted",
+          reversed_at: null,
+          voided_at: null,
+          archived_at: null,
+        },
+      ],
+      era_posting_ledger_entries: [
+        {
+          id: "le-pos-1",
+          organization_id: ORG,
+          source_id: "era-int-1",
+          source_type: "era_payment",
+          entry_type: "payment",
+          amount: 150,
+          professional_claim_id: "claim-int-1",
+          client_id: "c-1",
+          archived_at: null,
+        },
+        {
+          id: "le-pos-2",
+          organization_id: ORG,
+          source_id: "era-int-1",
+          source_type: "era_payment",
+          entry_type: "adjustment",
+          amount: 50,
+          professional_claim_id: "claim-int-1",
+          client_id: "c-1",
+          archived_at: null,
+        },
+      ],
+      professional_claims: [{ id: "claim-int-1", organization_id: ORG, claim_status: "paid" }],
+    });
+    const r = await reversePostedPayment(
+      { organizationId: ORG, target: { kind: "era_835", id: "era-int-1" }, reason: "duplicate ERA", actor: ACTOR },
+      fake.client,
+    );
+    assert.equal(r.ok, true, r.errors.map((e) => e.message).join("; "));
+    assert.equal(r.reversed, true);
+    assert.equal(r.ledgerEntriesWritten, 2);
+    // Two negative compensating rows added (source_type='reversal').
+    const reversalRows = fake.tables.era_posting_ledger_entries.filter(
+      (e) => (e as Record<string, unknown>).source_type === "reversal",
+    );
+    assert.equal(reversalRows.length, 2);
+    const sum = reversalRows.reduce(
+      (s, e) => s + Number((e as Record<string, unknown>).amount ?? 0),
+      0,
+    );
+    assert.equal(sum, -200, "compensating sum must equal -original");
+    // Header marked reversed; claim restored to billed.
+    const hdr = fake.tables.era_claim_payments[0] as Record<string, unknown>;
+    assert.equal(hdr.posting_status, "reversed");
+    assert.equal(
+      (fake.tables.professional_claims[0] as Record<string, unknown>).claim_status,
+      "billed",
+    );
+    // Audit log written for the reversal.
+    assert.ok(fake.tables.audit_logs.length >= 1);
+  });
+});
+
+describe("integration: recoupment linkage", () => {
+  it("links payment_recoupments → workqueue → audit chain by source_object_id", async () => {
+    const fake = makeFakeSupabase({
+      era_claim_payments: [
+        {
+          id: "era-rec-1",
+          organization_id: ORG,
+          client_id: "c-1",
+          professional_claim_id: "claim-rec-1",
+          clp01_claim_control_number: "PCN-REC",
+          clp04_payment_amount: 100,
+          posting_status: "posted",
+          archived_at: null,
+        },
+      ],
+    });
+    const r = await recordRecoupment(
+      {
+        organizationId: ORG,
+        target: { kind: "era_835", id: "era-rec-1" },
+        amount: 25,
+        reason: "Payer takeback",
+        reasonCode: "WO",
+        actor: ACTOR,
+      },
+      fake.client,
+    );
+    assert.equal(r.ok, true, r.errors.map((e) => e.message).join("; "));
+    const recoupRow = fake.tables.payment_recoupments[0] as Record<string, unknown>;
+    assert.equal(recoupRow.source_era_claim_payment_id, "era-rec-1");
+    const wq = fake.tables.workqueue_items[0] as Record<string, unknown>;
+    assert.equal(wq.source_object_type, "payment_recoupment");
+    assert.equal(wq.source_object_id, recoupRow.id);
+    const audit = fake.tables.audit_logs.find(
+      (a) => (a as Record<string, unknown>).object_type === "payment_recoupment",
+    );
+    assert.ok(audit, "audit row keyed on payment_recoupment must exist");
   });
 });
 

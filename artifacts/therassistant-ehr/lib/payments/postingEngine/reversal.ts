@@ -1190,6 +1190,10 @@ async function recordRefundShared(
   }
 
   // ── Reduce patient invoice paid_amount when refunding a posted patient payment
+  // CRITICAL: key off the FINAL refund status (post-Stripe-issuance), not the
+  // initial local `refundStatus` constant. Stripe auto-issuance can flip
+  // pending→issued above and must trigger ledger reconciliation here.
+  const effectiveStatus = result.refundStatus ?? refundStatus;
   if (refundType === "patient" && payment.kind === "client_payment") {
     const { data: cp } = await supabase
       .from("client_payments")
@@ -1198,7 +1202,7 @@ async function recordRefundShared(
       .eq("organization_id", input.organizationId)
       .maybeSingle();
     const invId = (cp as { patient_invoice_id?: string | null } | null)?.patient_invoice_id ?? null;
-    if (invId && refundStatus === "issued") {
+    if (invId && effectiveStatus === "issued") {
       const { data: inv } = await supabase
         .from("patient_invoices")
         .select("paid_amount, balance_amount, patient_responsibility_amount, invoice_status")
@@ -1230,7 +1234,7 @@ async function recordRefundShared(
   // payment. We post a compensating negative ledger entry (source_type=
   // 'refund') so balances/dashboards reflect the outbound payment without
   // touching the original posted rows.
-  if (refundType === "insurance" && refundStatus === "issued" && amount > 0) {
+  if (refundType === "insurance" && effectiveStatus === "issued" && amount > 0) {
     // Fail-closed: if the compensating ledger write or claim-status update
     // errors out, we MUST NOT return ok=true with the refund row sitting in
     // 'issued' — that would mean cash left the building but our ledger never
@@ -1313,6 +1317,157 @@ export function recordInsuranceRefund(
   injectedSupabase?: SupabaseAdmin,
 ): Promise<RecordRefundResult> {
   return recordRefundShared("insurance", input, injectedSupabase);
+}
+
+/**
+ * Two-step insurance refund confirmation: moves a pending payment_refunds
+ * row to 'issued' and posts the compensating negative ledger entry
+ * (source_type='refund') at that point. Used by the UI confirm action /
+ * AR ops once a check/ACH has actually left the building.
+ *
+ * Fail-closed: if ledger insert fails, the refund row is left pending
+ * (status NOT flipped) and ok=false is returned, so cash cannot leave
+ * the building without a matching ledger entry.
+ */
+export interface ConfirmInsuranceRefundInput {
+  organizationId: string;
+  refundId: string;
+  reason?: string | null;
+  externalReferenceNumber?: string | null;
+  actor: PostingActor;
+}
+
+export interface ConfirmInsuranceRefundResult {
+  ok: boolean;
+  refundId: string | null;
+  refundStatus: "issued" | null;
+  ledgerEntriesWritten: number;
+  errors: Array<{ field: string; message: string }>;
+}
+
+export async function confirmInsuranceRefund(
+  input: ConfirmInsuranceRefundInput,
+  injectedSupabase?: SupabaseAdmin,
+): Promise<ConfirmInsuranceRefundResult> {
+  const result: ConfirmInsuranceRefundResult = {
+    ok: false,
+    refundId: null,
+    refundStatus: null,
+    ledgerEntriesWritten: 0,
+    errors: [],
+  };
+  const supabase = injectedSupabase ?? createServerSupabaseAdminClient();
+  if (!supabase) {
+    result.errors.push({ field: "system", message: "Database connection not available" });
+    return result;
+  }
+
+  // Concurrency-safe state flip: only succeed if still pending.
+  const now = new Date().toISOString();
+  const { data: claimed, error: claimErr } = await supabase
+    .from("payment_refunds")
+    .update({
+      refund_status: "issued",
+      issued_at: now,
+      issued_by_actor_id: input.actor.staffId ?? null,
+    })
+    .eq("id", input.refundId)
+    .eq("organization_id", input.organizationId)
+    .eq("refund_status", "pending")
+    .is("archived_at", null)
+    .select(
+      "id, refund_type, amount, professional_claim_id, source_era_claim_payment_id, source_insurance_manual_payment_id, source_client_payment_id, client_id",
+    );
+  if (claimErr) {
+    result.errors.push({ field: "payment_refunds", message: claimErr.message });
+    return result;
+  }
+  const row = Array.isArray(claimed) ? (claimed[0] as Record<string, unknown> | undefined) : null;
+  if (!row) {
+    result.errors.push({
+      field: "refund_status",
+      message: "Refund could not be confirmed — not found, already issued/cancelled, or wrong org.",
+    });
+    return result;
+  }
+  if (String(row.refund_type) !== "insurance") {
+    result.errors.push({
+      field: "refund_type",
+      message: "confirmInsuranceRefund only applies to insurance refunds.",
+    });
+    return result;
+  }
+
+  const amount = round2(Number(row.amount ?? 0));
+  const eraId = (row.source_era_claim_payment_id as string | null) ?? null;
+  const claimId = (row.professional_claim_id as string | null) ?? null;
+  const clientId = (row.client_id as string | null) ?? null;
+  const reason = input.reason || "Insurance refund confirmation";
+
+  // Post compensating negative ledger entry. Fail-closed: on error, revert
+  // the refund row back to pending so cash isn't recorded as gone without
+  // a matching ledger entry.
+  const { error: ledgerErr } = await supabase.from("era_posting_ledger_entries").insert({
+    organization_id: input.organizationId,
+    era_claim_payment_id: eraId,
+    source_type: "refund",
+    source_id: input.refundId,
+    professional_claim_id: claimId,
+    client_id: clientId,
+    entry_type: "payment",
+    amount: -amount,
+    group_code: null,
+    reason_code: null,
+    description: `Insurance refund confirmed: ${reason}${
+      input.externalReferenceNumber ? ` (ref ${input.externalReferenceNumber})` : ""
+    }`,
+  });
+  if (ledgerErr) {
+    await supabase
+      .from("payment_refunds")
+      .update({
+        refund_status: "pending",
+        issued_at: null,
+        issued_by_actor_id: null,
+      })
+      .eq("id", input.refundId)
+      .eq("organization_id", input.organizationId);
+    result.errors.push({
+      field: "era_posting_ledger_entries",
+      message: `Ledger write failed (${ledgerErr.message}); refund left pending.`,
+    });
+    return result;
+  }
+  result.ledgerEntriesWritten = 1;
+
+  if (claimId) {
+    await supabase
+      .from("professional_claims")
+      .update({ claim_status: "billed", updated_at: now })
+      .eq("id", claimId)
+      .eq("organization_id", input.organizationId);
+  }
+
+  await writePaymentAuditLog(supabase, {
+    organizationId: input.organizationId,
+    actor: input.actor,
+    action: "refund_issued",
+    objectType: "payment_refund",
+    objectId: input.refundId,
+    claimId,
+    afterValue: {
+      refund_status: "issued",
+      amount,
+      external_reference_number: input.externalReferenceNumber ?? null,
+      reason,
+    },
+    summary: `Insurance refund ${amount.toFixed(2)} confirmed (ledger compensated): ${reason}`,
+  });
+
+  result.ok = true;
+  result.refundId = input.refundId;
+  result.refundStatus = "issued";
+  return result;
 }
 
 export function recordPatientRefund(

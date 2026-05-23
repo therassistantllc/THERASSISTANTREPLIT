@@ -129,7 +129,7 @@ export default function PostedPaymentDetailClient({ compositeId }: { compositeId
   }, [reload]);
 
   async function callAction(
-    action: "reverse" | "void" | "recoup" | "refund",
+    action: "reverse" | "void" | "recoup" | "refund" | "confirm-refund",
     body: Record<string, unknown>,
   ) {
     setActionBusy(action);
@@ -177,6 +177,14 @@ export default function PostedPaymentDetailClient({ compositeId }: { compositeId
     const reason = window.prompt("Recoupment reason (required):", "");
     if (!reason || !reason.trim()) return;
     void callAction("recoup", { amount, reason });
+  }
+  function handleConfirmRefund(refundId: string, amount: number) {
+    const reason = window.prompt(
+      `Confirm insurance refund $${amount.toFixed(2)} as issued? Enter reference number / reason:`,
+      "",
+    );
+    if (reason === null) return;
+    void callAction("confirm-refund", { refundId, reason, externalReferenceNumber: reason });
   }
   function handleRefund(refundType: "insurance" | "patient") {
     const amtStr = window.prompt(`${refundType === "insurance" ? "Insurance" : "Patient"} refund amount:`, "");
@@ -429,6 +437,49 @@ export default function PostedPaymentDetailClient({ compositeId }: { compositeId
           />
         )}
       </Section>
+
+      {/* Pending insurance refunds — confirm action */}
+      {detail.refunds.some(
+        (r) => String(r.refund_type) === "insurance" && String(r.refund_status) === "pending",
+      ) ? (
+        <Section title="Pending insurance refunds — confirm issuance">
+          <p style={{ fontSize: 12, color: "#6b7280", marginTop: 0 }}>
+            Confirming flips the refund to <strong>issued</strong> and posts the compensating
+            negative ledger entry (fail-closed: if the ledger write fails, the refund stays pending).
+          </p>
+          <div style={{ display: "grid", gap: 8 }}>
+            {detail.refunds
+              .filter(
+                (r) => String(r.refund_type) === "insurance" && String(r.refund_status) === "pending",
+              )
+              .map((r) => (
+                <div
+                  key={String(r.id)}
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    padding: 8,
+                    background: "#fffbeb",
+                    border: "1px solid #fde68a",
+                    borderRadius: 6,
+                  }}
+                >
+                  <div style={{ fontSize: 13, flex: 1 }}>
+                    <strong>{fmtCurrency(r.amount)}</strong> — {String(r.reason ?? "")}
+                  </div>
+                  <button
+                    onClick={() => handleConfirmRefund(String(r.id), Number(r.amount ?? 0))}
+                    disabled={actionBusy !== null}
+                    style={btnStyle(false)}
+                  >
+                    {actionBusy === "confirm-refund" ? "Confirming…" : "Confirm issued"}
+                  </button>
+                </div>
+              ))}
+          </div>
+        </Section>
+      ) : null}
 
       {/* Recoupments */}
       <Section title={`Recoupments (${detail.recoupments.length})`}>

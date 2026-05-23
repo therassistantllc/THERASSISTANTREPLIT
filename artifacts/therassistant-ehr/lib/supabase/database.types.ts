@@ -4362,6 +4362,7 @@ export type Database = {
           adjustment_amount: number | null
           allowed_amount: number | null
           archived_at: string | null
+          assigned_to_staff_id: string | null
           carc_codes: string[]
           cas_adjustments: Json
           check_eft_number: string | null
@@ -4375,6 +4376,8 @@ export type Database = {
           clp05_patient_responsibility: number
           co_amount: number | null
           created_at: string
+          defer_reason: string | null
+          defer_until: string | null
           era_import_batch_id: string
           id: string
           oa_amount: number | null
@@ -4387,13 +4390,20 @@ export type Database = {
           professional_claim_id: string | null
           rarc_codes: string[]
           raw_segments: Json
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by_actor_id: string | null
           service_lines: Json
           updated_at: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by_actor_id: string | null
         }
         Insert: {
           adjustment_amount?: number | null
           allowed_amount?: number | null
           archived_at?: string | null
+          assigned_to_staff_id?: string | null
           carc_codes?: string[]
           cas_adjustments?: Json
           check_eft_number?: string | null
@@ -4407,6 +4417,8 @@ export type Database = {
           clp05_patient_responsibility?: number
           co_amount?: number | null
           created_at?: string
+          defer_reason?: string | null
+          defer_until?: string | null
           era_import_batch_id: string
           id?: string
           oa_amount?: number | null
@@ -4419,13 +4431,20 @@ export type Database = {
           professional_claim_id?: string | null
           rarc_codes?: string[]
           raw_segments?: Json
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by_actor_id?: string | null
           service_lines?: Json
           updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by_actor_id?: string | null
         }
         Update: {
           adjustment_amount?: number | null
           allowed_amount?: number | null
           archived_at?: string | null
+          assigned_to_staff_id?: string | null
           carc_codes?: string[]
           cas_adjustments?: Json
           check_eft_number?: string | null
@@ -4439,6 +4458,8 @@ export type Database = {
           clp05_patient_responsibility?: number
           co_amount?: number | null
           created_at?: string
+          defer_reason?: string | null
+          defer_until?: string | null
           era_import_batch_id?: string
           id?: string
           oa_amount?: number | null
@@ -4451,8 +4472,14 @@ export type Database = {
           professional_claim_id?: string | null
           rarc_codes?: string[]
           raw_segments?: Json
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by_actor_id?: string | null
           service_lines?: Json
           updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by_actor_id?: string | null
         }
         Relationships: [
           {
@@ -4552,13 +4579,16 @@ export type Database = {
           created_at: string
           description: string | null
           entry_type: string
-          era_claim_payment_id: string
+          era_claim_payment_id: string | null
           group_code: string | null
           id: string
           organization_id: string
+          posted_at: string
           professional_claim_id: string | null
           reason_code: string | null
+          source_id: string | null
           source_segment: string | null
+          source_type: string
         }
         Insert: {
           amount: number
@@ -4567,13 +4597,16 @@ export type Database = {
           created_at?: string
           description?: string | null
           entry_type: string
-          era_claim_payment_id: string
+          era_claim_payment_id?: string | null
           group_code?: string | null
           id?: string
           organization_id: string
+          posted_at?: string
           professional_claim_id?: string | null
           reason_code?: string | null
+          source_id?: string | null
           source_segment?: string | null
+          source_type: string
         }
         Update: {
           amount?: number
@@ -4582,13 +4615,16 @@ export type Database = {
           created_at?: string
           description?: string | null
           entry_type?: string
-          era_claim_payment_id?: string
+          era_claim_payment_id?: string | null
           group_code?: string | null
           id?: string
           organization_id?: string
+          posted_at?: string
           professional_claim_id?: string | null
           reason_code?: string | null
+          source_id?: string | null
           source_segment?: string | null
+          source_type?: string
         }
         Relationships: [
           {
@@ -9199,97 +9235,466 @@ export type Database = {
       }
       client_payments: {
         Row: {
-          id: string
-          organization_id: string
-          client_id: string
-          claim_id: string | null
-          payment_method: string
           amount: number
-          reference_number: string | null
-          note: string | null
-          posted_at: string
-          created_at: string
-          updated_at: string
           archived_at: string | null
+          assigned_to_staff_id: string | null
+          claim_id: string | null
+          client_id: string
+          created_at: string
+          defer_reason: string | null
+          defer_until: string | null
+          external_payment_id: string | null
+          id: string
+          note: string | null
+          organization_id: string
+          patient_invoice_id: string | null
+          payer_profile_id: string | null
+          payment_method: string
+          posted_actor_id: string | null
+          posted_at: string
+          posting_status: string
+          reference_number: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by_actor_id: string | null
+          source_label: string | null
+          stripe_charge_id: string | null
+          stripe_connected_account_id: string | null
+          stripe_payment_intent_id: string | null
+          updated_at: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by_actor_id: string | null
         }
         Insert: {
-          id?: string
-          organization_id: string
-          client_id: string
-          claim_id?: string | null
-          payment_method: string
           amount: number
-          reference_number?: string | null
-          note?: string | null
-          posted_at?: string
-          created_at?: string
-          updated_at?: string
           archived_at?: string | null
+          assigned_to_staff_id?: string | null
+          claim_id?: string | null
+          client_id: string
+          created_at?: string
+          defer_reason?: string | null
+          defer_until?: string | null
+          external_payment_id?: string | null
+          id?: string
+          note?: string | null
+          organization_id: string
+          patient_invoice_id?: string | null
+          payer_profile_id?: string | null
+          payment_method: string
+          posted_actor_id?: string | null
+          posted_at?: string
+          posting_status?: string
+          reference_number?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by_actor_id?: string | null
+          source_label?: string | null
+          stripe_charge_id?: string | null
+          stripe_connected_account_id?: string | null
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by_actor_id?: string | null
         }
         Update: {
-          id?: string
-          organization_id?: string
-          client_id?: string
-          claim_id?: string | null
-          payment_method?: string
           amount?: number
-          reference_number?: string | null
-          note?: string | null
-          posted_at?: string
-          created_at?: string
-          updated_at?: string
           archived_at?: string | null
+          assigned_to_staff_id?: string | null
+          claim_id?: string | null
+          client_id?: string
+          created_at?: string
+          defer_reason?: string | null
+          defer_until?: string | null
+          external_payment_id?: string | null
+          id?: string
+          note?: string | null
+          organization_id?: string
+          patient_invoice_id?: string | null
+          payer_profile_id?: string | null
+          payment_method?: string
+          posted_actor_id?: string | null
+          posted_at?: string
+          posting_status?: string
+          reference_number?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by_actor_id?: string | null
+          source_label?: string | null
+          stripe_charge_id?: string | null
+          stripe_connected_account_id?: string | null
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by_actor_id?: string | null
+        }
+        Relationships: []
+      }
+      client_credits: {
+        Row: {
+          applied_amount: number
+          archived_at: string | null
+          balance_amount: number
+          client_id: string
+          created_at: string
+          id: string
+          initial_amount: number
+          note: string | null
+          organization_id: string
+          source_payment_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          applied_amount?: number
+          archived_at?: string | null
+          balance_amount: number
+          client_id: string
+          created_at?: string
+          id?: string
+          initial_amount: number
+          note?: string | null
+          organization_id: string
+          source_payment_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          applied_amount?: number
+          archived_at?: string | null
+          balance_amount?: number
+          client_id?: string
+          created_at?: string
+          id?: string
+          initial_amount?: number
+          note?: string | null
+          organization_id?: string
+          source_payment_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      client_credit_applications: {
+        Row: {
+          applied_actor_id: string | null
+          applied_amount: number
+          applied_at: string
+          archived_at: string | null
+          client_credit_id: string
+          created_at: string
+          id: string
+          note: string | null
+          organization_id: string
+          patient_invoice_id: string | null
+          professional_claim_id: string | null
+        }
+        Insert: {
+          applied_actor_id?: string | null
+          applied_amount: number
+          applied_at?: string
+          archived_at?: string | null
+          client_credit_id: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          organization_id: string
+          patient_invoice_id?: string | null
+          professional_claim_id?: string | null
+        }
+        Update: {
+          applied_actor_id?: string | null
+          applied_amount?: number
+          applied_at?: string
+          archived_at?: string | null
+          client_credit_id?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          organization_id?: string
+          patient_invoice_id?: string | null
+          professional_claim_id?: string | null
         }
         Relationships: []
       }
       insurance_manual_payments: {
         Row: {
-          id: string
-          organization_id: string
+          adjustment_amount: number
+          allowed_amount: number
+          archived_at: string | null
+          assigned_to_staff_id: string | null
+          check_number: string | null
           claim_id: string
           client_id: string
-          eob_reference: string | null
-          allowed_amount: number
-          paid_amount: number
-          adjustment_amount: number
-          patient_responsibility_amount: number
-          note: string | null
-          posted_at: string
           created_at: string
+          defer_reason: string | null
+          defer_until: string | null
+          eob_reference: string | null
+          id: string
+          mailroom_item_id: string | null
+          note: string | null
+          organization_id: string
+          paid_amount: number
+          patient_responsibility_amount: number
+          payer_profile_id: string | null
+          payment_date: string | null
+          posted_actor_id: string | null
+          posted_at: string
+          posting_status: string
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by_actor_id: string | null
           updated_at: string
-          archived_at: string | null
+          void_reason: string | null
+          voided_at: string | null
+          voided_by_actor_id: string | null
         }
         Insert: {
-          id?: string
-          organization_id: string
+          adjustment_amount?: number
+          allowed_amount?: number
+          archived_at?: string | null
+          assigned_to_staff_id?: string | null
+          check_number?: string | null
           claim_id: string
           client_id: string
-          eob_reference?: string | null
-          allowed_amount?: number
-          paid_amount?: number
-          adjustment_amount?: number
-          patient_responsibility_amount?: number
-          note?: string | null
-          posted_at?: string
           created_at?: string
+          defer_reason?: string | null
+          defer_until?: string | null
+          eob_reference?: string | null
+          id?: string
+          mailroom_item_id?: string | null
+          note?: string | null
+          organization_id: string
+          paid_amount?: number
+          patient_responsibility_amount?: number
+          payer_profile_id?: string | null
+          payment_date?: string | null
+          posted_actor_id?: string | null
+          posted_at?: string
+          posting_status?: string
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by_actor_id?: string | null
           updated_at?: string
-          archived_at?: string | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by_actor_id?: string | null
         }
         Update: {
-          id?: string
-          organization_id?: string
+          adjustment_amount?: number
+          allowed_amount?: number
+          archived_at?: string | null
+          assigned_to_staff_id?: string | null
+          check_number?: string | null
           claim_id?: string
           client_id?: string
-          eob_reference?: string | null
-          allowed_amount?: number
-          paid_amount?: number
-          adjustment_amount?: number
-          patient_responsibility_amount?: number
-          note?: string | null
-          posted_at?: string
           created_at?: string
+          defer_reason?: string | null
+          defer_until?: string | null
+          eob_reference?: string | null
+          id?: string
+          mailroom_item_id?: string | null
+          note?: string | null
+          organization_id?: string
+          paid_amount?: number
+          patient_responsibility_amount?: number
+          payer_profile_id?: string | null
+          payment_date?: string | null
+          posted_actor_id?: string | null
+          posted_at?: string
+          posting_status?: string
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by_actor_id?: string | null
           updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by_actor_id?: string | null
+        }
+        Relationships: []
+      }
+      payment_refunds: {
+        Row: {
+          amount: number
+          archived_at: string | null
+          client_id: string | null
+          created_at: string
+          id: string
+          issued_at: string | null
+          issued_by_actor_id: string | null
+          note: string | null
+          organization_id: string
+          patient_invoice_id: string | null
+          payer_profile_id: string | null
+          professional_claim_id: string | null
+          reason: string | null
+          refund_status: string
+          refund_type: string
+          requested_at: string
+          requested_by_actor_id: string | null
+          source_client_payment_id: string | null
+          source_era_claim_payment_id: string | null
+          source_insurance_manual_payment_id: string | null
+          stripe_charge_id: string | null
+          stripe_refund_id: string | null
+          updated_at: string
+          workqueue_item_id: string | null
+        }
+        Insert: {
+          amount: number
           archived_at?: string | null
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          issued_at?: string | null
+          issued_by_actor_id?: string | null
+          note?: string | null
+          organization_id: string
+          patient_invoice_id?: string | null
+          payer_profile_id?: string | null
+          professional_claim_id?: string | null
+          reason?: string | null
+          refund_status?: string
+          refund_type: string
+          requested_at?: string
+          requested_by_actor_id?: string | null
+          source_client_payment_id?: string | null
+          source_era_claim_payment_id?: string | null
+          source_insurance_manual_payment_id?: string | null
+          stripe_charge_id?: string | null
+          stripe_refund_id?: string | null
+          updated_at?: string
+          workqueue_item_id?: string | null
+        }
+        Update: {
+          amount?: number
+          archived_at?: string | null
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          issued_at?: string | null
+          issued_by_actor_id?: string | null
+          note?: string | null
+          organization_id?: string
+          patient_invoice_id?: string | null
+          payer_profile_id?: string | null
+          professional_claim_id?: string | null
+          reason?: string | null
+          refund_status?: string
+          refund_type?: string
+          requested_at?: string
+          requested_by_actor_id?: string | null
+          source_client_payment_id?: string | null
+          source_era_claim_payment_id?: string | null
+          source_insurance_manual_payment_id?: string | null
+          stripe_charge_id?: string | null
+          stripe_refund_id?: string | null
+          updated_at?: string
+          workqueue_item_id?: string | null
+        }
+        Relationships: []
+      }
+      payment_recoupments: {
+        Row: {
+          amount: number
+          archived_at: string | null
+          client_id: string | null
+          created_at: string
+          id: string
+          offset_era_claim_payment_id: string | null
+          organization_id: string
+          payer_profile_id: string | null
+          professional_claim_id: string | null
+          reason: string | null
+          reason_code: string | null
+          recouped_at: string
+          recouped_by_actor_id: string | null
+          source_client_payment_id: string | null
+          source_era_claim_payment_id: string | null
+          workqueue_item_id: string | null
+        }
+        Insert: {
+          amount: number
+          archived_at?: string | null
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          offset_era_claim_payment_id?: string | null
+          organization_id: string
+          payer_profile_id?: string | null
+          professional_claim_id?: string | null
+          reason?: string | null
+          reason_code?: string | null
+          recouped_at?: string
+          recouped_by_actor_id?: string | null
+          source_client_payment_id?: string | null
+          source_era_claim_payment_id?: string | null
+          workqueue_item_id?: string | null
+        }
+        Update: {
+          amount?: number
+          archived_at?: string | null
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          offset_era_claim_payment_id?: string | null
+          organization_id?: string
+          payer_profile_id?: string | null
+          professional_claim_id?: string | null
+          reason?: string | null
+          reason_code?: string | null
+          recouped_at?: string
+          recouped_by_actor_id?: string | null
+          source_client_payment_id?: string | null
+          source_era_claim_payment_id?: string | null
+          workqueue_item_id?: string | null
+        }
+        Relationships: []
+      }
+      payment_transfers: {
+        Row: {
+          amount: number
+          archived_at: string | null
+          client_id: string
+          created_at: string
+          from_claim_id: string | null
+          from_invoice_id: string | null
+          id: string
+          organization_id: string
+          reason: string | null
+          to_claim_id: string | null
+          to_invoice_id: string | null
+          transferred_actor_id: string | null
+          transferred_at: string
+        }
+        Insert: {
+          amount: number
+          archived_at?: string | null
+          client_id: string
+          created_at?: string
+          from_claim_id?: string | null
+          from_invoice_id?: string | null
+          id?: string
+          organization_id: string
+          reason?: string | null
+          to_claim_id?: string | null
+          to_invoice_id?: string | null
+          transferred_actor_id?: string | null
+          transferred_at?: string
+        }
+        Update: {
+          amount?: number
+          archived_at?: string | null
+          client_id?: string
+          created_at?: string
+          from_claim_id?: string | null
+          from_invoice_id?: string | null
+          id?: string
+          organization_id?: string
+          reason?: string | null
+          to_claim_id?: string | null
+          to_invoice_id?: string | null
+          transferred_actor_id?: string | null
+          transferred_at?: string
         }
         Relationships: []
       }

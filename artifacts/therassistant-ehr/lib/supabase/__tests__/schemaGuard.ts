@@ -60,65 +60,16 @@ for (const [name, extras] of Object.entries(EXTRA_ENUM_VALUES)) {
  * entry is stale relative to later migrations, or for tables missing from
  * the generated types entirely.
  *
- * Background: `database.types.ts` was last regenerated before migration
- * `20260524000000_payment_posting_reversal_refunds.sql`, which:
- *   - added reversed_at / reversal_reason / reversed_by_actor_id /
- *     voided_at / void_reason / voided_by_actor_id to
- *     era_claim_payments, client_payments, insurance_manual_payments;
- *   - created payment_refunds and payment_recoupments outright.
- *
- * Regenerating the types file requires a live DB connection that isn't
- * available here, so we hand-maintain the delta. Keep this list in sync
- * with new migrations until the types are regenerated.
+ * `database.types.ts` was regenerated to cover all payment-posting
+ * migrations through `20260524000000_payment_posting_reversal_refunds.sql`
+ * (plus the bulk-action / stripe-connect follow-ups), so payment-engine
+ * tables (era_claim_payments, client_payments, insurance_manual_payments,
+ * era_posting_ledger_entries, payment_refunds, payment_recoupments,
+ * client_credits, client_credit_applications, payment_transfers) no
+ * longer need an overlay. The remaining entries cover columns from
+ * non-payment migrations that the types file still doesn't reflect.
  */
 const EXTRA_COLUMNS: Record<string, string[]> = {
-  era_claim_payments: [
-    "reversed_at",
-    "reversal_reason",
-    "reversed_by_actor_id",
-    "voided_at",
-    "void_reason",
-    "voided_by_actor_id",
-  ],
-  client_payments: [
-    "posting_status",
-    "stripe_charge_id",
-    "stripe_payment_intent_id",
-    "patient_invoice_id",
-    "payer_profile_id",
-    "external_payment_id",
-    "stripe_connected_account_id",
-    "source_type",
-    "source_id",
-    "source_label",
-    "check_number",
-    "payment_date",
-    "mailroom_item_id",
-    "posted_actor_id",
-    "assigned_to_staff_id",
-    "defer_until",
-    "defer_reason",
-    "reversed_at",
-    "reversal_reason",
-    "reversed_by_actor_id",
-    "voided_at",
-    "void_reason",
-    "voided_by_actor_id",
-  ],
-  insurance_manual_payments: [
-    "payer_profile_id",
-    "check_number",
-    "payment_date",
-    "mailroom_item_id",
-    "posted_actor_id",
-    "posting_status",
-    "reversed_at",
-    "reversal_reason",
-    "reversed_by_actor_id",
-    "voided_at",
-    "void_reason",
-    "voided_by_actor_id",
-  ],
   insurance_policies: [
     "group_number",
     "subscriber_relationship",
@@ -130,96 +81,6 @@ const EXTRA_COLUMNS: Record<string, string[]> = {
     "case_id",
     "client_id",
     "legacy_claim_id",
-  ],
-  era_posting_ledger_entries: [
-    "source_type",
-    "source_id",
-    "posted_at",
-  ],
-  client_credits: [
-    "id",
-    "organization_id",
-    "client_id",
-    "source_payment_id",
-    "initial_amount",
-    "applied_amount",
-    "balance_amount",
-    "note",
-    "created_at",
-    "updated_at",
-    "archived_at",
-  ],
-  client_credit_applications: [
-    "id",
-    "organization_id",
-    "client_credit_id",
-    "patient_invoice_id",
-    "professional_claim_id",
-    "applied_amount",
-    "applied_at",
-    "applied_actor_id",
-    "note",
-    "created_at",
-    "archived_at",
-  ],
-  payment_transfers: [
-    "id",
-    "organization_id",
-    "client_id",
-    "from_invoice_id",
-    "from_claim_id",
-    "to_invoice_id",
-    "to_claim_id",
-    "amount",
-    "reason",
-    "transferred_actor_id",
-    "transferred_at",
-    "created_at",
-    "archived_at",
-  ],
-  payment_refunds: [
-    "id",
-    "organization_id",
-    "refund_type",
-    "source_era_claim_payment_id",
-    "source_client_payment_id",
-    "source_insurance_manual_payment_id",
-    "client_id",
-    "professional_claim_id",
-    "payer_profile_id",
-    "amount",
-    "reason",
-    "refund_status",
-    "stripe_refund_id",
-    "stripe_charge_id",
-    "patient_invoice_id",
-    "workqueue_item_id",
-    "issued_at",
-    "issued_by_actor_id",
-    "requested_at",
-    "requested_by_actor_id",
-    "note",
-    "created_at",
-    "updated_at",
-    "archived_at",
-  ],
-  payment_recoupments: [
-    "id",
-    "organization_id",
-    "source_era_claim_payment_id",
-    "source_client_payment_id",
-    "offset_era_claim_payment_id",
-    "professional_claim_id",
-    "client_id",
-    "payer_profile_id",
-    "amount",
-    "reason_code",
-    "reason",
-    "workqueue_item_id",
-    "recouped_at",
-    "recouped_by_actor_id",
-    "created_at",
-    "archived_at",
   ],
 };
 

@@ -332,6 +332,25 @@ export async function reversePostedPayment(
   // Mirror every prior NON-REVERSAL ledger row for this source as a negative
   // entry. Excluding source_type='reversal' is essential so re-reads / retries
   // don't double-mirror compensating rows.
+  // Atomicity-rollback helper. Supabase has no client-side transactions, so
+  // any failure AFTER the step-1 status flip must compensate by restoring
+  // posting_status='posted' and clearing the reversal columns. Otherwise we
+  // leave the payment marked 'reversed' with no compensating ledger entries —
+  // financial-state divergence between header and ledger.
+  const restoreStatus = async () => {
+    await supabase
+      .from(targetTable(payment.kind))
+      .update({
+        posting_status: "posted",
+        reversed_at: null,
+        reversal_reason: null,
+        reversed_by_actor_id: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", payment.id)
+      .eq("organization_id", input.organizationId);
+  };
+
   const { data: priorLedger, error: ledgerLoadErr } = await supabase
     .from("era_posting_ledger_entries")
     .select("id, entry_type, amount, group_code, reason_code, description, professional_claim_id, client_id, era_claim_payment_id, source_type")
@@ -340,6 +359,7 @@ export async function reversePostedPayment(
     .neq("source_type", "reversal")
     .is("archived_at", null);
   if (ledgerLoadErr) {
+    await restoreStatus();
     result.errors.push({ field: "era_posting_ledger_entries", message: ledgerLoadErr.message });
     return result;
   }
@@ -366,6 +386,7 @@ export async function reversePostedPayment(
       .from("era_posting_ledger_entries")
       .insert(reversalRows);
     if (ledgerInsertErr) {
+      await restoreStatus();
       result.errors.push({ field: "era_posting_ledger_entries", message: ledgerInsertErr.message });
       return result;
     }
@@ -383,15 +404,60 @@ export async function reversePostedPayment(
   }
 
   // ── 3. Restore patient invoice balance for client_payment reversals ────────
+  // Also: when the underlying client payment was a Stripe charge, the
+  // reversal *requires* an outbound refund — patients can't just have a
+  // ledger correction; we must initiate the money-movement flow. We create a
+  // pending patient refund row + workqueue item so AR / Stripe-ops can issue.
   if (payment.kind === "client_payment") {
     const { data: cp } = await supabase
       .from("client_payments")
-      .select("patient_invoice_id, amount")
+      .select("patient_invoice_id, amount, payment_method, stripe_charge_id, client_id, claim_id")
       .eq("id", payment.id)
       .eq("organization_id", input.organizationId)
       .maybeSingle();
-    const invId = (cp as { patient_invoice_id?: string | null } | null)?.patient_invoice_id ?? null;
-    const amt = round2(Number((cp as { amount?: number } | null)?.amount ?? 0));
+    const cpRow = cp as Record<string, unknown> | null;
+    const invId = (cpRow?.patient_invoice_id as string | null) ?? null;
+    const amt = round2(Number((cpRow?.amount as number | undefined) ?? 0));
+
+    // Auto-create patient refund + workqueue if the original payment had
+    // outbound money movement (Stripe or any non-cash method). Cash/check
+    // reversals are AR-paper only.
+    const method = String(cpRow?.payment_method ?? "");
+    const needsOutboundRefund = amt > 0 && (cpRow?.stripe_charge_id || method === "card" || method === "stripe");
+    if (needsOutboundRefund) {
+      const { data: refundRow } = await supabase
+        .from("payment_refunds")
+        .insert({
+          organization_id: input.organizationId,
+          source_client_payment_id: payment.id,
+          refund_type: "patient",
+          amount: amt,
+          reason: `Auto-initiated by reversal: ${input.reason}`,
+          refund_status: "pending",
+          requested_by_actor_id: input.actor.staffId ?? null,
+          stripe_charge_id: (cpRow?.stripe_charge_id as string | null) ?? null,
+          patient_invoice_id: invId,
+          client_id: (cpRow?.client_id as string | null) ?? payment.clientId,
+        })
+        .select("id")
+        .single();
+      const refundId = (refundRow as { id?: string } | null)?.id ?? null;
+      if (refundId) {
+        await supabase.from("workqueue_items").insert({
+          organization_id: input.organizationId,
+          queue_type: "patient_refund",
+          work_type: "patient_refund",
+          status: "open",
+          priority: "high",
+          title: `Issue patient refund $${amt.toFixed(2)} (reversal)`,
+          description: `Patient refund triggered by payment reversal. Stripe charge: ${String(cpRow?.stripe_charge_id ?? "n/a")}.`,
+          source_object_type: "payment_refund",
+          source_object_id: refundId,
+          client_id: (cpRow?.client_id as string | null) ?? payment.clientId,
+        });
+      }
+    }
+
     if (invId && amt > 0) {
       const { data: inv } = await supabase
         .from("patient_invoices")
@@ -1045,6 +1111,65 @@ async function recordRefundShared(
           })
           .eq("id", invId)
           .eq("organization_id", input.organizationId);
+      }
+    }
+  }
+
+  // ── Apply payer cash reduction when an INSURANCE refund is issued ─────────
+  // Refunding the payer reduces our cash position against the underlying
+  // payment. We post a compensating negative ledger entry (source_type=
+  // 'refund') so balances/dashboards reflect the outbound payment without
+  // touching the original posted rows.
+  if (refundType === "insurance" && refundStatus === "issued" && amount > 0) {
+    // Fail-closed: if the compensating ledger write or claim-status update
+    // errors out, we MUST NOT return ok=true with the refund row sitting in
+    // 'issued' — that would mean cash left the building but our ledger never
+    // reflected it. We cancel/archive the just-inserted refund and surface a
+    // 5xx-style error so callers can retry / page on-call.
+    const { error: ledgerErr } = await supabase.from("era_posting_ledger_entries").insert({
+      organization_id: input.organizationId,
+      era_claim_payment_id: payment.kind === "era_835" ? payment.id : null,
+      source_type: "refund",
+      source_id: result.refundId,
+      professional_claim_id: payment.professionalClaimId,
+      client_id: payment.clientId,
+      entry_type: "payment",
+      amount: -round2(amount),
+      group_code: null,
+      reason_code: null,
+      description: `Insurance refund issued: ${input.reason}`,
+    });
+    if (ledgerErr) {
+      await supabase
+        .from("payment_refunds")
+        .update({
+          refund_status: "cancelled",
+          archived_at: new Date().toISOString(),
+          note: `Auto-cancelled: ledger write failed (${ledgerErr.message})`,
+        })
+        .eq("id", result.refundId)
+        .eq("organization_id", input.organizationId);
+      result.refundId = null;
+      result.refundStatus = null;
+      result.errors.push({
+        field: "era_posting_ledger_entries",
+        message: `Insurance refund could not be posted to ledger: ${ledgerErr.message}. Refund row cancelled — re-issue once underlying ledger error is resolved.`,
+      });
+      return result;
+    }
+    if (payment.professionalClaimId) {
+      const { error: claimErr } = await supabase
+        .from("professional_claims")
+        .update({ claim_status: "billed", updated_at: now })
+        .eq("id", payment.professionalClaimId)
+        .eq("organization_id", input.organizationId);
+      if (claimErr) {
+        result.errors.push({
+          field: "professional_claims",
+          message: `Refund ledger posted, but claim status restore failed: ${claimErr.message}. Manual fix-up required.`,
+        });
+        // Do not fail the call — ledger is the source of truth; claim status
+        // is a denormalized convenience that the dashboard can recompute.
       }
     }
   }

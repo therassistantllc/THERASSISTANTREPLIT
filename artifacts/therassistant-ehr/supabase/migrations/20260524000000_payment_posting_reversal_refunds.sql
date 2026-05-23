@@ -77,6 +77,11 @@ create table if not exists public.payment_refunds (
   refund_status            text        not null default 'pending'
     check (refund_status in ('pending','issued','failed','cancelled')),
   stripe_refund_id         text,
+  -- Carry the originating Stripe charge for reconciliation when the source
+  -- payment was a card/Stripe charge (needed by auto-refund-on-reversal).
+  stripe_charge_id         text,
+  -- Patient-side refunds may need to credit a specific invoice on issuance.
+  patient_invoice_id       uuid        references public.patient_invoices(id) on delete set null,
   workqueue_item_id        uuid        references public.workqueue_items(id) on delete set null,
   issued_at                timestamptz,
   issued_by_actor_id       uuid,

@@ -39,6 +39,8 @@ type DetailResponse = {
   recoupments: Array<Record<string, unknown>>;
   workqueueItems: Array<Record<string, unknown>>;
   auditChain: Array<Record<string, unknown>>;
+  sourceLink?: { kind: string; id: string; label: string } | null;
+  casAdjustments?: unknown;
   error?: string;
 };
 
@@ -228,6 +230,30 @@ export default function PostedPaymentDetailClient({ compositeId }: { compositeId
           />
         ) : null}
       </section>
+
+      {/* Source link */}
+      {detail.sourceLink ? (
+        <p style={{ marginTop: 12, fontSize: 13 }}>
+          Source: <strong>{detail.sourceLink.label}</strong>{" "}
+          <span style={{ color: "#6b7280" }}>({detail.sourceLink.kind})</span>
+        </p>
+      ) : null}
+
+      {/* CAS adjustments (CARC/RARC breakdown carried on the source row) */}
+      {Array.isArray(detail.casAdjustments) && detail.casAdjustments.length > 0 ? (
+        <Section title={`Claim/line adjustments (CARC) — ${detail.casAdjustments.length}`}>
+          <Table
+            cols={["Group", "Reason", "Amount", "Quantity", "Description"]}
+            rows={(detail.casAdjustments as Array<Record<string, unknown>>).map((c) => [
+              String(c.group_code ?? c.cas01 ?? "—"),
+              String(c.reason_code ?? c.cas02 ?? "—"),
+              fmtCurrency(c.amount ?? c.cas03),
+              String(c.quantity ?? c.cas04 ?? "—"),
+              String(c.description ?? "—"),
+            ])}
+          />
+        </Section>
+      ) : null}
 
       {/* Lifecycle controls */}
       <section style={{ marginTop: 24, padding: 16, background: "#f9fafb", borderRadius: 8 }}>

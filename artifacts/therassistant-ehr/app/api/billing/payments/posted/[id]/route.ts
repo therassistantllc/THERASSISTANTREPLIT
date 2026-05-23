@@ -18,25 +18,11 @@ import {
   PaymentPostingForbiddenError,
   PaymentPostingUnauthenticatedError,
   requireAuthenticatedPaymentPoster,
-  type PostedPaymentKind,
 } from "@/lib/payments/postingEngine";
-
-// Strict UUID regex — the suffix of any composite id MUST match. Without this
-// the suffix is interpolated into PostgREST filter strings (`.or(...)`) below,
-// which is a query-injection / malformed-filter surface.
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function parseCompositeId(raw: string): { kind: PostedPaymentKind; id: string } | null {
-  const idx = raw.indexOf(":");
-  if (idx < 1) return null;
-  const prefix = raw.slice(0, idx);
-  const id = raw.slice(idx + 1);
-  if (!UUID_RE.test(id)) return null;
-  if (prefix === "era") return { kind: "era_835", id };
-  if (prefix === "cp") return { kind: "client_payment", id };
-  if (prefix === "mi") return { kind: "insurance_manual", id };
-  return null;
-}
+import {
+  parseCompositePostedPaymentId as parseCompositeId,
+  UUID_RE,
+} from "./_compositeId";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -72,6 +58,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     let totalImpact = 0;
     let sourceTitle = "";
 
+    let sourceLink: { kind: string; id: string; label: string } | null = null;
+
     if (parsed.kind === "era_835") {
       const { data, error } = await supabase
         .from("era_claim_payments")
@@ -95,6 +83,14 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       postingStatus = String(row.posting_status ?? "");
       totalImpact = Number(row.clp04_payment_amount ?? 0);
       sourceTitle = `ERA 835 ${String(row.clp01_claim_control_number ?? parsed.id)}`;
+      const batchId = (row.era_import_batch_id as string | null) ?? null;
+      if (batchId) {
+        sourceLink = {
+          kind: "era_import_batch",
+          id: batchId,
+          label: `ERA Import Batch ${batchId.slice(0, 8)}`,
+        };
+      }
     } else if (parsed.kind === "client_payment") {
       const { data, error } = await supabase
         .from("client_payments")
@@ -118,6 +114,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       postingStatus = String(row.posting_status ?? "");
       totalImpact = Number(row.amount ?? 0);
       sourceTitle = `Client payment (${String(row.payment_method ?? "")})`;
+      const invId = (row.patient_invoice_id as string | null) ?? null;
+      if (invId) {
+        sourceLink = { kind: "patient_invoice", id: invId, label: `Patient invoice ${invId.slice(0, 8)}` };
+      }
     } else {
       const { data, error } = await supabase
         .from("insurance_manual_payments")
@@ -142,6 +142,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       postingStatus = String(row.posting_status ?? "");
       totalImpact = Number(row.payer_payment_amount ?? 0);
       sourceTitle = `Manual EOB ${String(row.check_number ?? parsed.id.slice(0, 8))}`;
+      const mrId = (row.mailroom_item_id as string | null) ?? null;
+      if (mrId) {
+        sourceLink = { kind: "mailroom_item", id: mrId, label: `Mailroom item ${mrId.slice(0, 8)}` };
+      }
     }
 
     // ── Ledger entries (all source kinds share this table) ──────────────────
@@ -270,6 +274,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       recoupments: (recoupsRes.data ?? []) as Array<Record<string, unknown>>,
       workqueueItems: workqueueItems ?? [],
       auditChain: auditRows ?? [],
+      sourceLink,
+      casAdjustments: header && (header as { cas_adjustments?: unknown }).cas_adjustments
+        ? (header as { cas_adjustments: unknown }).cas_adjustments
+        : null,
       payerProfileId,
       clientId,
       professionalClaimId,

@@ -14,8 +14,8 @@ import {
   recordInsuranceRefund,
   recordPatientRefund,
   requireAuthenticatedPaymentPoster,
-  type PostedPaymentKind,
 } from "@/lib/payments/postingEngine";
+import { parseCompositePostedPaymentId as parseCompositeId } from "../_compositeId";
 
 interface Body {
   organizationId?: string;
@@ -24,16 +24,6 @@ interface Body {
   reason?: string;
   stripeRefundId?: string | null;
   alreadyIssued?: boolean;
-}
-
-function parseCompositeId(raw: string): { kind: PostedPaymentKind; id: string } | null {
-  const [prefix, ...rest] = raw.split(":");
-  const id = rest.join(":");
-  if (!prefix || !id) return null;
-  if (prefix === "era") return { kind: "era_835", id };
-  if (prefix === "cp") return { kind: "client_payment", id };
-  if (prefix === "mi") return { kind: "insurance_manual", id };
-  return null;
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {

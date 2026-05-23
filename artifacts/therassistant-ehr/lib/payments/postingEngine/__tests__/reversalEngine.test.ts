@@ -84,6 +84,7 @@ function makeFakeSupabase(initial: {
       maybe: boolean;
       headOnly: boolean;
       orFilter: string | null;
+      neq?: Array<[string, unknown]>;
     } = {
       filters: [],
       isNull: [],

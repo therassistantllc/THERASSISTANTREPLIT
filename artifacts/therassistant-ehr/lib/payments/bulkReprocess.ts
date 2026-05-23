@@ -51,7 +51,30 @@ const BULK_REPROCESS_CONCURRENCY = 8;
 export interface BulkReprocessSummary {
   reprocessed: number;
   itemsCreated: number;
+  /**
+   * Per-target failures. Includes both the outer try/catch failures
+   * (id = `${kind}:${id}`) AND the per-emission rule-engine failures
+   * that `applyWorkqueueRules` collects into its own `result.errors`
+   * (id = `${kind}:${id}:rule:${ruleKind}`). Without bubbling the
+   * rule-engine errors up, a biller running bulk reprocess could see
+   * "N reprocessed, 0 errors" while individual workqueue_items inserts
+   * silently failed.
+   */
   errors: Array<{ id: string; message: string }>;
+}
+
+function collectRuleErrors(
+  summary: BulkReprocessSummary,
+  kind: BulkReprocessTargetKind,
+  targetId: string,
+  ruleErrors: Array<{ rule: string; message: string }>,
+) {
+  for (const e of ruleErrors) {
+    summary.errors.push({
+      id: `${kind}:${targetId}:rule:${e.rule}`,
+      message: e.message,
+    });
+  }
 }
 
 export async function reprocessBulkTargets(args: {
@@ -156,6 +179,7 @@ export async function reprocessBulkTargets(args: {
         });
         summary.reprocessed++;
         summary.itemsCreated += r.itemsCreated;
+        collectRuleErrors(summary, t.kind, t.id, r.errors);
         await writePaymentAuditLog(supabase, {
           organizationId,
           actor,
@@ -199,6 +223,7 @@ export async function reprocessBulkTargets(args: {
         });
         summary.reprocessed++;
         summary.itemsCreated += r.itemsCreated;
+        collectRuleErrors(summary, t.kind, t.id, r.errors);
         await writePaymentAuditLog(supabase, {
           organizationId,
           actor,

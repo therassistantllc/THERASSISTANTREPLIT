@@ -67,5 +67,10 @@ export async function POST(req: Request) {
     deps: { matchClaim: matchProfessionalClaim },
   });
 
+  // `summary.errors` now includes per-emission rule-engine failures that
+  // `applyWorkqueueRules` previously swallowed into its own internal
+  // `result.errors` array. A non-empty `errors` here means at least one
+  // workqueue item failed to insert — the dashboard surfaces these so
+  // billers don't see a misleading "N reprocessed, 0 errors".
   return NextResponse.json({ ok: summary.errors.length === 0, parseErrors, ...summary });
 }

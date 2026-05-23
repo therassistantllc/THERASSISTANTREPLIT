@@ -408,10 +408,10 @@ test("bulk reprocess surfaces per-target errors instead of failing the batch", a
   // initial row read). The route must catch the failure, record it in
   // summary.errors, and keep processing the remaining targets.
   //
-  // Note: failures *inside* applyWorkqueueRules (e.g. workqueue_items
-  // insert failing) are swallowed by the rule engine itself into its
-  // own result.errors and do NOT bubble up to the outer summary —
-  // that's why we poison the unguarded select call instead.
+  // Note: per-emission failures *inside* applyWorkqueueRules (e.g. a
+  // workqueue_items insert throwing) are also surfaced now — see the
+  // separate "surfaces workqueue rule errors" test below. Here we
+  // poison the outer row-fetch path to cover the try/catch route.
   const { db, targets } = seedFixture(5, 0);
   const supabase = makeFakeSupabase(db);
 
@@ -463,5 +463,69 @@ test("bulk reprocess surfaces per-target errors instead of failing the batch", a
   assert.ok(
     summary.errors.some((e) => e.id.endsWith(poisonedId)),
     `poisoned target must appear in summary.errors: ${JSON.stringify(summary.errors)}`,
+  );
+});
+
+test("bulk reprocess surfaces workqueue rule errors (Task #157)", async () => {
+  // Regression for Task #157: failures inside applyWorkqueueRules (e.g.
+  // workqueue_items insert throwing) used to be swallowed into the rule
+  // engine's own result.errors and dropped on the floor. A biller could
+  // see "N reprocessed, 0 errors" while individual emissions silently
+  // failed to insert. The summary must now bubble those errors back out
+  // tagged with the originating target and rule.
+  const { db, targets } = seedFixture(3, 0);
+  const supabase = makeFakeSupabase(db);
+
+  // Poison every workqueue_items insert so each emission lands in the
+  // rule engine's per-emission error path (not the outer try/catch).
+  type AnyChain = Record<string, (...args: unknown[]) => unknown>;
+  const fake = supabase as unknown as {
+    from: (t: string) => Record<string, (...args: unknown[]) => AnyChain>;
+  };
+  const originalFrom = fake.from.bind(fake);
+  fake.from = (table: string) => {
+    const tbl = originalFrom(table);
+    if (table !== "workqueue_items") return tbl;
+    tbl.insert = ((_payload: unknown) => {
+      const chain: AnyChain = {
+        select: () => ({
+          single: async () => {
+            throw new Error("simulated workqueue insert outage");
+          },
+        }),
+        then: (_resolve: (v: unknown) => unknown) => {
+          throw new Error("simulated workqueue insert outage");
+        },
+      } as unknown as AnyChain;
+      return chain;
+    }) as (...args: unknown[]) => AnyChain;
+    return tbl;
+  };
+
+  const summary = await reprocessBulkTargets({
+    supabase,
+    organizationId: ORG,
+    actor: ACTOR,
+    targets,
+    deps: { async matchClaim() { return null; } },
+  });
+
+  // Outer loop still completes every target — rule failures don't blow
+  // up the per-target try/catch.
+  assert.equal(summary.reprocessed, targets.length);
+  assert.equal(summary.itemsCreated, 0, "no items should have been created");
+  assert.ok(
+    summary.errors.length > 0,
+    "rule-engine insert failures must surface in summary.errors",
+  );
+  assert.ok(
+    summary.errors.every((e) => e.id.includes(":rule:")),
+    `every surfaced error should be tagged as a rule error: ${JSON.stringify(summary.errors)}`,
+  );
+  assert.ok(
+    summary.errors.every((e) =>
+      e.message.includes("simulated workqueue insert outage"),
+    ),
+    "rule error messages must carry the underlying cause",
   );
 });

@@ -259,10 +259,84 @@ export default function PatientChartClient({
   const [intakeMessage, setIntakeMessage] = useState<string | null>(null);
   const [cardRefresh, setCardRefresh] = useState(0);
   const [cardBusy, setCardBusy] = useState<string | null>(null);
+  const [demoEditing, setDemoEditing] = useState(false);
+  const [demoSaving, setDemoSaving] = useState(false);
+  const [demoError, setDemoError] = useState<string | null>(null);
+  const [demoMessage, setDemoMessage] = useState<string | null>(null);
+  const [demoDraft, setDemoDraft] = useState<Record<string, string>>({});
   const organizationId = useMemo(
     () => resolveOrganizationId(initialOrganizationId),
     [initialOrganizationId],
   );
+
+  function startDemoEdit() {
+    if (!summary?.patient) return;
+    const p = summary.patient;
+    setDemoDraft({
+      preferredName: p.preferredName ?? "",
+      mrn: p.mrn ?? "",
+      firstName: p.firstName ?? "",
+      lastName: p.lastName ?? "",
+      middleName: p.middleName ?? "",
+      dateOfBirth: p.dateOfBirth ?? "",
+      sexAtBirth: p.sexAtBirth ?? "",
+      genderIdentity: p.genderIdentity ?? "",
+      addressLine1: p.addressLine1 ?? "",
+      addressLine2: p.addressLine2 ?? "",
+      city: p.city ?? "",
+      state: p.state ?? "",
+      postalCode: p.postalCode ?? "",
+      phone: p.phone ?? "",
+      email: p.email ?? "",
+      preferredLanguage: p.preferredLanguage ?? "",
+    });
+    setDemoError(null);
+    setDemoMessage(null);
+    setDemoEditing(true);
+  }
+
+  function cancelDemoEdit() {
+    setDemoEditing(false);
+    setDemoError(null);
+    setDemoDraft({});
+  }
+
+  function setDemoField(field: string, value: string) {
+    setDemoDraft((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function saveDemoEdit() {
+    if (!summary?.patient) return;
+    setDemoSaving(true);
+    setDemoError(null);
+    setDemoMessage(null);
+    try {
+      const response = await fetch(`/api/patients/${clientId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates: demoDraft }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.success) {
+        throw new Error(json.error ?? "Failed to save demographics");
+      }
+      const summaryResponse = await fetch(
+        `/api/patients/${clientId}/summary?organizationId=${encodeURIComponent(organizationId)}`,
+        { cache: "no-store" },
+      );
+      const refreshed = (await summaryResponse.json()) as PatientSummary;
+      if (summaryResponse.ok && refreshed.success) {
+        setSummary(refreshed);
+      }
+      setDemoEditing(false);
+      setDemoDraft({});
+      setDemoMessage("Demographics saved.");
+    } catch (err) {
+      setDemoError(err instanceof Error ? err.message : "Failed to save demographics");
+    } finally {
+      setDemoSaving(false);
+    }
+  }
 
   async function reloadIntake() {
     try {
@@ -551,61 +625,252 @@ export default function PatientChartClient({
 
         <div className="summary-center">
           <section className="summary-block" aria-label="Demographics">
-            <h3>Demographics</h3>
-            <div className="summary-form-grid">
-              <div className="summary-field">
-                <label>Initial</label>
-                <span>{dashIfNullish(patient.preferredName ?? patient.firstName)}</span>
-              </div>
-              <div className="summary-field">
-                <label>MRN</label>
-                <span>{dashIfNullish(patient.mrn)}</span>
-              </div>
-              <div className="summary-field">
-                <label>First</label>
-                <span>{dashIfNullish(patient.firstName)}</span>
-              </div>
-              <div className="summary-field">
-                <label>Last</label>
-                <span>{dashIfNullish(patient.lastName)}</span>
-              </div>
-              <div className="summary-field">
-                <label>Middle</label>
-                <span>{dashIfNullish(patient.middleName)}</span>
-              </div>
-              <div className="summary-field">
-                <label>DOB</label>
-                <span>{patient.dateOfBirth ? formatDate(patient.dateOfBirth) : dash}</span>
-              </div>
-              <div className="summary-field">
-                <label>Sex at birth</label>
-                <span>{dashIfNullish(patient.sexAtBirth)}</span>
-              </div>
-              <div className="summary-field">
-                <label>Gender</label>
-                <span>{dashIfNullish(patient.genderIdentity ?? patient.pronouns)}</span>
-              </div>
-              <div className="summary-field summary-field-wide">
-                <label>Address</label>
-                <span>{formattedAddress || dash}</span>
-              </div>
-              <div className="summary-field">
-                <label>Home phone</label>
-                <span>{dashIfNullish(patient.phone)}</span>
-              </div>
-              <div className="summary-field">
-                <label>Email</label>
-                <span>{dashIfNullish(patient.email)}</span>
-              </div>
-              <div className="summary-field">
-                <label>Language</label>
-                <span>{dashIfNullish(patient.preferredLanguage)}</span>
-              </div>
-              <div className="summary-field">
-                <label>Client ID</label>
-                <span>{patient.id}</span>
-              </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <h3 style={{ margin: 0 }}>Demographics</h3>
+              {demoEditing ? (
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={cancelDemoEdit}
+                    disabled={demoSaving}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={saveDemoEdit}
+                    disabled={demoSaving}
+                  >
+                    {demoSaving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="button button-secondary" onClick={startDemoEdit}>
+                  Edit
+                </button>
+              )}
             </div>
+            {demoError ? (
+              <div className="alert-panel" role="alert" style={{ marginBottom: 8 }}>
+                {demoError}
+              </div>
+            ) : null}
+            {demoMessage && !demoEditing ? (
+              <div className="muted" style={{ marginBottom: 8, fontSize: 13 }}>
+                {demoMessage}
+              </div>
+            ) : null}
+            {demoEditing ? (
+              <div className="summary-form-grid">
+                <div className="summary-field">
+                  <label htmlFor="demo-preferredName">Preferred name</label>
+                  <input
+                    id="demo-preferredName"
+                    type="text"
+                    value={demoDraft.preferredName ?? ""}
+                    onChange={(e) => setDemoField("preferredName", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-mrn">MRN</label>
+                  <input
+                    id="demo-mrn"
+                    type="text"
+                    value={demoDraft.mrn ?? ""}
+                    onChange={(e) => setDemoField("mrn", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-firstName">First</label>
+                  <input
+                    id="demo-firstName"
+                    type="text"
+                    value={demoDraft.firstName ?? ""}
+                    onChange={(e) => setDemoField("firstName", e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-lastName">Last</label>
+                  <input
+                    id="demo-lastName"
+                    type="text"
+                    value={demoDraft.lastName ?? ""}
+                    onChange={(e) => setDemoField("lastName", e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-middleName">Middle</label>
+                  <input
+                    id="demo-middleName"
+                    type="text"
+                    value={demoDraft.middleName ?? ""}
+                    onChange={(e) => setDemoField("middleName", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-dateOfBirth">DOB</label>
+                  <input
+                    id="demo-dateOfBirth"
+                    type="date"
+                    value={demoDraft.dateOfBirth ?? ""}
+                    onChange={(e) => setDemoField("dateOfBirth", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-sexAtBirth">Sex at birth</label>
+                  <input
+                    id="demo-sexAtBirth"
+                    type="text"
+                    value={demoDraft.sexAtBirth ?? ""}
+                    onChange={(e) => setDemoField("sexAtBirth", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-genderIdentity">Gender</label>
+                  <input
+                    id="demo-genderIdentity"
+                    type="text"
+                    value={demoDraft.genderIdentity ?? ""}
+                    onChange={(e) => setDemoField("genderIdentity", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field summary-field-wide">
+                  <label htmlFor="demo-addressLine1">Address line 1</label>
+                  <input
+                    id="demo-addressLine1"
+                    type="text"
+                    value={demoDraft.addressLine1 ?? ""}
+                    onChange={(e) => setDemoField("addressLine1", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field summary-field-wide">
+                  <label htmlFor="demo-addressLine2">Address line 2</label>
+                  <input
+                    id="demo-addressLine2"
+                    type="text"
+                    value={demoDraft.addressLine2 ?? ""}
+                    onChange={(e) => setDemoField("addressLine2", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-city">City</label>
+                  <input
+                    id="demo-city"
+                    type="text"
+                    value={demoDraft.city ?? ""}
+                    onChange={(e) => setDemoField("city", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-state">State</label>
+                  <input
+                    id="demo-state"
+                    type="text"
+                    value={demoDraft.state ?? ""}
+                    onChange={(e) => setDemoField("state", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-postalCode">Postal code</label>
+                  <input
+                    id="demo-postalCode"
+                    type="text"
+                    value={demoDraft.postalCode ?? ""}
+                    onChange={(e) => setDemoField("postalCode", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-phone">Home phone</label>
+                  <input
+                    id="demo-phone"
+                    type="tel"
+                    value={demoDraft.phone ?? ""}
+                    onChange={(e) => setDemoField("phone", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-email">Email</label>
+                  <input
+                    id="demo-email"
+                    type="email"
+                    value={demoDraft.email ?? ""}
+                    onChange={(e) => setDemoField("email", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-preferredLanguage">Language</label>
+                  <input
+                    id="demo-preferredLanguage"
+                    type="text"
+                    value={demoDraft.preferredLanguage ?? ""}
+                    onChange={(e) => setDemoField("preferredLanguage", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label>Client ID</label>
+                  <span>{patient.id}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="summary-form-grid">
+                <div className="summary-field">
+                  <label>Initial</label>
+                  <span>{dashIfNullish(patient.preferredName ?? patient.firstName)}</span>
+                </div>
+                <div className="summary-field">
+                  <label>MRN</label>
+                  <span>{dashIfNullish(patient.mrn)}</span>
+                </div>
+                <div className="summary-field">
+                  <label>First</label>
+                  <span>{dashIfNullish(patient.firstName)}</span>
+                </div>
+                <div className="summary-field">
+                  <label>Last</label>
+                  <span>{dashIfNullish(patient.lastName)}</span>
+                </div>
+                <div className="summary-field">
+                  <label>Middle</label>
+                  <span>{dashIfNullish(patient.middleName)}</span>
+                </div>
+                <div className="summary-field">
+                  <label>DOB</label>
+                  <span>{patient.dateOfBirth ? formatDate(patient.dateOfBirth) : dash}</span>
+                </div>
+                <div className="summary-field">
+                  <label>Sex at birth</label>
+                  <span>{dashIfNullish(patient.sexAtBirth)}</span>
+                </div>
+                <div className="summary-field">
+                  <label>Gender</label>
+                  <span>{dashIfNullish(patient.genderIdentity ?? patient.pronouns)}</span>
+                </div>
+                <div className="summary-field summary-field-wide">
+                  <label>Address</label>
+                  <span>{formattedAddress || dash}</span>
+                </div>
+                <div className="summary-field">
+                  <label>Home phone</label>
+                  <span>{dashIfNullish(patient.phone)}</span>
+                </div>
+                <div className="summary-field">
+                  <label>Email</label>
+                  <span>{dashIfNullish(patient.email)}</span>
+                </div>
+                <div className="summary-field">
+                  <label>Language</label>
+                  <span>{dashIfNullish(patient.preferredLanguage)}</span>
+                </div>
+                <div className="summary-field">
+                  <label>Client ID</label>
+                  <span>{patient.id}</span>
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="summary-block" aria-label="Insurance information">

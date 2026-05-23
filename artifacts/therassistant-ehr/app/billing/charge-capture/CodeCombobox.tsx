@@ -71,6 +71,40 @@ export function describeValidation(v: CodeValidation): string {
   return v.reason;
 }
 
+// Per-kind cache of child-code lookups (this session only).
+const childrenCache: Record<Props["kind"], Map<string, CodeOption[]>> = {
+  diagnosis: new Map(),
+  procedure: new Map(),
+};
+
+// Look up the billable descendants of an ICD-10 header (e.g. F32 → F32.0,
+// F32.1, F32.9…). Only meaningful for kind="diagnosis"; returns [] otherwise.
+export async function fetchChildCodes(
+  kind: Props["kind"],
+  parent: string,
+  limit = 12,
+): Promise<CodeOption[]> {
+  if (kind !== "diagnosis") return [];
+  const upper = parent.trim().toUpperCase();
+  if (!upper) return [];
+  const cached = childrenCache[kind].get(upper);
+  if (cached) return cached;
+  try {
+    const res = await fetch(
+      `${ENDPOINT[kind]}?parent=${encodeURIComponent(upper)}&limit=${limit}`,
+      { cache: "no-store" },
+    );
+    const json = await res.json();
+    const items: CodeOption[] = (json?.items ?? []).filter(
+      (it: CodeOption) => it.is_active !== false,
+    );
+    childrenCache[kind].set(upper, items);
+    return items;
+  } catch {
+    return [];
+  }
+}
+
 export async function validateCode(
   kind: Props["kind"],
   code: string,

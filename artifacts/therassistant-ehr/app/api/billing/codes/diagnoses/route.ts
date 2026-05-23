@@ -14,6 +14,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const q = (searchParams.get("q") ?? "").trim();
+    const parent = (searchParams.get("parent") ?? "").trim().toUpperCase();
     const limit = Math.min(50, Math.max(1, Number(searchParams.get("limit") ?? 20)));
     const includeInactive = searchParams.get("includeInactive") !== "0";
 
@@ -21,6 +22,20 @@ export async function GET(request: Request) {
       .from("diagnosis_codes")
       .select("code, description, code_system, is_active, expiration_date")
       .limit(limit);
+
+    if (parent) {
+      // Children-of-header mode: return billable descendants of an ICD-10
+      // header (e.g. parent=F32 → F32.0, F32.1, F32.9, F32.A…). Always
+      // restrict to active codes — non-billable sub-headers would just
+      // produce the same problem again.
+      query = query
+        .ilike("code", `${parent}.%`)
+        .eq("is_active", true)
+        .order("code", { ascending: true });
+      const { data, error } = await query;
+      if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true, items: data ?? [] });
+    }
 
     if (!includeInactive) {
       query = query.eq("is_active", true);

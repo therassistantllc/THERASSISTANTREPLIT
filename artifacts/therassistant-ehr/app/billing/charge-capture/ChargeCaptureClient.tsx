@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DEFAULT_ORG_ID } from "@/lib/config";
 import styles from "./charge-capture.module.css";
-import CodeCombobox, { validateCode } from "./CodeCombobox";
-import type { CodeValidation } from "./CodeCombobox";
+import CodeCombobox, { fetchChildCodes, validateCode } from "./CodeCombobox";
+import type { CodeOption, CodeValidation } from "./CodeCombobox";
 
 type ChargeStatus = "ready" | "unsigned" | "missing_dx" | "hold" | "released";
 
@@ -176,6 +176,78 @@ const EMPTY_LINE: ServiceLine = {
 };
 
 type FilterType = "all" | ChargeStatus;
+
+function HeaderChildSuggestions({
+  parent,
+  onPick,
+}: {
+  parent: string;
+  onPick: (code: string) => void;
+}) {
+  const [children, setChildren] = useState<CodeOption[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setChildren([]);
+    void fetchChildCodes("diagnosis", parent, 8).then((items) => {
+      if (cancelled) return;
+      setChildren(items);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [parent]);
+
+  if (loading) {
+    return (
+      <div style={{ marginTop: 4, fontSize: 10.5, color: "#94A3B8" }}>
+        Loading billable codes under {parent}…
+      </div>
+    );
+  }
+  if (children.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        marginTop: 4,
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 4,
+        alignItems: "center",
+      }}
+    >
+      <span style={{ fontSize: 10.5, color: "#64748B" }}>Try:</span>
+      {children.map((c) => (
+        <button
+          key={c.code}
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onPick(c.code.toUpperCase());
+          }}
+          title={c.description}
+          style={{
+            fontFamily: "ui-monospace, monospace",
+            fontSize: 10.5,
+            padding: "1px 6px",
+            borderRadius: 10,
+            border: "1px solid #CBD5E1",
+            background: "#F8FAFC",
+            color: "#0F172A",
+            cursor: "pointer",
+            lineHeight: 1.5,
+          }}
+        >
+          {c.code}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function ChargeCaptureClient() {
   const organizationId = useMemo(() => getOrganizationId(), []);
@@ -564,6 +636,15 @@ export default function ChargeCaptureClient() {
                     const badTitle = badEntry && badEntry.status !== "active"
                       ? badEntry.reason
                       : "Code not found in ICD-10 reference";
+                    const pickChild = (childCode: string) => {
+                      updateDiagnosis(idx, childCode);
+                      setInvalidDx((prev) => {
+                        if (!prev.has(upper)) return prev;
+                        const n = new Map(prev);
+                        n.delete(upper);
+                        return n;
+                      });
+                    };
                     return (
                       <div className={styles.dxCell} key={idx}>
                         <label>{`D${idx + 1}${idx === 0 ? "*" : ""}`}</label>
@@ -585,6 +666,9 @@ export default function ChargeCaptureClient() {
                           invalid={bad}
                           invalidTitle={badTitle}
                         />
+                        {badEntry && badEntry.status === "header" ? (
+                          <HeaderChildSuggestions parent={upper} onPick={pickChild} />
+                        ) : null}
                       </div>
                     );
                   })}

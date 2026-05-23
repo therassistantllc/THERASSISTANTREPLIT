@@ -47,6 +47,48 @@ export interface ReverseOrVoidInput {
   target: PostedPaymentRef;
   reason: string;
   actor: PostingActor;
+  /**
+   * When true, all validation runs and a `preview` is computed describing
+   * what the live call WOULD do — but NO rows are mutated. Used by the
+   * biller-facing "preview" UI before money actually moves.
+   */
+  dryRun?: boolean;
+}
+
+/**
+ * Shape returned in dry-run mode so the UI can render exactly what a
+ * live reverse would do. Every numeric is what the engine would write.
+ */
+export interface ReversalPreview {
+  source: { kind: PostedPaymentKind; id: string; label: string };
+  paymentTotalImpact: number;
+  /** Paired negative entries the engine would insert (one per prior non-reversal ledger row). */
+  ledgerReversalEntries: Array<{
+    entryType: string;
+    amount: number;
+    groupCode: string | null;
+    reasonCode: string | null;
+    description: string;
+  }>;
+  /** For era/manual reversals: the claim would flip back to 'billed'. */
+  claimStatusChange: { claimId: string; from: string; to: string } | null;
+  /** For client_payment reversals where an invoice is linked: the would-be invoice delta. */
+  patientInvoice: {
+    invoiceId: string;
+    currentPaidAmount: number;
+    paidAmountDelta: number;
+    newPaidAmount: number;
+    newBalanceAmount: number;
+    newStatus: string;
+  } | null;
+  /** Auto-created pending patient refund (Stripe/card client_payment reversals only). */
+  autoPatientRefund: {
+    amount: number;
+    stripeChargeId: string | null;
+    method: string;
+  } | null;
+  /** Open workqueue items the engine would resolve (era_835 reversals only). */
+  workqueueItemsToClose: number;
 }
 
 export interface ReversalResult {
@@ -57,6 +99,8 @@ export interface ReversalResult {
   workqueueItemsClosed: number;
   auditLogIds: string[];
   errors: Array<{ field: string; message: string }>;
+  /** Populated only when input.dryRun === true and validation passed. */
+  preview?: ReversalPreview;
 }
 
 export interface VoidResult {
@@ -97,6 +141,68 @@ export interface RecordRefundInput {
   stripeRefundId?: string | null;
   /** When true, the refund is marked 'issued' immediately (e.g. Stripe call already succeeded). */
   alreadyIssued?: boolean;
+  /**
+   * When true, all validation runs and a `preview` is computed describing
+   * what the live call WOULD do — but NO rows are mutated and no Stripe
+   * API call is made. Used by the biller-facing "preview" UI.
+   */
+  dryRun?: boolean;
+}
+
+/**
+ * Shape returned in dry-run mode so the UI can render exactly what a
+ * live refund would do (remaining balance, compensating ledger, invoice
+ * delta, whether a Stripe API call would actually fire).
+ */
+export interface RefundPreview {
+  source: { kind: PostedPaymentKind; id: string; label: string };
+  refundType: "insurance" | "patient";
+  amount: number;
+  paymentTotalImpact: number;
+  priorRefundTotal: number;
+  priorRecoupTotal: number;
+  remainingRefundableBefore: number;
+  remainingRefundableAfter: number;
+  /** What refund_status the row would be inserted with (before Stripe issuance). */
+  initialRefundStatus: "pending" | "issued";
+  /**
+   * Compensating negative ledger entry the engine would post (only when
+   * the refund ends 'issued' — insurance refunds always, patient refunds
+   * only if Stripe auto-issuance would succeed in the live call).
+   */
+  compensatingLedgerEntry: {
+    entryType: string;
+    amount: number;
+    description: string;
+  } | null;
+  /** For patient refunds linked to an invoice: the would-be invoice delta. */
+  patientInvoice: {
+    invoiceId: string;
+    currentPaidAmount: number;
+    paidAmountDelta: number;
+    newPaidAmount: number;
+    newBalanceAmount: number;
+    newStatus: string;
+  } | null;
+  /** Whether the live call would hit Stripe, plus the exact request shape. */
+  stripeRefund: {
+    wouldFire: boolean;
+    reason:
+      | "would_fire"
+      | "no_stripe_key"
+      | "no_charge_or_intent"
+      | "not_applicable"
+      | "already_issued";
+    chargeId: string | null;
+    paymentIntentId: string | null;
+    amountCents: number;
+  } | null;
+  /** Workqueue follow-up that would be opened (skipped when refund is already issued). */
+  workqueueItem: {
+    wouldOpen: boolean;
+    queueType: string | null;
+    title: string | null;
+  };
 }
 
 export interface RecordRefundResult {
@@ -106,6 +212,8 @@ export interface RecordRefundResult {
   workqueueItemId: string | null;
   auditLogIds: string[];
   errors: Array<{ field: string; message: string }>;
+  /** Populated only when input.dryRun === true and validation passed. */
+  preview?: RefundPreview;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,6 +343,296 @@ function refundSourceColumn(kind: PostedPaymentKind): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Dry-run preview helpers (no writes)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function buildReversalPreview(
+  supabase: SupabaseAdmin,
+  input: ReverseOrVoidInput,
+  payment: LoadedPayment,
+  result: ReversalResult,
+): Promise<ReversalResult> {
+  // Read the same ledger rows the live path would mirror, then synthesise
+  // the negative entries it would insert. Excluding source_type='reversal'
+  // matches the live INSERT filter so the preview row-count is exact.
+  const { data: priorLedger, error: ledgerErr } = await supabase
+    .from("era_posting_ledger_entries")
+    .select(
+      "entry_type, amount, group_code, reason_code, description, professional_claim_id, client_id",
+    )
+    .eq("organization_id", input.organizationId)
+    .eq("source_id", payment.id)
+    .neq("source_type", "reversal")
+    .is("archived_at", null);
+  if (ledgerErr) {
+    result.errors.push({ field: "era_posting_ledger_entries", message: ledgerErr.message });
+    return result;
+  }
+  const ledgerReversalEntries = (priorLedger ?? []).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      entryType: String(r.entry_type ?? ""),
+      amount: -Math.abs(Number(r.amount ?? 0)),
+      groupCode: (r.group_code as string | null) ?? null,
+      reasonCode: (r.reason_code as string | null) ?? null,
+      description: `Reversal of ${String(r.description ?? "ledger entry")} (${input.reason})`,
+    };
+  });
+
+  let claimStatusChange: ReversalPreview["claimStatusChange"] = null;
+  if (payment.professionalClaimId && payment.kind !== "client_payment") {
+    claimStatusChange = {
+      claimId: payment.professionalClaimId,
+      from: payment.postingStatus === "posted" ? "paid" : payment.postingStatus,
+      to: "billed",
+    };
+  }
+
+  let patientInvoice: ReversalPreview["patientInvoice"] = null;
+  let autoPatientRefund: ReversalPreview["autoPatientRefund"] = null;
+
+  if (payment.kind === "client_payment") {
+    const { data: cp } = await supabase
+      .from("client_payments")
+      .select("patient_invoice_id, amount, payment_method, stripe_charge_id")
+      .eq("id", payment.id)
+      .eq("organization_id", input.organizationId)
+      .maybeSingle();
+    const cpRow = cp as Record<string, unknown> | null;
+    const invId = (cpRow?.patient_invoice_id as string | null) ?? null;
+    const amt = round2(Number((cpRow?.amount as number | undefined) ?? 0));
+    const method = String(cpRow?.payment_method ?? "");
+    const stripeChargeId = (cpRow?.stripe_charge_id as string | null) ?? null;
+
+    if (amt > 0 && (stripeChargeId || method === "card" || method === "stripe")) {
+      autoPatientRefund = { amount: amt, stripeChargeId, method };
+    }
+
+    if (invId && amt > 0) {
+      const { data: inv } = await supabase
+        .from("patient_invoices")
+        .select("paid_amount, patient_responsibility_amount, invoice_status")
+        .eq("id", invId)
+        .eq("organization_id", input.organizationId)
+        .maybeSingle();
+      if (inv) {
+        const ir = inv as Record<string, unknown>;
+        const currentPaid = Number(ir.paid_amount ?? 0);
+        const newPaid = round2(Math.max(currentPaid - amt, 0));
+        const responsibility = Number(ir.patient_responsibility_amount ?? 0);
+        const newBalance = round2(Math.max(responsibility - newPaid, 0));
+        const curStatus = String(ir.invoice_status ?? "");
+        const newStatus = newBalance > 0 && curStatus === "paid" ? "open" : curStatus;
+        patientInvoice = {
+          invoiceId: invId,
+          currentPaidAmount: round2(currentPaid),
+          paidAmountDelta: -round2(Math.min(amt, currentPaid)),
+          newPaidAmount: newPaid,
+          newBalanceAmount: newBalance,
+          newStatus,
+        };
+      }
+    }
+  }
+
+  let workqueueItemsToClose = 0;
+  if (payment.kind === "era_835") {
+    const { count } = await supabase
+      .from("workqueue_items")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", input.organizationId)
+      .eq("source_object_type", "era_claim_payment")
+      .eq("source_object_id", payment.id)
+      .in("status", ["open", "in_progress", "blocked"])
+      .is("archived_at", null);
+    workqueueItemsToClose = count ?? 0;
+  }
+
+  result.ok = true;
+  // Mirror what the live path would report so dashboard counts line up.
+  result.ledgerEntriesWritten = ledgerReversalEntries.length;
+  result.workqueueItemsClosed = workqueueItemsToClose;
+  result.preview = {
+    source: { kind: payment.kind, id: payment.id, label: payment.rawSourceLabel },
+    paymentTotalImpact: round2(payment.totalImpact),
+    ledgerReversalEntries,
+    claimStatusChange,
+    patientInvoice,
+    autoPatientRefund,
+    workqueueItemsToClose,
+  };
+  return result;
+}
+
+async function buildRefundPreview(
+  supabase: SupabaseAdmin,
+  refundType: "insurance" | "patient",
+  input: RecordRefundInput,
+  payment: LoadedPayment,
+  amount: number,
+  priorRefundTotal: number,
+  priorRecoupTotal: number,
+  refundStatus: "pending" | "issued",
+  result: RecordRefundResult,
+): Promise<RecordRefundResult> {
+  const remainingBefore = round2(payment.totalImpact - priorRefundTotal - priorRecoupTotal);
+  const remainingAfter = round2(remainingBefore - amount);
+  const amountCents = Math.round(amount * 100);
+
+  // ── Stripe issuance preview ─────────────────────────────────────────────────
+  // Mirror the same gating the live path uses; no HTTP call is made here.
+  let stripeRefund: RefundPreview["stripeRefund"] = null;
+  let stripeWouldIssue = false;
+  if (refundType === "patient" && payment.kind === "client_payment") {
+    if (input.alreadyIssued) {
+      stripeRefund = {
+        wouldFire: false,
+        reason: "already_issued",
+        chargeId: null,
+        paymentIntentId: null,
+        amountCents,
+      };
+    } else if (!process.env.STRIPE_SECRET_KEY) {
+      stripeRefund = {
+        wouldFire: false,
+        reason: "no_stripe_key",
+        chargeId: null,
+        paymentIntentId: null,
+        amountCents,
+      };
+    } else {
+      const { data: cpRow } = await supabase
+        .from("client_payments")
+        .select("stripe_charge_id, stripe_payment_intent_id")
+        .eq("id", payment.id)
+        .eq("organization_id", input.organizationId)
+        .maybeSingle();
+      const cp = cpRow as
+        | { stripe_charge_id?: string | null; stripe_payment_intent_id?: string | null }
+        | null;
+      const chargeId = cp?.stripe_charge_id ?? null;
+      const piId = cp?.stripe_payment_intent_id ?? null;
+      if (chargeId || piId) {
+        stripeRefund = {
+          wouldFire: true,
+          reason: "would_fire",
+          chargeId,
+          paymentIntentId: piId,
+          amountCents,
+        };
+        stripeWouldIssue = true;
+      } else {
+        stripeRefund = {
+          wouldFire: false,
+          reason: "no_charge_or_intent",
+          chargeId: null,
+          paymentIntentId: null,
+          amountCents,
+        };
+      }
+    }
+  } else if (refundType === "insurance") {
+    stripeRefund = {
+      wouldFire: false,
+      reason: "not_applicable",
+      chargeId: null,
+      paymentIntentId: null,
+      amountCents,
+    };
+  }
+
+  // Effective terminal status after the (simulated) Stripe issuance step.
+  const effectiveStatus: "pending" | "issued" =
+    refundStatus === "issued" || stripeWouldIssue ? "issued" : refundStatus;
+
+  // ── Compensating ledger entry preview ─────────────────────────────────────
+  // Insurance refund: writes when effective status is 'issued'.
+  // Patient refund: live code does NOT write a ledger entry directly; the
+  // invoice paid_amount reduction is the financial record. Keep null.
+  let compensatingLedgerEntry: RefundPreview["compensatingLedgerEntry"] = null;
+  if (refundType === "insurance" && effectiveStatus === "issued" && amount > 0) {
+    compensatingLedgerEntry = {
+      entryType: "payment",
+      amount: -round2(amount),
+      description: `Insurance refund issued: ${input.reason}`,
+    };
+  }
+
+  // ── Patient invoice delta preview ─────────────────────────────────────────
+  let patientInvoice: RefundPreview["patientInvoice"] = null;
+  if (
+    refundType === "patient" &&
+    payment.kind === "client_payment" &&
+    effectiveStatus === "issued"
+  ) {
+    const { data: cp } = await supabase
+      .from("client_payments")
+      .select("patient_invoice_id")
+      .eq("id", payment.id)
+      .eq("organization_id", input.organizationId)
+      .maybeSingle();
+    const invId = (cp as { patient_invoice_id?: string | null } | null)?.patient_invoice_id ?? null;
+    if (invId) {
+      const { data: inv } = await supabase
+        .from("patient_invoices")
+        .select("paid_amount, patient_responsibility_amount, invoice_status")
+        .eq("id", invId)
+        .eq("organization_id", input.organizationId)
+        .maybeSingle();
+      if (inv) {
+        const ir = inv as Record<string, unknown>;
+        const currentPaid = Number(ir.paid_amount ?? 0);
+        const newPaid = round2(Math.max(currentPaid - amount, 0));
+        const responsibility = Number(ir.patient_responsibility_amount ?? 0);
+        const newBalance = round2(Math.max(responsibility - newPaid, 0));
+        const curStatus = String(ir.invoice_status ?? "");
+        const newStatus = newBalance > 0 && curStatus === "paid" ? "open" : curStatus;
+        patientInvoice = {
+          invoiceId: invId,
+          currentPaidAmount: round2(currentPaid),
+          paidAmountDelta: -round2(Math.min(amount, currentPaid)),
+          newPaidAmount: newPaid,
+          newBalanceAmount: newBalance,
+          newStatus,
+        };
+      }
+    }
+  }
+
+  // ── Workqueue item preview ────────────────────────────────────────────────
+  const queueType = refundType === "insurance" ? "insurance_refund" : "patient_refund";
+  const wouldOpenWorkqueue = effectiveStatus !== "issued";
+  const workqueueItem: RefundPreview["workqueueItem"] = {
+    wouldOpen: wouldOpenWorkqueue,
+    queueType: wouldOpenWorkqueue ? queueType : null,
+    title: wouldOpenWorkqueue
+      ? refundType === "insurance"
+        ? `Issue payer refund ${amount.toFixed(2)} on ${payment.rawSourceLabel}`
+        : `Issue patient refund ${amount.toFixed(2)} on ${payment.rawSourceLabel}`
+      : null,
+  };
+
+  result.ok = true;
+  result.refundStatus = effectiveStatus;
+  result.preview = {
+    source: { kind: payment.kind, id: payment.id, label: payment.rawSourceLabel },
+    refundType,
+    amount,
+    paymentTotalImpact: round2(payment.totalImpact),
+    priorRefundTotal: round2(priorRefundTotal),
+    priorRecoupTotal: round2(priorRecoupTotal),
+    remainingRefundableBefore: remainingBefore,
+    remainingRefundableAfter: remainingAfter,
+    initialRefundStatus: refundStatus,
+    compensatingLedgerEntry,
+    patientInvoice,
+    stripeRefund,
+    workqueueItem,
+  };
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // reversePostedPayment
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -297,6 +695,15 @@ export async function reversePostedPayment(
   }
 
   const now = new Date().toISOString();
+
+  // ── 0. Dry-run preview ─────────────────────────────────────────────────────
+  // When dryRun=true, run the same READ queries the live path would run,
+  // assemble a preview of every write that WOULD fire, and return without
+  // mutating any table (or hitting Stripe). Callers use this to render a
+  // confirm-modal before money actually moves.
+  if (input.dryRun) {
+    return await buildReversalPreview(supabase, input, payment, result);
+  }
 
   // ── 1. Concurrency guard: conditional status flip BEFORE any ledger writes
   // Two parallel reverse requests would otherwise both see `posted` and both
@@ -1037,6 +1444,24 @@ async function recordRefundShared(
 
   const now = new Date().toISOString();
   const refundStatus: "pending" | "issued" = input.alreadyIssued ? "issued" : "pending";
+
+  // ── Dry-run preview ───────────────────────────────────────────────────────
+  // All validation (amount > 0, refund-type vs source-kind, cap check) has
+  // already run above. Build the preview from already-loaded state plus a
+  // small extra read for the patient invoice / Stripe charge metadata.
+  if (input.dryRun) {
+    return await buildRefundPreview(
+      supabase,
+      refundType,
+      input,
+      payment,
+      amount,
+      priorRefundTotal,
+      priorRecoupTotal,
+      refundStatus,
+      result,
+    );
+  }
 
   const refundPayload: Record<string, unknown> = {
     organization_id: input.organizationId,

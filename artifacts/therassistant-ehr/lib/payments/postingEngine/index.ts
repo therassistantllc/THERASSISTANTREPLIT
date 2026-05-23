@@ -141,13 +141,6 @@ export async function commitPosting(
     // PP-4: dispatch to the proper insurance/patient refund recorder so
     // we get atomic ledger compensation, optional Stripe issuance, and
     // workqueue follow-up — never a flat negative entry.
-    if (input.dryRun) {
-      // Refund/reversal helpers don't support dry-run today; honor the
-      // engine contract by short-circuiting before any writes.
-      const out = emptyResult();
-      out.ok = true;
-      return out;
-    }
     const { recordInsuranceRefund, recordPatientRefund } = await import("./reversal");
     const refundType =
       input.source.refundType ??
@@ -162,6 +155,7 @@ export async function commitPosting(
         stripeRefundId: input.source.stripeRefundId ?? null,
         alreadyIssued: input.source.alreadyIssued === true,
         actor,
+        dryRun: input.dryRun,
       },
       injectedSupabase,
     );
@@ -192,11 +186,6 @@ export async function commitPosting(
     return recoupmentResultToCommitResult(r);
   }
   if (input.source.type === "reversal") {
-    if (input.dryRun) {
-      const out = emptyResult();
-      out.ok = true;
-      return out;
-    }
     const { reversePostedPayment } = await import("./reversal");
     const r = await reversePostedPayment(
       {
@@ -204,6 +193,7 @@ export async function commitPosting(
         target: input.source.target,
         reason: input.source.reason,
         actor,
+        dryRun: input.dryRun,
       },
       injectedSupabase,
     );
@@ -237,7 +227,25 @@ function refundResultToCommitResult(
     refundId: r.refundId,
     refundStatus: r.refundStatus,
     workqueueItemId: r.workqueueItemId,
+    preview: r.preview,
   };
+  // Dry-run: surface compensating-ledger preview as `effects` so existing
+  // UI that already iterates result.effects "just works" for the confirm
+  // modal (insurance refunds only — patient refunds reduce invoice paid
+  // amount instead of writing a ledger row).
+  if (r.preview?.compensatingLedgerEntry) {
+    const e = r.preview.compensatingLedgerEntry;
+    out.effects = [
+      {
+        // entryType is a discriminated union in the engine, but the
+        // refund-compensation row is written with entry_type='payment'
+        // which is outside that union. Cast to keep types honest.
+        entryType: e.entryType as never,
+        amount: e.amount,
+        description: e.description,
+      },
+    ];
+  }
   return out;
 }
 
@@ -271,6 +279,18 @@ function reversalResultToCommitResult(
   out.workqueueItemsClosed = r.workqueueItemsClosed;
   out.auditLogIds = r.auditLogIds;
   out.errors = r.errors;
+  if (r.preview) {
+    out.reversalPreview = r.preview;
+    // Surface the paired negative ledger entries as `effects` so callers
+    // that render result.effects in their preview UI need no special-case.
+    out.effects = r.preview.ledgerReversalEntries.map((entry) => ({
+      entryType: entry.entryType as never,
+      amount: entry.amount,
+      groupCode: entry.groupCode,
+      reasonCode: entry.reasonCode,
+      description: entry.description,
+    }));
+  }
   return out;
 }
 

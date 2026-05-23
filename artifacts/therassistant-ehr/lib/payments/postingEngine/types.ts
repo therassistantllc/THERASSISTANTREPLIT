@@ -195,7 +195,14 @@ export interface CommitPostingResult {
     refundId: string | null;
     refundStatus: "pending" | "issued" | "failed" | "cancelled" | null;
     workqueueItemId: string | null;
+    /** Populated when dryRun=true — see RefundPreview in reversal.ts. */
+    preview?: import("./reversal").RefundPreview;
   };
+  /**
+   * PP-4 dry-run: populated when source.type === 'reversal' and dryRun=true.
+   * Detailed preview of every write the live reverse would fire.
+   */
+  reversalPreview?: import("./reversal").ReversalPreview;
   /**
    * PP-4: present only when source.type === 'reversal'. True when the
    * reversal engine treated this as a no-op replay of an already-reversed

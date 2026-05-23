@@ -657,6 +657,153 @@ describe("integration: reverse → ledger restoration → audit chain", () => {
   });
 });
 
+describe("reversePostedPayment — dry-run preview", () => {
+  it("returns a preview without mutating any table", async () => {
+    const fake = makeFakeSupabase({
+      era_claim_payments: [
+        {
+          id: "era-dry-1",
+          organization_id: ORG,
+          client_id: "c-1",
+          professional_claim_id: "claim-dry-1",
+          clp01_claim_control_number: "PCN-DRY",
+          clp04_payment_amount: 150,
+          posting_status: "posted",
+          reversed_at: null,
+          voided_at: null,
+          archived_at: null,
+        },
+      ],
+      era_posting_ledger_entries: [
+        {
+          id: "le-d-1",
+          organization_id: ORG,
+          source_id: "era-dry-1",
+          source_type: "era_payment",
+          entry_type: "payment",
+          amount: 100,
+          professional_claim_id: "claim-dry-1",
+          client_id: "c-1",
+          description: "Insurance payment",
+          archived_at: null,
+        },
+        {
+          id: "le-d-2",
+          organization_id: ORG,
+          source_id: "era-dry-1",
+          source_type: "era_payment",
+          entry_type: "adjustment",
+          amount: 50,
+          professional_claim_id: "claim-dry-1",
+          client_id: "c-1",
+          description: "CO adjustment",
+          archived_at: null,
+        },
+      ],
+      professional_claims: [{ id: "claim-dry-1", organization_id: ORG, claim_status: "paid" }],
+      workqueue_items: [
+        {
+          id: "wq-d-1",
+          organization_id: ORG,
+          source_object_type: "era_claim_payment",
+          source_object_id: "era-dry-1",
+          status: "open",
+          archived_at: null,
+        },
+      ],
+    });
+    const r = await reversePostedPayment(
+      {
+        organizationId: ORG,
+        target: { kind: "era_835", id: "era-dry-1" },
+        reason: "preview-only",
+        actor: ACTOR,
+        dryRun: true,
+      },
+      fake.client,
+    );
+    assert.equal(r.ok, true, r.errors.map((e) => e.message).join("; "));
+    assert.equal(r.reversed, false, "reversed must remain false in dry-run");
+    assert.ok(r.preview);
+    assert.equal(r.preview!.paymentTotalImpact, 150);
+    assert.equal(r.preview!.ledgerReversalEntries.length, 2);
+    const sum = r.preview!.ledgerReversalEntries.reduce((s, e) => s + e.amount, 0);
+    assert.equal(sum, -150, "preview compensating sum must equal -original");
+    assert.ok(r.preview!.claimStatusChange);
+    assert.equal(r.preview!.claimStatusChange!.to, "billed");
+    assert.equal(r.preview!.workqueueItemsToClose, 1);
+    // No writes / status changes.
+    assert.equal(
+      (fake.tables.era_claim_payments[0] as Record<string, unknown>).posting_status,
+      "posted",
+    );
+    assert.equal(
+      fake.tables.era_posting_ledger_entries.filter(
+        (e) => (e as Record<string, unknown>).source_type === "reversal",
+      ).length,
+      0,
+    );
+    assert.equal(fake.tables.audit_logs.length, 0);
+  });
+
+  it("client_payment dry-run previews auto patient-refund initiation and invoice delta", async () => {
+    const fake = makeFakeSupabase({
+      client_payments: [
+        {
+          id: "cp-dry-rev",
+          organization_id: ORG,
+          client_id: "c-2",
+          claim_id: null,
+          patient_invoice_id: "inv-rev",
+          amount: 60,
+          payment_method: "stripe",
+          stripe_charge_id: "ch_rev",
+          posting_status: "posted",
+          reversed_at: null,
+          voided_at: null,
+          archived_at: null,
+        },
+      ],
+      patient_invoices: [
+        {
+          id: "inv-rev",
+          organization_id: ORG,
+          paid_amount: 60,
+          balance_amount: 0,
+          patient_responsibility_amount: 60,
+          invoice_status: "paid",
+          archived_at: null,
+        },
+      ],
+    });
+    const r = await reversePostedPayment(
+      {
+        organizationId: ORG,
+        target: { kind: "client_payment", id: "cp-dry-rev" },
+        reason: "preview Stripe path",
+        actor: ACTOR,
+        dryRun: true,
+      },
+      fake.client,
+    );
+    assert.equal(r.ok, true, r.errors.map((e) => e.message).join("; "));
+    assert.ok(r.preview);
+    assert.ok(r.preview!.autoPatientRefund);
+    assert.equal(r.preview!.autoPatientRefund!.amount, 60);
+    assert.equal(r.preview!.autoPatientRefund!.stripeChargeId, "ch_rev");
+    assert.ok(r.preview!.patientInvoice);
+    assert.equal(r.preview!.patientInvoice!.paidAmountDelta, -60);
+    assert.equal(r.preview!.patientInvoice!.newPaidAmount, 0);
+    assert.equal(r.preview!.patientInvoice!.newStatus, "open");
+    // Invoice unchanged in DB.
+    assert.equal(
+      (fake.tables.patient_invoices[0] as Record<string, unknown>).paid_amount,
+      60,
+    );
+    assert.equal(fake.tables.payment_refunds.length, 0);
+  });
+});
+
 describe("integration: recoupment linkage", () => {
   it("links payment_recoupments → workqueue → audit chain by source_object_id", async () => {
     const fake = makeFakeSupabase({
@@ -907,6 +1054,157 @@ describe("recordInsuranceRefund / recordPatientRefund", () => {
     assert.equal(refund.refund_status, "issued");
     // Already-issued refunds do not open a follow-up workqueue item.
     assert.equal(fake.tables.workqueue_items.length, 0);
+  });
+
+  it("dryRun=true returns a refund preview without mutating any table", async () => {
+    const fake = makeFakeSupabase({
+      insurance_manual_payments: [
+        {
+          id: "mi-dry-1",
+          organization_id: ORG,
+          client_id: "c-1",
+          professional_claim_id: "claim-d",
+          payer_profile_id: "pp-1",
+          payer_payment_amount: 200,
+          posting_status: "posted",
+          check_number: "9999",
+          archived_at: null,
+        },
+      ],
+    });
+    const r = await recordInsuranceRefund(
+      {
+        organizationId: ORG,
+        target: { kind: "insurance_manual", id: "mi-dry-1" },
+        amount: 75,
+        reason: "Overpayment preview",
+        actor: ACTOR,
+        dryRun: true,
+      },
+      fake.client,
+    );
+    assert.equal(r.ok, true, r.errors.map((e) => e.message).join("; "));
+    assert.equal(r.refundId, null, "no refund row should be inserted in dry-run");
+    assert.ok(r.preview, "preview must be populated");
+    assert.equal(r.preview!.refundType, "insurance");
+    assert.equal(r.preview!.amount, 75);
+    assert.equal(r.preview!.paymentTotalImpact, 200);
+    assert.equal(r.preview!.remainingRefundableBefore, 200);
+    assert.equal(r.preview!.remainingRefundableAfter, 125);
+    assert.equal(r.preview!.initialRefundStatus, "pending");
+    // Pending insurance refund: no compensating ledger entry yet, but workqueue would open.
+    assert.equal(r.preview!.compensatingLedgerEntry, null);
+    assert.equal(r.preview!.workqueueItem.wouldOpen, true);
+    assert.equal(r.preview!.workqueueItem.queueType, "insurance_refund");
+    // Nothing written.
+    assert.equal(fake.tables.payment_refunds.length, 0);
+    assert.equal(fake.tables.workqueue_items.length, 0);
+    assert.equal(fake.tables.era_posting_ledger_entries.length, 0);
+    assert.equal(fake.tables.audit_logs.length, 0);
+  });
+
+  it("dryRun=true with alreadyIssued=true previews compensating ledger entry", async () => {
+    const fake = makeFakeSupabase({
+      insurance_manual_payments: [
+        {
+          id: "mi-dry-2",
+          organization_id: ORG,
+          client_id: "c-1",
+          professional_claim_id: "claim-d2",
+          payer_profile_id: "pp-1",
+          payer_payment_amount: 300,
+          posting_status: "posted",
+          check_number: "12345",
+          archived_at: null,
+        },
+      ],
+    });
+    const r = await recordInsuranceRefund(
+      {
+        organizationId: ORG,
+        target: { kind: "insurance_manual", id: "mi-dry-2" },
+        amount: 50,
+        reason: "Confirmed check issued",
+        alreadyIssued: true,
+        actor: ACTOR,
+        dryRun: true,
+      },
+      fake.client,
+    );
+    assert.equal(r.ok, true, r.errors.map((e) => e.message).join("; "));
+    assert.equal(r.refundStatus, "issued");
+    assert.ok(r.preview);
+    assert.equal(r.preview!.initialRefundStatus, "issued");
+    assert.ok(r.preview!.compensatingLedgerEntry, "issued insurance refund must preview a ledger entry");
+    assert.equal(r.preview!.compensatingLedgerEntry!.amount, -50);
+    assert.equal(r.preview!.compensatingLedgerEntry!.entryType, "payment");
+    // Already-issued: no workqueue follow-up.
+    assert.equal(r.preview!.workqueueItem.wouldOpen, false);
+    // Still no writes.
+    assert.equal(fake.tables.payment_refunds.length, 0);
+    assert.equal(fake.tables.era_posting_ledger_entries.length, 0);
+  });
+
+  it("dryRun preview reports invoice paid_amount delta for issued patient refund", async () => {
+    const fake = makeFakeSupabase({
+      client_payments: [
+        {
+          id: "cp-dry-pat",
+          organization_id: ORG,
+          client_id: "c-1",
+          claim_id: null,
+          patient_invoice_id: "inv-dry",
+          amount: 80,
+          payment_method: "stripe",
+          posting_status: "posted",
+          stripe_charge_id: "ch_dry",
+          archived_at: null,
+        },
+      ],
+      patient_invoices: [
+        {
+          id: "inv-dry",
+          organization_id: ORG,
+          paid_amount: 80,
+          balance_amount: 0,
+          patient_responsibility_amount: 80,
+          invoice_status: "paid",
+          archived_at: null,
+        },
+      ],
+    });
+    const r = await recordPatientRefund(
+      {
+        organizationId: ORG,
+        target: { kind: "client_payment", id: "cp-dry-pat" },
+        amount: 30,
+        reason: "Partial refund preview",
+        stripeRefundId: "re_dry",
+        alreadyIssued: true,
+        actor: ACTOR,
+        dryRun: true,
+      },
+      fake.client,
+    );
+    assert.equal(r.ok, true, r.errors.map((e) => e.message).join("; "));
+    assert.ok(r.preview);
+    assert.ok(r.preview!.patientInvoice, "invoice delta must be populated");
+    assert.equal(r.preview!.patientInvoice!.invoiceId, "inv-dry");
+    assert.equal(r.preview!.patientInvoice!.paidAmountDelta, -30);
+    assert.equal(r.preview!.patientInvoice!.newPaidAmount, 50);
+    assert.equal(r.preview!.patientInvoice!.newBalanceAmount, 30);
+    assert.equal(r.preview!.patientInvoice!.newStatus, "open");
+    // Stripe preview should report not_applicable / already_issued path.
+    assert.ok(r.preview!.stripeRefund);
+    assert.equal(r.preview!.stripeRefund!.wouldFire, false);
+    assert.equal(r.preview!.stripeRefund!.reason, "already_issued");
+    // No mutations.
+    assert.equal(fake.tables.payment_refunds.length, 0);
+    assert.equal(
+      (fake.tables.patient_invoices[0] as Record<string, unknown>).paid_amount,
+      80,
+      "invoice paid_amount must be unchanged",
+    );
   });
 
   it("rejects refund that exceeds remaining balance after prior refunds", async () => {

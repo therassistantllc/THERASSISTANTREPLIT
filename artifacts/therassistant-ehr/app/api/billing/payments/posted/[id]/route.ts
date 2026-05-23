@@ -192,12 +192,22 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
             .order("recouped_at", { ascending: false }),
     ]);
 
-    // Workqueue items directly anchored to this payment id
+    // Workqueue items anchored to this payment id OR to any of its
+    // child recoupment / refund rows. The PP-5 rule engine anchors
+    // recoupment + refund items on the child row id (not the parent
+    // payment) so we must explicitly include those source_object_ids
+    // here — otherwise auto-generated recoupment/refund-review items
+    // wouldn't surface on the posted-payment detail.
+    const childSourceIds = [
+      ...((refundsRes.data ?? []) as Array<{ id: string }>).map((r) => r.id),
+      ...((recoupsRes.data ?? []) as Array<{ id: string }>).map((r) => r.id),
+    ].filter((v): v is string => typeof v === "string" && UUID_RE.test(v));
+    const wqSourceIds = [parsed.id, ...childSourceIds];
     const { data: workqueueItems } = await supabase
       .from("workqueue_items")
       .select("id, work_type, queue_type, status, priority, title, description, created_at, resolved_at")
       .eq("organization_id", organizationId)
-      .eq("source_object_id", parsed.id)
+      .in("source_object_id", wqSourceIds)
       .is("archived_at", null)
       .order("created_at", { ascending: false });
 

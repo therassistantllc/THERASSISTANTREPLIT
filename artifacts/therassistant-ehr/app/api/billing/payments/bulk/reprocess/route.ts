@@ -2,9 +2,14 @@
  * POST /api/billing/payments/bulk/reprocess
  * Body: { organizationId, ids: string[] }
  *
- * Re-runs the workqueue rule engine for each selected payment (without
- * re-writing ledger entries — the ledger is the source of truth and is
- * idempotent). Useful when rule thresholds change or a new rule is added.
+ * Re-runs the PP-1 intake/matching path for each selected payment:
+ *   1. For unmatched ERA rows, re-attempt claim matching against
+ *      professional_claims by clp01_claim_control_number / patient_account.
+ *      If a match is found, write it back to era_claim_payments.
+ *   2. Re-run the PP-5 workqueue rule engine so any rule changes (new
+ *      thresholds, new rules, etc.) take effect against the now-current
+ *      row state. The ledger itself is idempotent and is NOT re-written —
+ *      reprocess is a re-evaluation, not a re-post.
  *
  * Only era_claim_payments and insurance_manual_payments are eligible
  * (patient_payments don't have the underpayment/denial signal).
@@ -13,6 +18,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireAuthenticatedPaymentPoster } from "@/lib/payments/postingEngine";
 import { applyWorkqueueRules } from "@/lib/payments/postingEngine/workqueueRules";
+import { matchProfessionalClaim } from "@/lib/payments/era835IntakeService";
 import { parseTargets } from "../_shared";
 
 export const runtime = "nodejs";
@@ -58,7 +64,7 @@ export async function POST(req: Request) {
         const { data } = await supabase
           .from("era_claim_payments")
           .select(
-            "id, professional_claim_id, client_id, claim_match_status, clp03_total_charge, clp04_payment_amount, cas_adjustments",
+            "id, professional_claim_id, client_id, claim_match_status, clp01_claim_control_number, clp03_total_charge, clp04_payment_amount, cas_adjustments",
           )
           .eq("organization_id", organizationId)
           .eq("id", t.id)
@@ -66,6 +72,39 @@ export async function POST(req: Request) {
           .maybeSingle();
         if (!data) continue;
         const row = data as Record<string, unknown>;
+
+        // PP-1 intake step: if the row is unmatched, re-run the same
+        // claim matcher used by the live ERA intake path. If a match
+        // is now found (e.g. the claim was created after intake), write
+        // it back so downstream rules + the dashboard reflect reality.
+        let claimMatchStatus = (row.claim_match_status as string | null) ?? null;
+        let professionalClaimId = (row.professional_claim_id as string | null) ?? null;
+        let clientId = (row.client_id as string | null) ?? null;
+        if (claimMatchStatus !== "matched") {
+          const ccn = (row.clp01_claim_control_number as string | null) ?? null;
+          if (ccn) {
+            try {
+              const match = await matchProfessionalClaim(organizationId, ccn);
+              if (match) {
+                await supabase
+                  .from("era_claim_payments")
+                  .update({
+                    professional_claim_id: match.id,
+                    client_id: match.patient_id,
+                    claim_match_status: "matched",
+                    posting_status: "ready",
+                  })
+                  .eq("organization_id", organizationId)
+                  .eq("id", t.id);
+                claimMatchStatus = "matched";
+                professionalClaimId = match.id;
+                clientId = match.patient_id ?? clientId;
+              }
+            } catch {
+              // Match attempt is best-effort; fall through to rule re-eval.
+            }
+          }
+        }
         const cas =
           (row.cas_adjustments as Array<{
             amount?: number;
@@ -87,13 +126,13 @@ export async function POST(req: Request) {
           organizationId,
           sourceObjectType: "era_claim_payment",
           sourceObjectId: t.id,
-          professionalClaimId: (row.professional_claim_id as string | null) ?? null,
-          clientId: (row.client_id as string | null) ?? null,
+          professionalClaimId,
+          clientId,
           insurancePaymentAmount: Number(row.clp04_payment_amount ?? 0),
           allowedAmount: totalCharge > 0 ? totalCharge - adj : null,
           totalChargeAmount: totalCharge,
           casAdjustments: cas as never,
-          claimMatchStatus: (row.claim_match_status as string | null) ?? null,
+          claimMatchStatus,
           sourceKind: "era_835",
           actor,
         });

@@ -22,7 +22,7 @@ type ClaimMatch = {
   patient_id: string | null;
 };
 
-async function matchProfessionalClaim(organizationId: string, claimControlNumber: string): Promise<ClaimMatch | null> {
+export async function matchProfessionalClaim(organizationId: string, claimControlNumber: string): Promise<ClaimMatch | null> {
   const supabase = createServerSupabaseAdminClient();
   if (!supabase) throw new Error("Database connection not available");
 

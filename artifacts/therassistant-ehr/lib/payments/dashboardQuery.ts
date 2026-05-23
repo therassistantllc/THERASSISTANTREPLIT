@@ -435,9 +435,18 @@ async function loadTotals(
     return r;
   };
 
+  // Side counts live on auxiliary tables (payment_recoupments,
+  // payment_refunds, workqueue_items). They all carry organization_id,
+  // client_id, and professional_claim_id, so apply the same client +
+  // provider scoping as the row queries. payer + payment-source +
+  // payment-type are NOT directly carried on these rows, so we honor
+  // them by gating the entire side-count to zero when the user has
+  // filtered the dashboard to a source that excludes ERA (recoupments
+  // and refunds are ERA-side concepts) — see callers below.
   const sideScoped = (q: any, opts: { dateCol?: string } = {}) => {
     let r = q.eq("organization_id", filters.organizationId).is("archived_at", null);
     if (filters.clientId) r = r.eq("client_id", filters.clientId);
+    if (providerClaimIds) r = r.in("professional_claim_id", providerClaimIds);
     if (opts.dateCol) {
       if (filters.paymentDateFrom) r = r.gte(opts.dateCol, filters.paymentDateFrom);
       if (filters.paymentDateTo) r = r.lte(opts.dateCol, filters.paymentDateTo);
@@ -482,8 +491,16 @@ async function loadTotals(
       wantPatient
         ? patientScoped(countQ("client_payments")).eq("posting_status", "posted")
         : Promise.resolve({ count: 0 }),
-      sideScoped(countQ("payment_recoupments"), { dateCol: "created_at" }),
-      sideScoped(countQ("payment_refunds"), { dateCol: "created_at" }),
+      // Recoupments/refunds are ERA-and-patient-side concepts (manual
+      // insurance posts don't generate them). When the user filters
+      // paymentSource down to *only* manual_insurance, zero these out
+      // so the KPI matches the visible scope.
+      wantEra || wantPatient
+        ? sideScoped(countQ("payment_recoupments"), { dateCol: "created_at" })
+        : Promise.resolve({ count: 0 }),
+      wantEra || wantPatient
+        ? sideScoped(countQ("payment_refunds"), { dateCol: "created_at" })
+        : Promise.resolve({ count: 0 }),
       sideScoped(countQ("workqueue_items"), { dateCol: "created_at" })
         .in("work_type", [
           "denied",

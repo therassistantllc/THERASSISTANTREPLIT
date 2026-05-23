@@ -41,6 +41,21 @@
 .primaryBtn:hover { background: #1f55cd; }
 .primaryBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.btnSpinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: btnSpin 0.7s linear infinite;
+}
+@keyframes btnSpin {
+  to { transform: rotate(360deg); }
+}
+
 .body { flex: 1; padding: 16px 24px; }
 
 .weekHeader {

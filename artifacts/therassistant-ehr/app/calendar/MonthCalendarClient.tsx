@@ -157,6 +157,7 @@ export default function MonthCalendarClient() {
   const [cptFallback, setCptFallback] = useState<string | null>(null);
   const [savingDetail, setSavingDetail] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
+  const checkingInRef = useRef(false);
 
   const [collectOpen, setCollectOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -342,6 +343,8 @@ export default function MonthCalendarClient() {
 
   async function handleCheckIn() {
     if (!detail) return;
+    if (checkingInRef.current) return;
+    checkingInRef.current = true;
     setDrawerBanner(null);
     setCheckingIn(true);
     try {
@@ -376,6 +379,7 @@ export default function MonthCalendarClient() {
         text: e instanceof Error ? e.message : "Check-in failed",
       });
     } finally {
+      checkingInRef.current = false;
       setCheckingIn(false);
     }
   }
@@ -684,20 +688,25 @@ export default function MonthCalendarClient() {
                     {(() => {
                       const status = detail.appointment.status;
                       const alreadyCheckedIn = status === "checked_in" || status === "in_progress" || status === "completed";
-                      const label = checkingIn
-                        ? "Checking in…"
-                        : alreadyCheckedIn
-                          ? "Open note"
-                          : "Check in";
                       const disabled = checkingIn || !detail.appointment.clientId;
                       return (
                         <button
                           className={styles.primaryBtn}
                           onClick={handleCheckIn}
                           disabled={disabled}
+                          aria-busy={checkingIn || undefined}
                           title={!detail.appointment.clientId ? "Assign a client before checking in" : undefined}
                         >
-                          {label}
+                          {checkingIn ? (
+                            <>
+                              <span className={styles.btnSpinner} aria-hidden="true" />
+                              Checking in…
+                            </>
+                          ) : alreadyCheckedIn ? (
+                            "Open note"
+                          ) : (
+                            "Check in"
+                          )}
                         </button>
                       );
                     })()}

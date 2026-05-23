@@ -358,6 +358,35 @@ export async function commitPatientPayment(
     });
 
   if (insertError) {
+    // Race-safe idempotency (Task #114): concurrent webhook deliveries
+    // (e.g. Stripe `charge.succeeded` + `payment_intent.succeeded` for the
+    // same charge) can both pass the pre-insert lookup, then one hits the
+    // unique index on (organization_id, payment_method, external_payment_id).
+    // Treat that 23505 as success and return the row the winner inserted —
+    // never surface it as a generic error or noisy workqueue item.
+    const isUniqueViolation =
+      (insertError as { code?: string }).code === "23505" ||
+      /duplicate key|unique constraint/i.test(insertError.message ?? "");
+    if (
+      isUniqueViolation &&
+      input.externalPaymentId &&
+      (input.method === "stripe" || input.method === "external_card")
+    ) {
+      const { data: winner } = await supabase
+        .from("client_payments")
+        .select("id")
+        .eq("organization_id", input.organizationId)
+        .eq("payment_method", input.method)
+        .eq("external_payment_id", input.externalPaymentId)
+        .is("archived_at", null)
+        .maybeSingle();
+      if (winner?.id) {
+        result.ok = true;
+        result.alreadyPosted = true;
+        result.paymentId = String(winner.id);
+        return result;
+      }
+    }
     result.errors.push({ field: "client_payments", message: insertError.message });
     return result;
   }

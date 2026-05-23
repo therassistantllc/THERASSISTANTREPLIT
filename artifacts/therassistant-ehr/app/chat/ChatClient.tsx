@@ -2,8 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_ORG_ID } from "@/lib/config";
+import { supabase } from "@/lib/supabase/client";
 
 type Profile = { id: string; fullName: string; email: string; role: string };
+
+// ── Presence model (Task #124) ────────────────────────────────────────────
+type PresenceState = "online" | "idle" | "offline" | "unknown";
+// Store raw beat data only; derive state at render time so the 15s
+// re-render clock can age users from online → idle → offline without
+// needing a fresh presence event.
+type PresenceMap = Record<string, { focused: boolean; lastSeenAt: number }>;
+// Online if presence beat in the last 60s; idle if last 5min.
+const ONLINE_WINDOW_MS = 60_000;
+const IDLE_WINDOW_MS = 5 * 60_000;
+// Local idle threshold: flip own tab to idle after this much no-activity.
+const LOCAL_IDLE_AFTER_MS = 60_000;
+// Reconcile messages every 30s as a Realtime safety net.
+const MESSAGE_RECONCILE_MS = 30_000;
 
 type Conversation = {
   id: string;
@@ -62,6 +77,42 @@ function formatTime(value: string) {
     : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function derivePresenceState(lastSeenAt: number, focused: boolean): PresenceState {
+  const age = Date.now() - lastSeenAt;
+  if (focused && age <= ONLINE_WINDOW_MS) return "online";
+  if (age <= IDLE_WINDOW_MS) return "idle";
+  return "offline";
+}
+
+function presenceDot(state: PresenceState) {
+  const color =
+    state === "online" ? "#10b981"
+    : state === "idle" ? "#f59e0b"
+    : state === "unknown" ? "#9ca3af"
+    : "#d1d5db";
+  const title =
+    state === "online" ? "Online"
+    : state === "idle" ? "Idle"
+    : state === "unknown" ? "Status unknown (connection issue)"
+    : "Offline";
+  return (
+    <span
+      aria-label={title}
+      title={title}
+      style={{
+        display: "inline-block",
+        width: 8,
+        height: 8,
+        borderRadius: "50%",
+        background: color,
+        marginRight: 6,
+        verticalAlign: "middle",
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
 function roleBadge(role: string) {
   const r = (role || "").toLowerCase();
   if (r === "biller") return "Biller";
@@ -98,6 +149,18 @@ export default function ChatClient() {
   const [showNew, setShowNew] = useState(false);
   const [newPartner, setNewPartner] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  // ── Presence + realtime (Task #124) ────────────────────────────────────
+  const [presence, setPresence] = useState<PresenceMap>({});
+  // Realtime connection state: connected (presence reliable),
+  // disconnected (fall back to polling + render presence as 'unknown').
+  const [realtimeOk, setRealtimeOk] = useState<boolean>(true);
+  // Force-rerender clock so presence dots age out without external events.
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setNow((n) => n + 1), 15_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId) ?? null,
@@ -147,12 +210,129 @@ export default function ChatClient() {
     void loadConversations();
   }, [loadConversations]);
 
-  // Poll for new messages every 5s on selected conversation; also refresh list every 15s.
+  // Refresh conversation list every 15s (cheap, keeps unread counters fresh).
   useEffect(() => {
     if (!currentUserId) return;
     const id = window.setInterval(() => void loadConversations(), 15000);
     return () => window.clearInterval(id);
   }, [currentUserId, loadConversations]);
+
+  // Presence channel: one channel per org, key = userId so multiple tabs
+  // for the same user collapse to a single online entry.
+  useEffect(() => {
+    if (!currentUserId || !organizationId) return;
+    const channelName = `chat-presence:${organizationId}`;
+    const channel = supabase.channel(channelName, {
+      config: { presence: { key: currentUserId } },
+    });
+
+    let focused =
+      typeof document === "undefined" ? true : document.visibilityState === "visible";
+    let lastActivity = Date.now();
+
+    const broadcast = () => {
+      void channel.track({
+        userId: currentUserId,
+        focused,
+        lastSeenAt: Date.now(),
+      });
+    };
+
+    const recomputeFromChannel = () => {
+      const raw = channel.presenceState() as Record<
+        string,
+        Array<{ userId?: string; focused?: boolean; lastSeenAt?: number }>
+      >;
+      const next: PresenceMap = {};
+      for (const key of Object.keys(raw)) {
+        // Latest presence beat across this user's open tabs wins.
+        let bestAt = 0;
+        let bestFocused = false;
+        for (const meta of raw[key] ?? []) {
+          const at = Number(meta?.lastSeenAt ?? 0);
+          if (at > bestAt) {
+            bestAt = at;
+            bestFocused = Boolean(meta?.focused);
+          }
+        }
+        if (bestAt > 0) {
+          next[key] = { focused: bestFocused, lastSeenAt: bestAt };
+        }
+      }
+      setPresence(next);
+    };
+
+    channel
+      .on("presence", { event: "sync" }, recomputeFromChannel)
+      .on("presence", { event: "join" }, recomputeFromChannel)
+      .on("presence", { event: "leave" }, recomputeFromChannel)
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setRealtimeOk(true);
+          broadcast();
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          setRealtimeOk(false);
+        }
+      });
+
+    // Heartbeat: re-broadcast every 25s so other tabs see us as fresh.
+    const heartbeat = window.setInterval(broadcast, 25_000);
+
+    // Local idle: if no input/visibility for LOCAL_IDLE_AFTER_MS, flip
+    // focused=false on our next beat so others see us as idle.
+    const onActivity = () => {
+      const wasIdle = !focused;
+      lastActivity = Date.now();
+      if (wasIdle) {
+        focused = document.visibilityState === "visible";
+        broadcast();
+      }
+    };
+    const idleCheck = window.setInterval(() => {
+      if (focused && Date.now() - lastActivity > LOCAL_IDLE_AFTER_MS) {
+        focused = false;
+        broadcast();
+      }
+    }, 15_000);
+
+    const onVisibility = () => {
+      focused = document.visibilityState === "visible";
+      lastActivity = Date.now();
+      broadcast();
+    };
+    const onBlur = () => {
+      focused = false;
+      broadcast();
+    };
+    const onFocus = () => {
+      focused = true;
+      lastActivity = Date.now();
+      broadcast();
+    };
+    const onUnload = () => {
+      void channel.untrack();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("beforeunload", onUnload);
+    window.addEventListener("mousemove", onActivity, { passive: true });
+    window.addEventListener("keydown", onActivity);
+
+    return () => {
+      window.clearInterval(heartbeat);
+      window.clearInterval(idleCheck);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("beforeunload", onUnload);
+      window.removeEventListener("mousemove", onActivity);
+      window.removeEventListener("keydown", onActivity);
+      void channel.untrack();
+      void supabase.removeChannel(channel);
+    };
+  }, [currentUserId, organizationId]);
 
   const loadMessages = useCallback(async (conversationId: string, markRead = true) => {
     if (!currentUserId) return;
@@ -171,15 +351,50 @@ export default function ChatClient() {
     setLoadingMessages(false);
   }, [organizationId, currentUserId]);
 
+  // Live message arrival via Supabase Realtime, with a 30s reconciliation
+  // poll as a safety net. If Realtime drops, the poll picks up the slack.
   useEffect(() => {
     if (!selectedId) {
       setMessages([]);
       return;
     }
     void loadMessages(selectedId, true);
-    const id = window.setInterval(() => void loadMessages(selectedId, false), 5000);
-    return () => window.clearInterval(id);
-  }, [selectedId, loadMessages]);
+
+    const channel = supabase
+      .channel(`chat-messages:${selectedId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+          filter: `conversation_id=eq.${selectedId}`,
+        },
+        () => {
+          // Reload via the API to get the joined sender profile, role
+          // badge, and read-mark side effect — cheaper to re-fetch than
+          // to maintain a parallel join client-side.
+          void loadMessages(selectedId, true);
+          void loadConversations();
+        },
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          setRealtimeOk(false);
+        } else if (status === "SUBSCRIBED") {
+          setRealtimeOk(true);
+        }
+      });
+
+    // Safety net poll. Faster when realtime is down (5s) so the user
+    // experience degrades gracefully; slow (30s) when realtime is healthy.
+    const pollMs = realtimeOk ? MESSAGE_RECONCILE_MS : 5000;
+    const id = window.setInterval(() => void loadMessages(selectedId, false), pollMs);
+    return () => {
+      window.clearInterval(id);
+      void supabase.removeChannel(channel);
+    };
+  }, [selectedId, loadMessages, loadConversations, realtimeOk]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -229,6 +444,29 @@ export default function ChatClient() {
   }
 
   const currentProfile = profiles.find((p) => p.id === currentUserId) ?? null;
+  // Aggregate presence for a conversation: best of the other participants.
+  function conversationPresenceState(c: Conversation): PresenceState {
+    if (!realtimeOk) return "unknown";
+    const others = otherParticipants(c, currentUserId);
+    let best: PresenceState = "offline";
+    const rank: Record<PresenceState, number> = {
+      online: 3, idle: 2, unknown: 1, offline: 0,
+    };
+    for (const p of others) {
+      const beat = presence[p.userId];
+      const ps: PresenceState = beat
+        ? derivePresenceState(beat.lastSeenAt, beat.focused)
+        : "offline";
+      if (rank[ps] > rank[best]) best = ps;
+    }
+    return best;
+  }
+  function userPresenceState(userId: string): PresenceState {
+    if (!realtimeOk) return "unknown";
+    const beat = presence[userId];
+    if (!beat) return "offline";
+    return derivePresenceState(beat.lastSeenAt, beat.focused);
+  }
   const billers = profiles.filter((p) => p.role === "biller" && p.id !== currentUserId);
   const otherProfiles = profiles.filter((p) => p.id !== currentUserId);
 
@@ -332,7 +570,10 @@ export default function ChatClient() {
                   <span className={`status-pill ${c.unreadCount > 0 ? "urgent" : "normal"}`}>
                     {c.unreadCount > 0 ? c.unreadCount : subRole}
                   </span>
-                  <strong>{label}</strong>
+                  <strong>
+                    {presenceDot(conversationPresenceState(c))}
+                    {label}
+                  </strong>
                   <span style={{ color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {c.lastMessage?.body || "No messages yet"}
                   </span>
@@ -350,9 +591,20 @@ export default function ChatClient() {
               <div className="detail-header">
                 <div>
                   <p className="eyebrow">{selected.conversationType.replace("_", " ")}</p>
-                  <h2>{conversationLabel(selected, currentUserId)}</h2>
-                  <p className="muted-text">
-                    {otherParticipants(selected, currentUserId).map((p) => `${p.fullName} (${roleBadge(p.role)})`).join(" · ") || "Just you"}
+                  <h2 style={{ display: "flex", alignItems: "center" }}>
+                    {presenceDot(conversationPresenceState(selected))}
+                    {conversationLabel(selected, currentUserId)}
+                  </h2>
+                  <p className="muted-text" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {otherParticipants(selected, currentUserId).length === 0
+                      ? "Just you"
+                      : otherParticipants(selected, currentUserId).map((p, i) => (
+                          <span key={p.userId} style={{ display: "inline-flex", alignItems: "center" }}>
+                            {i > 0 ? <span style={{ margin: "0 4px" }}>·</span> : null}
+                            {presenceDot(userPresenceState(p.userId))}
+                            {p.fullName} ({roleBadge(p.role)})
+                          </span>
+                        ))}
                   </p>
                 </div>
               </div>
@@ -430,7 +682,10 @@ export default function ChatClient() {
                 </button>
               </div>
               <p className="muted-text" style={{ marginTop: 8 }}>
-                Acting as {currentProfile?.fullName || "—"} · messages refresh every 5 seconds.
+                Acting as {currentProfile?.fullName || "—"} ·{" "}
+                {realtimeOk
+                  ? "live updates on (presence + new messages)"
+                  : "live updates unavailable — falling back to polling every 5s"}
               </p>
             </>
           ) : null}

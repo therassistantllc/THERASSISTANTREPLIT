@@ -66,8 +66,16 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [relinkDestination, setRelinkDestination] = useState<FilingDestination>("patient_chart");
+  const [relinkEntity, setRelinkEntity] = useState<EntityResult | null>(null);
+  const [relinking, setRelinking] = useState(false);
+  const [relinkError, setRelinkError] = useState<string | null>(null);
+  const [relinkMessage, setRelinkMessage] = useState<string | null>(null);
+
   const requiresTarget = destinationRequiresTarget(filingDestination);
   const entityType: EntityType | null = getEntityTypeForDestination(filingDestination);
+  const relinkRequiresTarget = destinationRequiresTarget(relinkDestination);
+  const relinkEntityType: EntityType | null = getEntityTypeForDestination(relinkDestination);
 
   async function loadItem() {
     setLoading(true);
@@ -101,6 +109,41 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
   useEffect(() => {
     setSelectedEntity(null);
   }, [filingDestination]);
+
+  useEffect(() => {
+    setRelinkEntity(null);
+  }, [relinkDestination]);
+
+  async function relinkDocument() {
+    setRelinking(true);
+    setRelinkError(null);
+    setRelinkMessage(null);
+
+    const response = await fetch(`/api/mailroom/items/${itemId}/relink`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        organization_id: organizationId,
+        filing_destination: relinkDestination,
+        target_id: relinkRequiresTarget ? relinkEntity?.id ?? null : null,
+      }),
+    });
+
+    const json = (await response.json()) as { success?: boolean; error?: string };
+    if (!response.ok || !json.success) {
+      setRelinkError(json.error || "Unable to re-link document.");
+    } else {
+      setRelinkMessage("Document re-linked successfully.");
+      setRelinkEntity(null);
+      await loadItem();
+    }
+    setRelinking(false);
+  }
+
+  const canRelink =
+    !relinking &&
+    item?.status === "filed" &&
+    (!relinkRequiresTarget || Boolean(relinkEntity?.id));
 
   async function fileDocument() {
     setFiling(true);
@@ -270,6 +313,56 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
               <p className="muted-text">Search and select a {entityType} before filing.</p>
             ) : null}
           </div>
+        </section>
+      ) : null}
+
+      {item && item.status === "filed" ? (
+        <section className="panel form-panel">
+          <h2>Re-link filed document</h2>
+          <p className="muted-text">
+            Made a mistake when filing? Move this document to a different patient, encounter, or claim
+            without re-uploading. The original document record is updated and the change is recorded
+            in the audit log.
+          </p>
+          {relinkError ? <div className="alert-panel">{relinkError}</div> : null}
+          {relinkMessage ? <div className="empty-state success-panel">{relinkMessage}</div> : null}
+          <label className="field-label">
+            New destination
+            <select
+              value={relinkDestination}
+              onChange={(event) => setRelinkDestination(event.target.value as FilingDestination)}
+              disabled={relinking}
+            >
+              <option value="patient_chart">Patient chart</option>
+              <option value="claim">Claim</option>
+              <option value="encounter">Encounter</option>
+              <option value="practice_documents">Practice-level documents (unlink patient/encounter/claim)</option>
+            </select>
+          </label>
+          {relinkRequiresTarget && relinkEntityType ? (
+            <div className="field-label">
+              <span>
+                {relinkEntityType === "patient" ? "Patient" : relinkEntityType === "claim" ? "Claim" : "Encounter"}
+              </span>
+              <EntityPicker
+                entityType={relinkEntityType}
+                organizationId={organizationId}
+                value={relinkEntity}
+                onChange={setRelinkEntity}
+                disabled={relinking}
+              />
+            </div>
+          ) : (
+            <p className="muted-text">
+              This will unlink the patient, encounter, and claim from the document and file it at the practice level.
+            </p>
+          )}
+          <button className="button" type="button" onClick={relinkDocument} disabled={!canRelink}>
+            {relinking ? "Re-linking…" : "Re-link document"}
+          </button>
+          {relinkRequiresTarget && !relinkEntity ? (
+            <p className="muted-text">Search and select a {relinkEntityType} before re-linking.</p>
+          ) : null}
         </section>
       ) : null}
     </main>

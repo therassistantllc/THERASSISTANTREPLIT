@@ -343,6 +343,14 @@ export const WORKQUEUES: WorkqueueDef[] = [
     status: "live",
   },
   {
+    id: "partial_payments",
+    title: "Partial Payments",
+    description: "Review claims paid in part — investigate ERA adjustments, pursue remainder, or transfer to patient.",
+    href: "/billing/partial-payments",
+    stage: "payments_era",
+    status: "live",
+  },
+  {
     id: "unposted_payments",
     title: "Unposted Payments",
     description: "Payments received but not yet matched to a claim.",

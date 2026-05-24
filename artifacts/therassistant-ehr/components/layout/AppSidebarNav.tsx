@@ -276,6 +276,7 @@ export default function AppSidebarNav() {
           <SubNavLinkIcon href="/billing/claim-edit-dashboard" icon={<EditIcon />} label="Rejections" prefixes={["/billing/claim-edit-dashboard"]} pathname={pathname} />
           <SubNavLinkIcon href="/billing/duplicate-claim-review" icon={<DuplicateIcon />} label="Duplicate Review" prefixes={["/billing/duplicate-claim-review"]} pathname={pathname} />
           <SubNavLinkIcon href="/billing/payments" icon={<CreditCardIcon />} label="Payments" prefixes={["/billing/payments"]} pathname={pathname} />
+          <SubNavLinkIcon href="/billing/partial-payments" icon={<CreditCardIcon />} label="Partial Payments" prefixes={["/billing/partial-payments"]} pathname={pathname} />
         </div>
       ) : null}
 

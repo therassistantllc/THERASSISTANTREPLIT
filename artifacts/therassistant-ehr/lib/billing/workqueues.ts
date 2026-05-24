@@ -229,12 +229,12 @@ export const WORKQUEUES: WorkqueueDef[] = [
     status: "coming_soon",
   },
   {
-    id: "appeals_pending",
-    title: "Appeals Pending",
-    description: "Open appeals with the payer — track timely-filing deadlines and statuses.",
+    id: "appeals_needed",
+    title: "Appeals Needed",
+    description: "Claims requiring formal payer appeal — draft, send, track, and decide.",
     href: "/billing/appeals",
     stage: "adjudication_denials",
-    status: "coming_soon",
+    status: "live",
   },
   {
     id: "underpayments",

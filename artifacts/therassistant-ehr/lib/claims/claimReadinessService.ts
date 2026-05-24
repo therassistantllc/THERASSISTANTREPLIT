@@ -372,6 +372,50 @@ export async function createProfessionalClaimDraft(
   const subscriberState = normalizeNullable(client!.state) ?? input.billingProvider.state;
   const subscriberZip = normalizeNullable(client!.postal_code) ?? input.billingProvider.zip;
 
+  // Pull rendering provider taxonomy directly from provider_profiles for the
+  // appointment's rendering provider. provider_profiles.taxonomy_code is the
+  // single source of truth for the NUCC code that flows to 837P loop 2310B
+  // PRV*PXC. The downstream claim_readiness rule
+  // (`renderingTaxonomyMissing` in facts.ts) reads this snapshot field, so
+  // missing taxonomies surface as a real validation error instead of being
+  // silently dropped from outgoing claims.
+  let renderingProviderTaxonomy: string | null = null;
+  if (input.appointmentId) {
+    const { data: appointment } = await supabase
+      .from("appointments")
+      .select("id, provider_id")
+      .eq("organization_id", input.organizationId)
+      .eq("id", input.appointmentId)
+      .maybeSingle();
+    const renderingProviderId = appointment ? normalizeNullable((appointment as DbRecord).provider_id) : null;
+    if (renderingProviderId) {
+      // provider_profiles links to the canonical staff/provider row via
+      // staff_id; some older orgs share IDs across the two tables, so we
+      // accept either match and pick the first active row.
+      const { data: profileByStaff } = await supabase
+        .from("provider_profiles")
+        .select("id, taxonomy_code")
+        .eq("organization_id", input.organizationId)
+        .eq("staff_id", renderingProviderId)
+        .is("archived_at", null)
+        .limit(1)
+        .maybeSingle();
+      let profile = profileByStaff as DbRecord | null;
+      if (!profile) {
+        const { data: profileById } = await supabase
+          .from("provider_profiles")
+          .select("id, taxonomy_code")
+          .eq("organization_id", input.organizationId)
+          .eq("id", renderingProviderId)
+          .is("archived_at", null)
+          .limit(1)
+          .maybeSingle();
+        profile = (profileById as DbRecord | null) ?? null;
+      }
+      renderingProviderTaxonomy = profile ? normalizeNullable(profile.taxonomy_code) : null;
+    }
+  }
+
   const { error: snapshotError } = await supabase.from("claim_parties_snapshot").insert({
     claim_id: claimId,
     billing_provider_name: input.billingProvider.name,
@@ -396,6 +440,7 @@ export async function createProfessionalClaimDraft(
     payer_name: normalizeText(payer!.payer_name),
     payer_id: normalizeText(payer!.payer_id),
     rendering_same_as_billing: true,
+    rendering_provider_taxonomy: renderingProviderTaxonomy,
     service_facility_same_as_billing: true,
   });
 

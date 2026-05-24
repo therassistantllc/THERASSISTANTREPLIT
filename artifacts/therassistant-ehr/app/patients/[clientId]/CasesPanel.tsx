@@ -19,7 +19,14 @@ interface CasePolicy {
   priority: Priority;
   planName: string | null;
   payerName: string | null;
+  payerId: string | null;
   policyNumber: string | null;
+  groupNumber: string | null;
+  effectiveDate: string | null;
+  terminationDate: string | null;
+  copayAmount: number | null;
+  subscriberRelationship: string | null;
+  subscriberName: string | null;
   activeFlag: boolean;
 }
 
@@ -323,23 +330,72 @@ export default function CasesPanel({
                 </div>
 
                 {c.policies.length > 0 ? (
-                  <ul style={{ listStyle: "none", padding: 0, margin: "0.5rem 0", display: "grid", gap: "0.25rem" }}>
+                  <ul style={{ listStyle: "none", padding: 0, margin: "0.5rem 0", display: "grid", gap: "0.5rem" }}>
                     {c.policies.map((p) => (
                       <li
                         key={p.id}
-                        style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}
+                        style={{
+                          display: "grid",
+                          gap: "0.25rem",
+                          padding: "0.5rem 0.75rem",
+                          border: "1px solid var(--border-color, #e5e7eb)",
+                          borderRadius: 6,
+                          background: "var(--surface-color, #fafafa)",
+                        }}
                       >
-                        <span className="status">{p.priority}</span>
-                        <span>{p.payerName ?? p.planName ?? "Policy"}</span>
-                        {p.policyNumber ? <span style={{ color: "var(--muted-color, #6b7280)" }}>#{p.policyNumber}</span> : null}
-                        <button
-                          type="button"
-                          className="button button-secondary"
-                          onClick={() => detachPolicy(c.id, p.policyId)}
-                          disabled={Boolean(busy)}
+                        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                          <span className="status">{p.priority}</span>
+                          <strong>{p.payerName ?? p.planName ?? "Policy"}</strong>
+                          {p.planName && p.payerName ? (
+                            <span style={{ color: "var(--muted-color, #6b7280)" }}>· {p.planName}</span>
+                          ) : null}
+                          {!p.activeFlag ? <span className="status status-yellow">Inactive</span> : null}
+                          <button
+                            type="button"
+                            className="button button-secondary"
+                            style={{ marginLeft: "auto" }}
+                            onClick={() => detachPolicy(c.id, p.policyId)}
+                            disabled={Boolean(busy)}
+                          >
+                            Detach
+                          </button>
+                        </div>
+                        <dl
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                            gap: "0.25rem 0.75rem",
+                            margin: 0,
+                            fontSize: "0.8125rem",
+                          }}
                         >
-                          Detach
-                        </button>
+                          <PolicyField label="Member ID" value={p.policyNumber} />
+                          <PolicyField label="Group #" value={p.groupNumber} />
+                          <PolicyField label="Payer ID" value={p.payerId} />
+                          <PolicyField label="Effective" value={formatDate(p.effectiveDate)} />
+                          <PolicyField label="Termination" value={formatDate(p.terminationDate)} />
+                          <PolicyField
+                            label="Copay"
+                            value={
+                              p.copayAmount != null
+                                ? `$${p.copayAmount.toFixed(2)}`
+                                : null
+                            }
+                          />
+                          <PolicyField
+                            label="Subscriber"
+                            value={(() => {
+                              const rel = (p.subscriberRelationship ?? "").trim().toLowerCase();
+                              const isSelf = rel === "self";
+                              if (p.subscriberName) {
+                                return rel && !isSelf
+                                  ? `${p.subscriberName} (${rel})`
+                                  : p.subscriberName;
+                              }
+                              return isSelf ? "Self" : null;
+                            })()}
+                          />
+                        </dl>
                       </li>
                     ))}
                   </ul>
@@ -415,6 +471,30 @@ export default function CasesPanel({
         </ul>
       )}
     </section>
+  );
+}
+
+function formatDate(value: string | null): string | null {
+  if (!value) return null;
+  const s = String(value);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) return `${m[2]}/${m[3]}/${m[1]}`;
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) {
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${mm}/${dd}/${d.getFullYear()}`;
+  }
+  return s;
+}
+
+function PolicyField({ label, value }: { label: string; value: string | null }) {
+  if (!value) return null;
+  return (
+    <div style={{ display: "flex", gap: "0.25rem", minWidth: 0 }}>
+      <dt style={{ color: "var(--muted-color, #6b7280)", fontWeight: 500 }}>{label}:</dt>
+      <dd style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</dd>
+    </div>
   );
 }
 

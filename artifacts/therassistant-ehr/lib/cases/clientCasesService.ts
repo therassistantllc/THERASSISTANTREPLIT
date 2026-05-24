@@ -35,6 +35,12 @@ interface ClientCasePolicySummary {
   payerName: string | null;
   payerId: string | null;
   policyNumber: string | null;
+  groupNumber: string | null;
+  effectiveDate: string | null;
+  terminationDate: string | null;
+  copayAmount: number | null;
+  subscriberRelationship: string | null;
+  subscriberName: string | null;
   activeFlag: boolean;
 }
 
@@ -93,20 +99,52 @@ async function loadCasePolicies(caseIds: string[]): Promise<Map<string, ClientCa
   const supabase = createServerSupabaseAdminClient();
   if (!supabase) return map;
 
-  const { data, error } = await supabase
+  const POLICY_COLS =
+    "id, plan_name, policy_number, group_number, effective_date, termination_date, copay_amount, active_flag, payer_id, subscriber_relationship, subscriber_first_name, subscriber_last_name, insurance_payers:payer_id (payer_name, payer_id)";
+  let { data, error } = await supabase
     .from("client_case_policies")
-    .select(
-      `id, case_id, policy_id, priority,
-       insurance_policies:policy_id (id, plan_name, policy_number, active_flag, payer_id,
-         insurance_payers:payer_id (payer_name, payer_id))`,
-    )
+    .select(`id, case_id, policy_id, priority, insurance_policies:policy_id (${POLICY_COLS})`)
     .in("case_id", caseIds);
+
+  // Tolerate environments where some of the extended insurance_policies
+  // columns (group_number, effective_date, termination_date, copay_amount,
+  // subscriber_*) haven't been migrated yet — retry with the legacy slim
+  // projection so cases still render.
+  if (error) {
+    const code = (error as { code?: string }).code ?? "";
+    const message = String((error as { message?: string }).message ?? "");
+    const missingCol =
+      (code === "42703" || code === "PGRST204" || code === "PGRST200") &&
+      /(group_number|effective_date|termination_date|copay_amount|subscriber_)/i.test(message);
+    if (missingCol) {
+      const retry = await supabase
+        .from("client_case_policies")
+        .select(
+          `id, case_id, policy_id, priority,
+           insurance_policies:policy_id (id, plan_name, policy_number, active_flag, payer_id,
+             insurance_payers:payer_id (payer_name, payer_id))`,
+        )
+        .in("case_id", caseIds);
+      data = retry.data as typeof data;
+      error = retry.error;
+    }
+  }
 
   if (error || !data) return map;
 
   for (const row of data as DbRow[]) {
     const policyRow = (row.insurance_policies ?? {}) as DbRow;
     const payerRow = (policyRow.insurance_payers ?? {}) as DbRow;
+    const subscriberName =
+      [policyRow.subscriber_first_name, policyRow.subscriber_last_name]
+        .map((v) => normalizeText(v))
+        .filter(Boolean)
+        .join(" ") || null;
+    const copayRaw = policyRow.copay_amount;
+    const copayAmount =
+      copayRaw === null || copayRaw === undefined || copayRaw === ""
+        ? null
+        : Number(copayRaw);
     const summary: ClientCasePolicySummary = {
       id: String(row.id),
       policyId: String(row.policy_id),
@@ -115,6 +153,12 @@ async function loadCasePolicies(caseIds: string[]): Promise<Map<string, ClientCa
       payerName: payerRow.payer_name ?? null,
       payerId: payerRow.payer_id ?? null,
       policyNumber: policyRow.policy_number ?? null,
+      groupNumber: policyRow.group_number ?? null,
+      effectiveDate: policyRow.effective_date ?? null,
+      terminationDate: policyRow.termination_date ?? null,
+      copayAmount: Number.isFinite(copayAmount as number) ? (copayAmount as number) : null,
+      subscriberRelationship: policyRow.subscriber_relationship ?? null,
+      subscriberName,
       activeFlag: Boolean(policyRow.active_flag ?? true),
     };
     const caseId = String(row.case_id);

@@ -10,6 +10,8 @@ type BillingRules = {
   requires_rendering_provider_taxonomy?: boolean;
   requires_subscriber_relationship?: boolean;
   timely_filing_days?: number | null;
+  appeal_deadline_days?: number | null;
+  corrected_claim_days?: number | null;
   allowed_cpt_codes?: string[] | null;
   denied_cpt_codes?: string[] | null;
 };
@@ -50,6 +52,8 @@ type FormState = {
   requires_rendering_provider_taxonomy: boolean;
   requires_subscriber_relationship: boolean;
   timely_filing_days_text: string;
+  appeal_deadline_days_text: string;
+  corrected_claim_days_text: string;
   allowed_cpt_codes_text: string;
   denied_cpt_codes_text: string;
 };
@@ -71,6 +75,8 @@ const EMPTY_FORM: FormState = {
   requires_rendering_provider_taxonomy: false,
   requires_subscriber_relationship: false,
   timely_filing_days_text: "",
+  appeal_deadline_days_text: "",
+  corrected_claim_days_text: "",
   allowed_cpt_codes_text: "",
   denied_cpt_codes_text: "",
 };
@@ -142,6 +148,14 @@ export default function PayerProfilesClient() {
         typeof br.timely_filing_days === "number" && br.timely_filing_days > 0
           ? String(br.timely_filing_days)
           : "",
+      appeal_deadline_days_text:
+        typeof br.appeal_deadline_days === "number" && br.appeal_deadline_days > 0
+          ? String(br.appeal_deadline_days)
+          : "",
+      corrected_claim_days_text:
+        typeof br.corrected_claim_days === "number" && br.corrected_claim_days > 0
+          ? String(br.corrected_claim_days)
+          : "",
       allowed_cpt_codes_text: joinList(br.allowed_cpt_codes ?? []),
       denied_cpt_codes_text: joinList(br.denied_cpt_codes ?? []),
     });
@@ -168,6 +182,10 @@ export default function PayerProfilesClient() {
         : `/api/settings/payer-profiles?organizationId=${encodeURIComponent(organizationId)}`;
       const timely = form.timely_filing_days_text.trim();
       const parsedTimely = timely ? Number(timely) : null;
+      const appealDays = form.appeal_deadline_days_text.trim();
+      const parsedAppeal = appealDays ? Number(appealDays) : null;
+      const correctedDays = form.corrected_claim_days_text.trim();
+      const parsedCorrected = correctedDays ? Number(correctedDays) : null;
       const slaText = form.adjudication_sla_days_text.trim();
       const parsedSla = slaText ? Number(slaText) : null;
       if (
@@ -190,6 +208,14 @@ export default function PayerProfilesClient() {
         timely_filing_days:
           parsedTimely != null && Number.isFinite(parsedTimely) && parsedTimely > 0
             ? Math.floor(parsedTimely)
+            : null,
+        appeal_deadline_days:
+          parsedAppeal != null && Number.isFinite(parsedAppeal) && parsedAppeal > 0
+            ? Math.floor(parsedAppeal)
+            : null,
+        corrected_claim_days:
+          parsedCorrected != null && Number.isFinite(parsedCorrected) && parsedCorrected > 0
+            ? Math.floor(parsedCorrected)
             : null,
         allowed_cpt_codes: splitCsv(form.allowed_cpt_codes_text),
         denied_cpt_codes: splitCsv(form.denied_cpt_codes_text),
@@ -433,6 +459,26 @@ export default function PayerProfilesClient() {
                     value={form.timely_filing_days_text}
                     onChange={(e) => setForm((p) => ({ ...p, timely_filing_days_text: e.target.value }))}
                     placeholder="e.g. 90"
+                  />
+                </label>
+                <label className="field-label">
+                  Appeal deadline days (blank = org default of 180)
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.appeal_deadline_days_text}
+                    onChange={(e) => setForm((p) => ({ ...p, appeal_deadline_days_text: e.target.value }))}
+                    placeholder="e.g. 60, 90, 180, 365"
+                  />
+                </label>
+                <label className="field-label">
+                  Corrected-claim days (blank = org default of 180)
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.corrected_claim_days_text}
+                    onChange={(e) => setForm((p) => ({ ...p, corrected_claim_days_text: e.target.value }))}
+                    placeholder="e.g. 90, 180, 365"
                   />
                 </label>
                 <label className="field-label">

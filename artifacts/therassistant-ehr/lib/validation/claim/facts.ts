@@ -116,6 +116,8 @@ export interface PayerBillingRules {
   requires_rendering_provider_taxonomy: boolean;
   requires_subscriber_relationship: boolean;
   timely_filing_days: number | null;
+  appeal_deadline_days: number | null;
+  corrected_claim_days: number | null;
   allowed_cpt_codes: string[];
   denied_cpt_codes: string[];
 }
@@ -130,16 +132,17 @@ function toStringArray(v: unknown): string[] {
 
 export function normalizePayerBillingRules(raw: unknown): PayerBillingRules {
   const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const tfd = obj.timely_filing_days;
-  const timely =
-    typeof tfd === "number" && Number.isFinite(tfd) && tfd > 0 ? Math.floor(tfd) : null;
+  const positiveInt = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : null;
   return {
     requires_telehealth_modifier: obj.requires_telehealth_modifier === true,
     allowed_pos_codes: toStringArray(obj.allowed_pos_codes),
     requires_rendering_provider_taxonomy:
       obj.requires_rendering_provider_taxonomy === true,
     requires_subscriber_relationship: obj.requires_subscriber_relationship === true,
-    timely_filing_days: timely,
+    timely_filing_days: positiveInt(obj.timely_filing_days),
+    appeal_deadline_days: positiveInt(obj.appeal_deadline_days),
+    corrected_claim_days: positiveInt(obj.corrected_claim_days),
     allowed_cpt_codes: toStringArray(obj.allowed_cpt_codes),
     denied_cpt_codes: toStringArray(obj.denied_cpt_codes),
   };

@@ -26,6 +26,8 @@ import {
   DEFAULT_CORRECTED_CLAIM_DAYS,
   DEFAULT_TIMELY_FILING_DAYS,
   reasonNotFiled,
+  readAppealDeadlineDays,
+  readCorrectedClaimDays,
   readTimelyFilingDays,
   TIMELY_FILING_TABS,
   UNFILED_STATUSES,
@@ -253,6 +255,8 @@ export async function GET(request: Request) {
       payer_id_external: string | null;
       payer_notes: string | null;
       payer_timely_filing_days: number | null;
+      payer_appeal_deadline_days: number | null;
+      payer_corrected_claim_days: number | null;
       service_date_from: string | null;
       service_date_to: string | null;
       filing_deadline: string | null;
@@ -301,6 +305,10 @@ export async function GET(request: Request) {
 
       const payerTfd =
         readTimelyFilingDays(payer?.billing_rules) ?? DEFAULT_TIMELY_FILING_DAYS;
+      const payerAppealDays =
+        readAppealDeadlineDays(payer?.billing_rules) ?? DEFAULT_APPEAL_DEADLINE_DAYS;
+      const payerCorrectedDays =
+        readCorrectedClaimDays(payer?.billing_rules) ?? DEFAULT_CORRECTED_CLAIM_DAYS;
       const filingDeadline = oldestDos ? addDaysISO(oldestDos, payerTfd) : null;
       const daysRemaining = filingDeadline
         ? daysBetweenISO(today, filingDeadline)
@@ -312,11 +320,11 @@ export async function GET(request: Request) {
         ? daysBetweenISO(today, appealDeadline)
         : null;
 
-      // Corrected-claim window = first_billed_date + DEFAULT_CORRECTED_CLAIM_DAYS
-      // (most payers allow ~6 months from original adjudication).
+      // Corrected-claim window = first_billed_date + payer's corrected_claim_days
+      // (falls back to org default when the payer hasn't configured one).
       const firstBilled = (claim.first_billed_date as string | null) ?? null;
       const correctedDeadline = firstBilled
-        ? addDaysISO(firstBilled, DEFAULT_CORRECTED_CLAIM_DAYS)
+        ? addDaysISO(firstBilled, payerCorrectedDays)
         : null;
       const correctedDaysRemaining = correctedDeadline
         ? daysBetweenISO(today, correctedDeadline)
@@ -365,10 +373,7 @@ export async function GET(request: Request) {
       // Also surface denied claims with a synthesized appeal deadline so the
       // queue isn't empty when payer hasn't populated appeal_deadline_date.
       if (!tab && isDenied && firstBilled) {
-        const synthAppealDeadline = addDaysISO(
-          firstBilled,
-          DEFAULT_APPEAL_DEADLINE_DAYS,
-        );
+        const synthAppealDeadline = addDaysISO(firstBilled, payerAppealDays);
         const synthAppealDays = daysBetweenISO(today, synthAppealDeadline);
         if (synthAppealDays <= 30) {
           tab = "appeal_risk";
@@ -390,6 +395,8 @@ export async function GET(request: Request) {
           : null,
         payer_notes: payer ? text(payer.notes) || null : null,
         payer_timely_filing_days: payerTfd,
+        payer_appeal_deadline_days: payerAppealDays,
+        payer_corrected_claim_days: payerCorrectedDays,
         service_date_from: dates.from,
         service_date_to: dates.to,
         filing_deadline: filingDeadline,

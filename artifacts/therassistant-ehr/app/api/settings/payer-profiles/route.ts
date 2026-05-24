@@ -32,6 +32,8 @@ function sanitizeBillingRules(raw: unknown): Record<string, unknown> {
     requires_rendering_provider_taxonomy: r.requires_rendering_provider_taxonomy,
     requires_subscriber_relationship: r.requires_subscriber_relationship,
     timely_filing_days: r.timely_filing_days,
+    appeal_deadline_days: r.appeal_deadline_days,
+    corrected_claim_days: r.corrected_claim_days,
     allowed_cpt_codes: r.allowed_cpt_codes,
     denied_cpt_codes: r.denied_cpt_codes,
   };

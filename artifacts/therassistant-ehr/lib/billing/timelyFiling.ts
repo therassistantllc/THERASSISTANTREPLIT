@@ -25,14 +25,29 @@ export const TIMELY_FILING_TABS: Array<{ id: TimelyFilingTab; label: string }> =
   { id: "corrected_risk", label: "Corrected Claim Deadline Risk" },
 ];
 
-export function readTimelyFilingDays(billingRules: unknown): number | null {
+function readPositiveIntField(
+  billingRules: unknown,
+  key: string,
+): number | null {
   const obj =
     billingRules && typeof billingRules === "object"
       ? (billingRules as Record<string, unknown>)
       : {};
-  const v = obj.timely_filing_days;
+  const v = obj[key];
   if (typeof v === "number" && Number.isFinite(v) && v > 0) return Math.floor(v);
   return null;
+}
+
+export function readTimelyFilingDays(billingRules: unknown): number | null {
+  return readPositiveIntField(billingRules, "timely_filing_days");
+}
+
+export function readAppealDeadlineDays(billingRules: unknown): number | null {
+  return readPositiveIntField(billingRules, "appeal_deadline_days");
+}
+
+export function readCorrectedClaimDays(billingRules: unknown): number | null {
+  return readPositiveIntField(billingRules, "corrected_claim_days");
 }
 
 export function addDaysISO(iso: string, days: number): string {

@@ -25,24 +25,65 @@ type Invoice = {
   payments: InvoicePayment[];
 };
 
+type InsurancePayment = {
+  id: string;
+  claimId: string;
+  claimNumber: string;
+  paymentAmount: number;
+  adjustmentAmount: number;
+  checkOrEft: string | null;
+  paidAt: string | null;
+  postingStatus: string | null;
+};
+
+type WriteOff = {
+  id: string;
+  claimId: string;
+  claimNumber: string;
+  amount: number;
+  date: string | null;
+};
+
+type ClaimLite = {
+  id: string;
+  claimNumber: string;
+  serviceDate: string | null;
+  totalCharge: number;
+  writeOff: number;
+  outstanding: number;
+  status: string | null;
+};
+
 type PatientBalancePayload = {
   success: boolean;
   error?: string;
   patient?: { id: string; name: string; dateOfBirth?: string | null; email?: string | null; phone?: string | null };
-  totals?: { openBalance: number; totalPaid: number; totalResponsibility: number; invoiceCount: number };
+  totals?: {
+    openBalance: number;
+    totalPaid: number;
+    totalResponsibility: number;
+    invoiceCount: number;
+    insurancePaid?: number;
+    adjustmentsTotal?: number;
+    writeOffTotal?: number;
+  };
   invoices?: Invoice[];
+  insurancePayments?: InsurancePayment[];
+  writeOffs?: WriteOff[];
+  claims?: ClaimLite[];
 };
 
 type LedgerEntry = {
   key: string;
   date: string | null;
-  kind: "invoice" | "payment";
+  kind: "invoice" | "payment" | "insurance_payment" | "adjustment" | "write_off";
   description: string;
   reference: string;
   charge: number;
   credit: number;
   status?: string;
-  invoiceId: string;
+  invoiceId?: string;
+  claimId?: string;
 };
 
 function getOrganizationId() {
@@ -71,7 +112,11 @@ function statusClass(value: unknown) {
   return "status";
 }
 
-function buildLedger(invoices: Invoice[]): LedgerEntry[] {
+function buildLedger(
+  invoices: Invoice[],
+  insurancePayments: InsurancePayment[],
+  writeOffs: WriteOff[],
+): LedgerEntry[] {
   const entries: LedgerEntry[] = [];
   for (const inv of invoices) {
     const invDate = inv.createdAt ? String(inv.createdAt) : null;
@@ -92,7 +137,7 @@ function buildLedger(invoices: Invoice[]): LedgerEntry[] {
         key: `pay:${pay.id}`,
         date: pay.paid_at ?? invDate,
         kind: "payment",
-        description: `Payment · ${pay.payment_method ?? "method not set"}${pay.memo ? ` — ${pay.memo}` : ""}`,
+        description: `Patient payment · ${pay.payment_method ?? "method not set"}${pay.memo ? ` — ${pay.memo}` : ""}`,
         reference: ref,
         charge: 0,
         credit: Number(pay.amount ?? 0),
@@ -101,14 +146,73 @@ function buildLedger(invoices: Invoice[]): LedgerEntry[] {
       });
     }
   }
+  for (const era of insurancePayments) {
+    const ref = era.claimNumber ? `Claim ${era.claimNumber}` : `Claim ${era.claimId.slice(0, 8)}`;
+    if (era.paymentAmount > 0) {
+      entries.push({
+        key: `era-pay:${era.id}`,
+        date: era.paidAt,
+        kind: "insurance_payment",
+        description: `Insurance payment${era.checkOrEft ? ` · check/EFT ${era.checkOrEft}` : ""}`,
+        reference: ref,
+        charge: 0,
+        credit: era.paymentAmount,
+        status: era.postingStatus ?? "posted",
+        claimId: era.claimId,
+      });
+    }
+    if (era.adjustmentAmount > 0) {
+      entries.push({
+        key: `era-adj:${era.id}`,
+        date: era.paidAt,
+        kind: "adjustment",
+        description: "Payer adjustment (CO/PR/OA/PI)",
+        reference: ref,
+        charge: 0,
+        credit: era.adjustmentAmount,
+        status: era.postingStatus ?? "posted",
+        claimId: era.claimId,
+      });
+    }
+  }
+  for (const wo of writeOffs) {
+    const ref = wo.claimNumber ? `Claim ${wo.claimNumber}` : `Claim ${wo.claimId.slice(0, 8)}`;
+    entries.push({
+      key: wo.id,
+      date: wo.date,
+      kind: "write_off",
+      description: "Write-off",
+      reference: ref,
+      charge: 0,
+      credit: wo.amount,
+      status: "posted",
+      claimId: wo.claimId,
+    });
+  }
   entries.sort((a, b) => {
     const ta = a.date ? new Date(a.date).getTime() : 0;
     const tb = b.date ? new Date(b.date).getTime() : 0;
     if (ta !== tb) return ta - tb;
-    if (a.kind !== b.kind) return a.kind === "invoice" ? -1 : 1;
-    return 0;
+    const order = { invoice: 0, payment: 1, insurance_payment: 1, adjustment: 1, write_off: 1 } as const;
+    return order[a.kind] - order[b.kind];
   });
   return entries;
+}
+
+function ledgerKindLabel(kind: LedgerEntry["kind"]): string {
+  switch (kind) {
+    case "invoice": return "Invoice";
+    case "payment": return "Patient payment";
+    case "insurance_payment": return "Insurance payment";
+    case "adjustment": return "Adjustment";
+    case "write_off": return "Write-off";
+  }
+}
+
+function ledgerKindClass(kind: LedgerEntry["kind"]): string {
+  if (kind === "invoice") return "status";
+  if (kind === "write_off") return "status status-yellow";
+  return "status status-green";
 }
 
 export default function PatientBalanceClient({ clientId }: { clientId: string }) {
@@ -204,7 +308,14 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
   const patient = payload?.patient;
   const totals = payload?.totals;
   const invoices = payload?.invoices ?? [];
-  const ledger = useMemo(() => buildLedger(invoices), [invoices]);
+  const insurancePayments = payload?.insurancePayments ?? [];
+  const writeOffs = payload?.writeOffs ?? [];
+  const openClaims = payload?.claims ?? [];
+  const ledger = useMemo(
+    () => buildLedger(invoices, insurancePayments, writeOffs),
+    [invoices, insurancePayments, writeOffs],
+  );
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
 
   let running = 0;
   const ledgerWithBalance = ledger.map((entry) => {
@@ -228,8 +339,17 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
           <p className="hero-copy">Account ledger of charges, payments, and adjustments with running balance.</p>
         </div>
         <div className="hero-actions">
-          <a
+          <button
+            type="button"
             className="button button-primary"
+            onClick={() => setInvoiceModalOpen(true)}
+            disabled={openClaims.length === 0}
+            title={openClaims.length === 0 ? "No open claims available to invoice" : "Generate a patient invoice from an open claim"}
+          >
+            Generate invoice
+          </button>
+          <a
+            className="button button-secondary"
             href={statementHref}
             target="_blank"
             rel="noreferrer"
@@ -251,12 +371,20 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
           <strong>{formatMoney(totals?.openBalance ?? 0)}</strong>
         </article>
         <article className="metric-card">
-          <span>Total Responsibility</span>
-          <strong>{formatMoney(totals?.totalResponsibility ?? 0)}</strong>
+          <span>Patient Paid</span>
+          <strong>{formatMoney(totals?.totalPaid ?? 0)}</strong>
         </article>
         <article className="metric-card">
-          <span>Total Paid</span>
-          <strong>{formatMoney(totals?.totalPaid ?? 0)}</strong>
+          <span>Insurance Paid</span>
+          <strong>{formatMoney(totals?.insurancePaid ?? 0)}</strong>
+        </article>
+        <article className="metric-card">
+          <span>Adjustments</span>
+          <strong>{formatMoney(totals?.adjustmentsTotal ?? 0)}</strong>
+        </article>
+        <article className="metric-card">
+          <span>Write-offs</span>
+          <strong>{formatMoney(totals?.writeOffTotal ?? 0)}</strong>
         </article>
         <article className="metric-card">
           <span>Invoices</span>
@@ -289,15 +417,23 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
                 <tr key={entry.key}>
                   <td>{formatDate(entry.date)}</td>
                   <td>
-                    <span className={entry.kind === "payment" ? "status status-green" : "status"}>
-                      {entry.kind === "payment" ? "Payment" : "Invoice"}
+                    <span className={ledgerKindClass(entry.kind)}>
+                      {ledgerKindLabel(entry.kind)}
                     </span>
                   </td>
                   <td>{entry.description}</td>
                   <td>
-                    <Link className="inline-link" href={`/clients/${patient.id}/balance/invoice/${entry.invoiceId}/print${orgQ}`} target="_blank">
-                      {entry.reference}
-                    </Link>
+                    {entry.invoiceId ? (
+                      <Link className="inline-link" href={`/clients/${patient.id}/balance/invoice/${entry.invoiceId}/print${orgQ}`} target="_blank">
+                        {entry.reference}
+                      </Link>
+                    ) : entry.claimId ? (
+                      <Link className="inline-link" href={`/claims/${entry.claimId}${orgQ}`}>
+                        {entry.reference}
+                      </Link>
+                    ) : (
+                      entry.reference
+                    )}
                   </td>
                   <td style={{ textAlign: "right" }}>{entry.charge ? formatMoney(entry.charge) : ""}</td>
                   <td style={{ textAlign: "right" }}>{entry.credit ? formatMoney(entry.credit) : ""}</td>
@@ -347,6 +483,132 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
           ))}
         </div>
       </section>
+
+      {invoiceModalOpen ? (
+        <GenerateInvoiceModal
+          organizationId={organizationId}
+          claims={openClaims}
+          onClose={() => setInvoiceModalOpen(false)}
+          onCreated={async (message) => {
+            setInvoiceModalOpen(false);
+            setActionMessage(message);
+            await loadBalance();
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+function GenerateInvoiceModal({
+  organizationId,
+  claims,
+  onClose,
+  onCreated,
+}: {
+  organizationId: string;
+  claims: ClaimLite[];
+  onClose: () => void;
+  onCreated: (message: string) => void | Promise<void>;
+}) {
+  const [claimId, setClaimId] = useState(claims[0]?.id ?? "");
+  const selected = claims.find((c) => c.id === claimId);
+  const [amount, setAmount] = useState(selected ? String(selected.outstanding) : "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const next = claims.find((c) => c.id === claimId);
+    if (next) setAmount(String(next.outstanding));
+  }, [claimId, claims]);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const numericAmount = Number(amount);
+      if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+        throw new Error("Enter a positive invoice amount");
+      }
+      const res = await fetch("/api/patient-invoices/from-claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId, claimId, amount: numericAmount }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? "Could not generate invoice");
+      }
+      await onCreated(`Patient invoice generated and posted to ledger.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#fff", borderRadius: 10, padding: 20, minWidth: 480, maxWidth: 560,
+          boxShadow: "0 20px 40px rgba(15,23,42,0.2)",
+        }}
+      >
+        <h3 style={{ marginTop: 0 }}>Generate patient invoice</h3>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Create a new patient invoice from an open claim. The invoice posts to the ledger and is marked sent.
+        </p>
+        {error ? <div className="alert-panel" style={{ marginBottom: 10 }}>{error}</div> : null}
+
+        <div style={{ display: "grid", gap: 10 }}>
+          <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
+            <span>Source claim</span>
+            <select
+              value={claimId}
+              onChange={(e) => setClaimId(e.target.value)}
+              style={{ padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 6 }}
+            >
+              {claims.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.claimNumber || c.id.slice(0, 8)} · {c.serviceDate ?? "no service date"} · outstanding {c.outstanding.toLocaleString(undefined, { style: "currency", currency: "USD" })}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
+            <span>Invoice amount</span>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              style={{ padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 6 }}
+            />
+          </label>
+        </div>
+
+        <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() => void submit()}
+            disabled={busy || !claimId || !amount}
+          >
+            {busy ? "Generating…" : "Generate invoice"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -41,8 +41,8 @@ function fmtDate(v: unknown) {
 }
 
 export default function InvoicePrintPage() {
-  const params = useParams<{ clientId: string; invoiceId: string }>();
-  const clientId = params?.clientId ?? "";
+  const params = useParams<{ clientId?: string; id?: string; invoiceId: string }>();
+  const clientId = params?.clientId ?? params?.id ?? "";
   const invoiceId = params?.invoiceId ?? "";
   const search = useSearchParams();
   const orgId = useMemo(

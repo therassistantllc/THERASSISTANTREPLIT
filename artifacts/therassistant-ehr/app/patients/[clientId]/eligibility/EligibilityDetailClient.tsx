@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DEFAULT_ORG_ID } from "@/lib/config";
 
+const HISTORY_PAGE_SIZE = 10;
+
 type Policy = {
   id: string;
   planName: string;
@@ -384,6 +386,11 @@ export default function EligibilityDetailClient({ clientId }: { clientId: string
     if (typeof window === "undefined") return null;
     return new URLSearchParams(window.location.search).get("checkId");
   });
+  const [historyPage, setHistoryPage] = useState(0);
+  const historyPageCount = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
+  useEffect(() => {
+    if (historyPage >= historyPageCount) setHistoryPage(0);
+  }, [historyPage, historyPageCount]);
 
   const selectedCheck = useMemo<EligibilityCheck | null>(() => {
     if (selectedCheckId) {
@@ -565,7 +572,7 @@ export default function EligibilityDetailClient({ clientId }: { clientId: string
                   </tr>
                 </thead>
                 <tbody>
-                  {history.map((check) => {
+                  {history.slice(historyPage * HISTORY_PAGE_SIZE, (historyPage + 1) * HISTORY_PAGE_SIZE).map((check) => {
                     const isCurrent = (selectedCheck?.id ?? latest?.id) === check.id;
                     return (
                       <tr
@@ -594,6 +601,35 @@ export default function EligibilityDetailClient({ clientId }: { clientId: string
                 </tbody>
               </table>
             )}
+            {history.length > HISTORY_PAGE_SIZE ? (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, fontSize: 13 }}>
+                <span className="muted">
+                  Page {historyPage + 1} of {historyPageCount} · showing
+                  {" "}
+                  {Math.min(history.length, historyPage * HISTORY_PAGE_SIZE + 1)}
+                  –{Math.min(history.length, (historyPage + 1) * HISTORY_PAGE_SIZE)}
+                  {" "}of {history.length}
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    disabled={historyPage === 0}
+                    onClick={() => setHistoryPage((p) => Math.max(0, p - 1))}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    disabled={historyPage >= historyPageCount - 1}
+                    onClick={() => setHistoryPage((p) => Math.min(historyPageCount - 1, p + 1))}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <section className="metric-grid">

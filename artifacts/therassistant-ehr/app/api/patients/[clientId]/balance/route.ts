@@ -92,6 +92,72 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
     const totalPaid = normalizedInvoices.reduce((sum, invoice) => sum + invoice.paidAmount, 0);
     const totalResponsibility = normalizedInvoices.reduce((sum, invoice) => sum + invoice.patientResponsibilityAmount, 0);
 
+    // Pull insurance (ERA) payments + adjustments + write-offs to surface in the unified ledger
+    const { data: claims } = await (supabase as any)
+      .from("professional_claims")
+      .select("id, claim_number, write_off_amount, total_charge, service_date_from, status")
+      .eq("organization_id", organizationId)
+      .eq("patient_id", clientId)
+      .is("archived_at", null)
+      .order("service_date_from", { ascending: false })
+      .limit(200);
+
+    const claimRows = (claims ?? []) as DbRow[];
+    const claimIds = claimRows.map((c) => String(c.id));
+
+    const { data: eraPayments } = claimIds.length
+      ? await (supabase as any)
+          .from("era_claim_payments")
+          .select("id, professional_claim_id, clp04_payment_amount, adjustment_amount, check_eft_number, check_issue_date, created_at, posting_status")
+          .eq("organization_id", organizationId)
+          .in("professional_claim_id", claimIds)
+          .is("archived_at", null)
+          .order("check_issue_date", { ascending: false })
+      : { data: [] as DbRow[] };
+
+    const claimByCid = new Map<string, DbRow>();
+    for (const c of claimRows) claimByCid.set(String(c.id), c);
+
+    const insurancePayments = (eraPayments ?? []).map((row: DbRow) => {
+      const claim = claimByCid.get(String(row.professional_claim_id));
+      return {
+        id: String(row.id),
+        claimId: String(row.professional_claim_id ?? ""),
+        claimNumber: claim ? String(claim.claim_number ?? "") : "",
+        paymentAmount: money(row.clp04_payment_amount),
+        adjustmentAmount: money(row.adjustment_amount),
+        checkOrEft: row.check_eft_number ?? null,
+        paidAt: row.check_issue_date ?? row.created_at ?? null,
+        postingStatus: row.posting_status ?? null,
+      };
+    });
+
+    const writeOffs = claimRows
+      .filter((c) => Number(c.write_off_amount ?? 0) > 0)
+      .map((c) => ({
+        id: `wo:${String(c.id)}`,
+        claimId: String(c.id),
+        claimNumber: String(c.claim_number ?? ""),
+        amount: money(c.write_off_amount),
+        date: c.service_date_from ?? null,
+      }));
+
+    const openClaims = claimRows
+      .filter((c) => {
+        const totalCharge = Number(c.total_charge ?? 0);
+        const writeOff = Number(c.write_off_amount ?? 0);
+        return totalCharge - writeOff > 0;
+      })
+      .map((c) => ({
+        id: String(c.id),
+        claimNumber: String(c.claim_number ?? ""),
+        serviceDate: c.service_date_from ?? null,
+        totalCharge: money(c.total_charge),
+        writeOff: money(c.write_off_amount ?? 0),
+        outstanding: money(Number(c.total_charge ?? 0) - Number(c.write_off_amount ?? 0)),
+        status: c.status ?? null,
+      }));
+
     return NextResponse.json({
       success: true,
       organizationId,
@@ -107,8 +173,14 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
         totalPaid,
         totalResponsibility,
         invoiceCount: normalizedInvoices.length,
+        insurancePaid: insurancePayments.reduce((s, p) => s + p.paymentAmount, 0),
+        adjustmentsTotal: insurancePayments.reduce((s, p) => s + p.adjustmentAmount, 0),
+        writeOffTotal: writeOffs.reduce((s, w) => s + w.amount, 0),
       },
       invoices: normalizedInvoices,
+      insurancePayments,
+      writeOffs,
+      claims: openClaims,
     });
   } catch (error) {
     console.error("Patient balance API error:", error);

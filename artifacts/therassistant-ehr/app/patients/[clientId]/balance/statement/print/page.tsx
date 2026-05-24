@@ -42,8 +42,8 @@ function fmtDate(v: unknown) {
 }
 
 export default function PatientStatementPrintPage() {
-  const params = useParams<{ clientId: string }>();
-  const clientId = params?.clientId ?? "";
+  const params = useParams<{ clientId?: string; id?: string }>();
+  const clientId = params?.clientId ?? params?.id ?? "";
   const search = useSearchParams();
   const orgId = useMemo(
     () => search.get("organizationId") || process.env.NEXT_PUBLIC_ORGANIZATION_ID || DEFAULT_ORG_ID,

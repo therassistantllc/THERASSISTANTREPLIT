@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { CreateAppointmentModal } from "@/app/calendar/MonthCalendarClient";
 
 type Appointment = {
   id: string;
@@ -18,8 +19,6 @@ type Appointment = {
   encounter: { id: string; status: string | null; serviceDate: string | null } | null;
 };
 
-type ProviderLite = { id: string; provider_name: string };
-
 function formatDate(v: string | null | undefined) {
   if (!v) return "—";
   const d = new Date(v);
@@ -32,13 +31,6 @@ function statusClass(v: string | null | undefined) {
   if (s.includes("cancel") || s.includes("no_show") || s.includes("noshow")) return "status status-red";
   if (s.includes("schedul") || s.includes("confirm") || s.includes("scheduled")) return "status status-yellow";
   return "status";
-}
-
-function defaultStart(): string {
-  const d = new Date();
-  d.setMinutes(0, 0, 0);
-  d.setHours(d.getHours() + 1);
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
 export default function VisitsAppointmentsPage() {
@@ -84,6 +76,7 @@ export default function VisitsAppointmentsPage() {
             type="button"
             className="button button-primary"
             onClick={() => setSchedulerOpen(true)}
+            disabled={!orgId || !clientId}
           >
             Schedule Appointment
           </button>
@@ -158,10 +151,10 @@ export default function VisitsAppointmentsPage() {
         </section>
       )}
 
-      {schedulerOpen ? (
-        <ScheduleAppointmentModal
+      {schedulerOpen && orgId && clientId ? (
+        <CreateAppointmentModal
           organizationId={orgId}
-          clientId={clientId}
+          lockedClientId={clientId}
           onClose={() => setSchedulerOpen(false)}
           onCreated={async () => {
             setSchedulerOpen(false);
@@ -170,163 +163,5 @@ export default function VisitsAppointmentsPage() {
         />
       ) : null}
     </main>
-  );
-}
-
-function ScheduleAppointmentModal({
-  organizationId,
-  clientId,
-  onClose,
-  onCreated,
-}: {
-  organizationId: string;
-  clientId: string;
-  onClose: () => void;
-  onCreated: () => void | Promise<void>;
-}) {
-  const [providers, setProviders] = useState<ProviderLite[]>([]);
-  const [providerId, setProviderId] = useState("");
-  const [startAt, setStartAt] = useState<string>(defaultStart);
-  const [duration, setDuration] = useState<number>(60);
-  const [memo, setMemo] = useState("");
-  const [serviceLocation, setServiceLocation] = useState<"office" | "telehealth">("office");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`/api/providers?organizationId=${encodeURIComponent(organizationId)}`);
-        const json = await res.json();
-        const rows: ProviderLite[] = (json.providers ?? []).map((r: Record<string, unknown>) => ({
-          id: String(r.id),
-          provider_name: String(r.provider_name ?? "Provider"),
-        }));
-        setProviders(rows);
-        if (rows[0]) setProviderId(rows[0].id);
-      } catch {
-        setError("Could not load providers");
-      }
-    })();
-  }, [organizationId]);
-
-  async function submit() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/scheduling/appointments/create`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organizationId,
-          clientId,
-          providerId,
-          scheduledStartAt: new Date(startAt).toISOString(),
-          durationMinutes: Number(duration),
-          appointmentType: "Therapy",
-          memo,
-          serviceLocation,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.error ?? "Could not create appointment");
-      await onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
-        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#fff", borderRadius: 10, padding: 20, minWidth: 420, maxWidth: 520,
-          boxShadow: "0 20px 40px rgba(15,23,42,0.2)",
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Schedule appointment</h3>
-        {error ? <div className="alert-panel" style={{ marginBottom: 10 }}>{error}</div> : null}
-
-        <div style={{ display: "grid", gap: 10 }}>
-          <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
-            <span>Provider</span>
-            <select
-              value={providerId}
-              onChange={(e) => setProviderId(e.target.value)}
-              style={{ padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 6 }}
-            >
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>{p.provider_name}</option>
-              ))}
-            </select>
-          </label>
-
-          <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
-            <span>Start time</span>
-            <input
-              type="datetime-local"
-              value={startAt}
-              onChange={(e) => setStartAt(e.target.value)}
-              style={{ padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 6 }}
-            />
-          </label>
-
-          <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
-            <span>Duration (minutes)</span>
-            <input
-              type="number"
-              min={15}
-              step={15}
-              value={duration}
-              onChange={(e) => setDuration(Number(e.target.value))}
-              style={{ padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 6 }}
-            />
-          </label>
-
-          <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
-            <span>Location</span>
-            <select
-              value={serviceLocation}
-              onChange={(e) => setServiceLocation(e.target.value as "office" | "telehealth")}
-              style={{ padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 6 }}
-            >
-              <option value="office">Office</option>
-              <option value="telehealth">Telehealth</option>
-            </select>
-          </label>
-
-          <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
-            <span>Memo</span>
-            <input
-              type="text"
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              style={{ padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 6 }}
-            />
-          </label>
-        </div>
-
-        <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
-          <button
-            type="button"
-            className="button button-primary"
-            onClick={() => void submit()}
-            disabled={busy || !providerId || !startAt}
-          >
-            {busy ? "Creating…" : "Create"}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

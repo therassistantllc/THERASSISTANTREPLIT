@@ -1415,20 +1415,22 @@ function StripeCardCharge({
 
 /* --- New Appointment modal --- */
 
-function CreateAppointmentModal({
+export function CreateAppointmentModal({
   organizationId,
   initialDate,
+  lockedClientId,
   onClose,
   onCreated,
 }: {
   organizationId: string;
   initialDate?: string | null;
+  lockedClientId?: string | null;
   onClose: () => void;
   onCreated: () => void | Promise<void>;
 }) {
   const [clients, setClients] = useState<ClientLite[]>([]);
   const [providers, setProviders] = useState<ProviderLite[]>([]);
-  const [clientId, setClientId] = useState("");
+  const [clientId, setClientId] = useState(lockedClientId ?? "");
   const [providerId, setProviderId] = useState("");
   const [startAt, setStartAt] = useState<string>(() => {
     if (initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
@@ -1479,7 +1481,11 @@ function CreateAppointmentModal({
         );
         setClients(clientRows);
         setProviders(providerRows);
-        if (clientRows[0]) setClientId(clientRows[0].id);
+        if (lockedClientId) {
+          setClientId(lockedClientId);
+        } else if (clientRows[0]) {
+          setClientId(clientRows[0].id);
+        }
         if (providerRows[0]) setProviderId(providerRows[0].id);
       } catch {
         setError("Could not load clients or providers");
@@ -1531,12 +1537,19 @@ function CreateAppointmentModal({
             className={styles.select}
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
+            disabled={Boolean(lockedClientId)}
           >
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name || c.id}
+            {lockedClientId ? (
+              <option value={lockedClientId}>
+                {clients.find((c) => c.id === lockedClientId)?.name ?? "This patient"}
               </option>
-            ))}
+            ) : (
+              clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name || c.id}
+                </option>
+              ))
+            )}
           </select>
         </div>
         <div className={styles.modalRow}>

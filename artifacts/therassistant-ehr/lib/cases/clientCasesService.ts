@@ -39,8 +39,20 @@ interface ClientCasePolicySummary {
   effectiveDate: string | null;
   terminationDate: string | null;
   copayAmount: number | null;
+  coinsurancePercent: number | null;
+  deductibleAmount: number | null;
+  outOfPocketMax: number | null;
   subscriberRelationship: string | null;
-  subscriberName: string | null;
+  subscriberFirstName: string | null;
+  subscriberLastName: string | null;
+  subscriberDateOfBirth: string | null;
+  subscriberMemberId: string | null;
+  subscriberPhone: string | null;
+  subscriberAddressLine1: string | null;
+  subscriberAddressLine2: string | null;
+  subscriberCity: string | null;
+  subscriberState: string | null;
+  subscriberPostalCode: string | null;
   activeFlag: boolean;
 }
 
@@ -104,7 +116,7 @@ async function loadCasePolicies(caseIds: string[]): Promise<Map<string, ClientCa
   // The relationship column exists on both tables; prefer the policy-level
   // override and fall back to the subscriber row.
   const POLICY_COLS =
-    "id, plan_name, policy_number, group_number, effective_date, termination_date, copay_amount, active_flag, payer_id, subscriber_relationship, insurance_payers:payer_id (payer_name, payer_id), insurance_subscribers:subscriber_id (first_name, last_name, relationship_to_client)";
+    "id, plan_name, policy_number, group_number, effective_date, termination_date, copay_amount, coinsurance_percent, deductible_amount, out_of_pocket_max, active_flag, payer_id, subscriber_relationship, insurance_payers:payer_id (payer_name, payer_id), insurance_subscribers:subscriber_id (first_name, last_name, date_of_birth, member_id, phone, address_line_1, address_line_2, city, state, postal_code, relationship_to_client)";
   const { data, error } = await supabase
     .from("client_case_policies")
     .select(`id, case_id, policy_id, priority, insurance_policies:policy_id (${POLICY_COLS})`)
@@ -116,20 +128,15 @@ async function loadCasePolicies(caseIds: string[]): Promise<Map<string, ClientCa
     const policyRow = (row.insurance_policies ?? {}) as DbRow;
     const payerRow = (policyRow.insurance_payers ?? {}) as DbRow;
     const subscriberRow = (policyRow.insurance_subscribers ?? {}) as DbRow;
-    const subscriberName =
-      [subscriberRow.first_name, subscriberRow.last_name]
-        .map((v) => normalizeText(v))
-        .filter(Boolean)
-        .join(" ") || null;
     const relationship =
       normalizeText(policyRow.subscriber_relationship) ||
       normalizeText(subscriberRow.relationship_to_client) ||
       null;
-    const copayRaw = policyRow.copay_amount;
-    const copayAmount =
-      copayRaw === null || copayRaw === undefined || copayRaw === ""
-        ? null
-        : Number(copayRaw);
+    const num = (v: unknown): number | null => {
+      if (v === null || v === undefined || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
     const summary: ClientCasePolicySummary = {
       id: String(row.id),
       policyId: String(row.policy_id),
@@ -141,9 +148,21 @@ async function loadCasePolicies(caseIds: string[]): Promise<Map<string, ClientCa
       groupNumber: policyRow.group_number ?? null,
       effectiveDate: policyRow.effective_date ?? null,
       terminationDate: policyRow.termination_date ?? null,
-      copayAmount: Number.isFinite(copayAmount as number) ? (copayAmount as number) : null,
+      copayAmount: num(policyRow.copay_amount),
+      coinsurancePercent: num(policyRow.coinsurance_percent),
+      deductibleAmount: num(policyRow.deductible_amount),
+      outOfPocketMax: num(policyRow.out_of_pocket_max),
       subscriberRelationship: relationship,
-      subscriberName,
+      subscriberFirstName: subscriberRow.first_name ?? null,
+      subscriberLastName: subscriberRow.last_name ?? null,
+      subscriberDateOfBirth: subscriberRow.date_of_birth ?? null,
+      subscriberMemberId: subscriberRow.member_id ?? null,
+      subscriberPhone: subscriberRow.phone ?? null,
+      subscriberAddressLine1: subscriberRow.address_line_1 ?? null,
+      subscriberAddressLine2: subscriberRow.address_line_2 ?? null,
+      subscriberCity: subscriberRow.city ?? null,
+      subscriberState: subscriberRow.state ?? null,
+      subscriberPostalCode: subscriberRow.postal_code ?? null,
       activeFlag: Boolean(policyRow.active_flag ?? true),
     };
     const caseId = String(row.case_id);

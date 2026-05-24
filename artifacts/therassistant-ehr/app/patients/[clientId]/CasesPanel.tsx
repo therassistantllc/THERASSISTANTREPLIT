@@ -25,8 +25,20 @@ interface CasePolicy {
   effectiveDate: string | null;
   terminationDate: string | null;
   copayAmount: number | null;
+  coinsurancePercent: number | null;
+  deductibleAmount: number | null;
+  outOfPocketMax: number | null;
   subscriberRelationship: string | null;
-  subscriberName: string | null;
+  subscriberFirstName: string | null;
+  subscriberLastName: string | null;
+  subscriberDateOfBirth: string | null;
+  subscriberMemberId: string | null;
+  subscriberPhone: string | null;
+  subscriberAddressLine1: string | null;
+  subscriberAddressLine2: string | null;
+  subscriberCity: string | null;
+  subscriberState: string | null;
+  subscriberPostalCode: string | null;
   activeFlag: boolean;
 }
 
@@ -360,42 +372,7 @@ export default function CasesPanel({
                             Detach
                           </button>
                         </div>
-                        <dl
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                            gap: "0.25rem 0.75rem",
-                            margin: 0,
-                            fontSize: "0.8125rem",
-                          }}
-                        >
-                          <PolicyField label="Member ID" value={p.policyNumber} />
-                          <PolicyField label="Group #" value={p.groupNumber} />
-                          <PolicyField label="Payer ID" value={p.payerId} />
-                          <PolicyField label="Effective" value={formatDate(p.effectiveDate)} />
-                          <PolicyField label="Termination" value={formatDate(p.terminationDate)} />
-                          <PolicyField
-                            label="Copay"
-                            value={
-                              p.copayAmount != null
-                                ? `$${p.copayAmount.toFixed(2)}`
-                                : null
-                            }
-                          />
-                          <PolicyField
-                            label="Subscriber"
-                            value={(() => {
-                              const rel = (p.subscriberRelationship ?? "").trim().toLowerCase();
-                              const isSelf = rel === "self";
-                              if (p.subscriberName) {
-                                return rel && !isSelf
-                                  ? `${p.subscriberName} (${rel})`
-                                  : p.subscriberName;
-                              }
-                              return isSelf ? "Self" : null;
-                            })()}
-                          />
-                        </dl>
+                        <PolicyDetails p={p} />
                       </li>
                     ))}
                   </ul>
@@ -489,11 +466,123 @@ function formatDate(value: string | null): string | null {
 }
 
 function PolicyField({ label, value }: { label: string; value: string | null }) {
-  if (!value) return null;
   return (
-    <div style={{ display: "flex", gap: "0.25rem", minWidth: 0 }}>
-      <dt style={{ color: "var(--muted-color, #6b7280)", fontWeight: 500 }}>{label}:</dt>
-      <dd style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</dd>
+    <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+      <dt style={{ color: "var(--muted-color, #6b7280)", fontWeight: 500, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.02em" }}>{label}</dt>
+      <dd style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value ?? "—"}</dd>
+    </div>
+  );
+}
+
+function money(v: number | null): string | null {
+  return v == null ? null : `$${v.toFixed(2)}`;
+}
+
+function PolicyDetails({ p }: { p: CasePolicy }) {
+  const subscriberName =
+    [p.subscriberFirstName, p.subscriberLastName].filter(Boolean).join(" ").trim() || null;
+  const rel = (p.subscriberRelationship ?? "").trim();
+  const subscriberLabel = subscriberName
+    ? rel && rel.toLowerCase() !== "self"
+      ? `${subscriberName} (${rel.toLowerCase()})`
+      : subscriberName
+    : rel.toLowerCase() === "self"
+      ? "Self"
+      : null;
+  const cityState = [p.subscriberCity, p.subscriberState].filter(Boolean).join(", ");
+  const subscriberAddress =
+    [
+      [p.subscriberAddressLine1, p.subscriberAddressLine2].filter(Boolean).join(" "),
+      [cityState, p.subscriberPostalCode].filter(Boolean).join(" "),
+    ]
+      .filter(Boolean)
+      .join(", ") || null;
+
+  return (
+    <div style={{ display: "grid", gap: "0.75rem", marginTop: "0.25rem" }}>
+      <section>
+        <h5 style={{ margin: "0 0 0.25rem", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted-color, #6b7280)" }}>
+          Plan & payer
+        </h5>
+        <dl
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+            gap: "0.5rem 0.75rem",
+            margin: 0,
+            fontSize: "0.8125rem",
+          }}
+        >
+          <PolicyField label="Plan name" value={p.planName} />
+          <PolicyField label="Payer" value={p.payerName} />
+          <PolicyField label="Payer ID" value={p.payerId} />
+        </dl>
+      </section>
+
+      <section>
+        <h5 style={{ margin: "0 0 0.25rem", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted-color, #6b7280)" }}>
+          Member & coverage
+        </h5>
+        <dl
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+            gap: "0.5rem 0.75rem",
+            margin: 0,
+            fontSize: "0.8125rem",
+          }}
+        >
+          <PolicyField label="Policy / Member ID" value={p.policyNumber} />
+          <PolicyField label="Group #" value={p.groupNumber} />
+          <PolicyField label="Effective" value={formatDate(p.effectiveDate)} />
+          <PolicyField label="Termination" value={formatDate(p.terminationDate)} />
+        </dl>
+      </section>
+
+      <section>
+        <h5 style={{ margin: "0 0 0.25rem", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted-color, #6b7280)" }}>
+          Patient responsibility
+        </h5>
+        <dl
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+            gap: "0.5rem 0.75rem",
+            margin: 0,
+            fontSize: "0.8125rem",
+          }}
+        >
+          <PolicyField label="Copay" value={money(p.copayAmount)} />
+          <PolicyField
+            label="Coinsurance"
+            value={p.coinsurancePercent != null ? `${p.coinsurancePercent}%` : null}
+          />
+          <PolicyField label="Deductible" value={money(p.deductibleAmount)} />
+          <PolicyField label="Out-of-pocket max" value={money(p.outOfPocketMax)} />
+        </dl>
+      </section>
+
+      <section>
+        <h5 style={{ margin: "0 0 0.25rem", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted-color, #6b7280)" }}>
+          Subscriber
+        </h5>
+        <dl
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "0.5rem 0.75rem",
+            margin: 0,
+            fontSize: "0.8125rem",
+          }}
+        >
+          <PolicyField label="Name" value={subscriberLabel} />
+          <PolicyField label="Relationship" value={rel || null} />
+          <PolicyField label="Date of birth" value={formatDate(p.subscriberDateOfBirth)} />
+          <PolicyField label="Subscriber ID" value={p.subscriberMemberId} />
+          <PolicyField label="Phone" value={p.subscriberPhone} />
+          <PolicyField label="Address" value={subscriberAddress} />
+        </dl>
+      </section>
     </div>
   );
 }

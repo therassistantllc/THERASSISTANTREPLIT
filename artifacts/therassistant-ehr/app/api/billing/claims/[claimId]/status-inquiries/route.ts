@@ -173,6 +173,19 @@ export async function GET(
 
     const inquiries = inquiryRows.map((row) => {
       const userId = str(row["created_by_user_id"]);
+      // Task #540: prefer the explicit trigger_source column written by
+      // both the manual action and the auto-check scheduler. Fall back
+      // to "manual" when a user id is present (legacy rows pre-column)
+      // and "auto" when no user is recorded (cron runs as system).
+      const explicitSource = str(row["trigger_source"]);
+      const trigger_source: "manual" | "auto" =
+        explicitSource === "auto"
+          ? "auto"
+          : explicitSource === "manual"
+            ? "manual"
+            : userId
+              ? "manual"
+              : "auto";
       return {
         id: str(row["id"]),
         kind: "inquiry" as const,
@@ -189,6 +202,7 @@ export async function GET(
         triggered_by_display_name: userId
           ? userNameById.get(userId) ?? null
           : null,
+        trigger_source,
       };
     });
 

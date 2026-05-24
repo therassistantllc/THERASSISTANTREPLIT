@@ -21,6 +21,12 @@ export interface StatusHistoryEntry {
   message: string | null;
   payerReferenceId: string | null;
   at: string;
+  /**
+   * For 276/277 inquiry rows: whether the inquiry was kicked off by a
+   * biller clicking "Check payer status" (`manual`) or by the scheduled
+   * auto-check cron (`auto`). `null` for non-inquiry events. Task #540.
+   */
+  triggerSource?: "manual" | "auto" | null;
 }
 
 export interface PayerReceivedRow {
@@ -234,7 +240,7 @@ export async function loadPayerReceivedClaims({
       : { data: [] as DbRow[] },
     claimIds.length
       ? sb.from("claim_status_inquiries")
-          .select("id, claim_id, inquiry_status, payer_status_code, payer_status_text, requested_at, responded_at, response_summary")
+          .select("id, claim_id, inquiry_status, payer_status_code, payer_status_text, requested_at, responded_at, response_summary, trigger_source, created_by_user_id")
           .eq("organization_id", organizationId)
           .in("claim_id", claimIds)
           .is("archived_at", null)
@@ -368,12 +374,24 @@ export async function loadPayerReceivedClaims({
     // Status history (276/277): combine inquiries + status events.
     const statusHistory: StatusHistoryEntry[] = [];
     for (const i of claimInquiries) {
+      // Task #540: expose trigger_source so the UI can show an
+      // "Auto-checked" vs "Manual" badge on each 276/277 history entry.
+      const explicit = text(i.trigger_source).toLowerCase();
+      const triggerSource: "manual" | "auto" =
+        explicit === "auto"
+          ? "auto"
+          : explicit === "manual"
+            ? "manual"
+            : text(i.created_by_user_id)
+              ? "manual"
+              : "auto";
       statusHistory.push({
         source: "276/277",
         status: text(i.inquiry_status) || "unknown",
         message: text(i.payer_status_text) || null,
         payerReferenceId: text(i.payer_status_code) || null,
         at: text(i.responded_at) || text(i.requested_at),
+        triggerSource,
       });
     }
     for (const e of claimEvents) {
@@ -383,6 +401,7 @@ export async function loadPayerReceivedClaims({
         message: text(e.status_message) || null,
         payerReferenceId: text(e.payer_reference_id) || text(e.availity_claim_id) || null,
         at: text(e.created_at),
+        triggerSource: null,
       });
     }
     statusHistory.sort((a, b) => (b.at || "").localeCompare(a.at || ""));

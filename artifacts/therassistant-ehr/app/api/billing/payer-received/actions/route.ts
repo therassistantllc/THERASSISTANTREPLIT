@@ -122,6 +122,9 @@ export async function POST(request: Request) {
             requested_at: queuedAt,
             duplicate_detection_key: duplicateKey,
             created_by_user_id: userId,
+            // Task #540: distinguish biller-initiated checks from the
+            // scheduled cron auto-checks (see claimStatusAutoCheck.ts).
+            trigger_source: "manual",
           })
           .select("id")
           .single();

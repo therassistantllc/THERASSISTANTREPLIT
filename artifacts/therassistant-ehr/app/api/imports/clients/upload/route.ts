@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { parseClientImportFile } from "@/lib/imports/clientImportParser";
 import { proposeClientImportMapping } from "@/lib/imports/clientImportMappingService";
+import { requireOrgAccess } from "@/lib/auth/requireOrgAccess";
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,7 +10,12 @@ export async function POST(req: NextRequest) {
     const file = formData.get("file");
     const sourceSystem = String(formData.get("source_system") ?? "unknown").trim() || "unknown";
     const organizationIdRaw = String(formData.get("organization_id") ?? "").trim();
-    const organizationId = organizationIdRaw.length > 0 ? organizationIdRaw : null;
+
+    const guard = await requireOrgAccess({
+      requestedOrganizationId: organizationIdRaw || null,
+    });
+    if (guard instanceof NextResponse) return guard;
+    const organizationId = guard.organizationId;
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "file is required" }, { status: 400 });

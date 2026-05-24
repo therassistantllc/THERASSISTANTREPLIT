@@ -6,6 +6,7 @@ import {
   type ClientImportMapping,
 } from "@/lib/imports/clientImportMappingService";
 import { validateClientImportRows } from "@/lib/imports/clientImportValidationService";
+import { requireOrgAccess } from "@/lib/auth/requireOrgAccess";
 
 interface MapRequest {
   mapping: Record<string, string | null>;
@@ -33,6 +34,10 @@ export async function POST(
       );
     }
 
+    const guard = await requireOrgAccess();
+    if (guard instanceof NextResponse) return guard;
+    const { organizationId: sessionOrgId } = guard;
+
     const normalizedMapping = Object.fromEntries(
       CLIENT_IMPORT_CANONICAL_FIELDS.map((field) => {
         const rawValue = mapping[field];
@@ -57,6 +62,17 @@ export async function POST(
       .single();
 
     if (jobError || !job) {
+      return NextResponse.json(
+        { error: "Import job not found" },
+        { status: 404 }
+      );
+    }
+
+    if (
+      typeof job.organization_id === "string" &&
+      job.organization_id &&
+      job.organization_id !== sessionOrgId
+    ) {
       return NextResponse.json(
         { error: "Import job not found" },
         { status: 404 }

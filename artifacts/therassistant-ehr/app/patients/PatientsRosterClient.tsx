@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MoreVertical, Search } from "lucide-react";
+import { MoreVertical, Search, Upload } from "lucide-react";
 import { DEFAULT_ORG_ID } from "@/lib/config";
 import styles from "./roster.module.css";
+import ClientImportDialog from "./ClientImportDialog";
 
 type EligibilityState = {
   status: "none" | "active" | "inactive" | "pending" | "error" | "stale";
@@ -149,6 +150,7 @@ export default function PatientsRosterClient({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const requestSeqRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -237,6 +239,27 @@ export default function PatientsRosterClient({
 
   return (
     <main className={styles.page}>
+      {/* ── Header ── */}
+      <header className={styles.header}>
+        <div className={styles.headerActions}>
+          <button
+            type="button"
+            className={styles.headerBtn}
+            onClick={() => setImportOpen(true)}
+          >
+            <Upload size={14} /> Import CSV
+          </button>
+        </div>
+      </header>
+
+      <ClientImportDialog
+        open={importOpen}
+        organizationId={organizationId}
+        onClose={() => setImportOpen(false)}
+        onImported={() => loadClients(query)}
+      />
+
+
       {/* ── Smart search ── */}
       <div className={styles.searchBar} role="search">
         <Search size={16} color="#94A3B8" aria-hidden />

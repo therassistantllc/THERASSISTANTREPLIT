@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
+import { requireOrgAccess } from "@/lib/auth/requireOrgAccess";
 
 export async function GET(
   req: NextRequest,
@@ -7,12 +8,18 @@ export async function GET(
 ) {
   try {
     const { jobId } = await context.params;
-    
+
     const { searchParams } = new URL(req.url);
     const pageSize = Math.min(parseInt(searchParams.get("pageSize") ?? "50"), 500);
     const pageNumber = Math.max(parseInt(searchParams.get("pageNumber") ?? "1"), 1);
     const includeRawRows = searchParams.get("includeRawRows") === "true";
     const offset = (pageNumber - 1) * pageSize;
+
+    const guard = await requireOrgAccess({
+      requestedOrganizationId: searchParams.get("organizationId"),
+    });
+    if (guard instanceof NextResponse) return guard;
+    const { organizationId } = guard;
 
     const supabase = createServerSupabaseAdminClient();
     if (!supabase) {
@@ -32,6 +39,13 @@ export async function GET(
       .single();
 
     if (jobError || !job) {
+      return NextResponse.json(
+        { error: "Import job not found" },
+        { status: 404 }
+      );
+    }
+
+    if (job.organization_id && job.organization_id !== organizationId) {
       return NextResponse.json(
         { error: "Import job not found" },
         { status: 404 }

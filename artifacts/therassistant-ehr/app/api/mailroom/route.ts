@@ -38,7 +38,7 @@ export async function GET(request: Request) {
 
     let query = supabase
       .from("mailroom_items")
-      .select("id, client_id, mail_status, priority, document_type, title, sender_name, payer_name, received_date, notes, file_name, file_mime_type, file_size_bytes, storage_bucket, storage_path, filed_location, filed_at, resolved_at, handling_audit, created_at, updated_at")
+      .select("id, client_id, mail_status, priority, document_type, sender_name, payer_name, received_date, notes, file_name, file_mime_type, file_size_bytes, storage_bucket, storage_path, filed_location, filed_at, resolved_at, handling_audit, created_at, updated_at")
       .eq("organization_id", organizationId)
       .is("archived_at", null)
       .order("created_at", { ascending: false })
@@ -71,7 +71,6 @@ export async function GET(request: Request) {
         status: item.mail_status,
         priority: item.priority,
         documentType: item.document_type,
-        title: item.title,
         senderName: item.sender_name,
         payerName: item.payer_name,
         receivedDate: item.received_date,
@@ -124,7 +123,6 @@ export async function POST(request: Request) {
     const organizationId = guard.organizationId;
 
     const now = new Date().toISOString();
-    const title = value(body.title) || "Uploaded mail item";
 
     const { data, error } = await supabase
       .from("mailroom_items")
@@ -134,7 +132,6 @@ export async function POST(request: Request) {
         mail_status: value(body.status) || "unsorted",
         priority: value(body.priority) || "normal",
         document_type: value(body.documentType) || "payer_notice",
-        title,
         sender_name: value(body.senderName) || null,
         payer_name: value(body.payerName) || null,
         received_date: value(body.receivedDate) || new Date().toISOString().slice(0, 10),

@@ -7138,7 +7138,6 @@ export type Database = {
           storage_bucket: string | null
           storage_path: string
           ticket_id: string | null
-          title: string
           updated_at: string
           uploaded_by_user_id: string | null
           workqueue_item_id: string | null
@@ -7179,7 +7178,6 @@ export type Database = {
           storage_bucket?: string | null
           storage_path: string
           ticket_id?: string | null
-          title: string
           updated_at?: string
           uploaded_by_user_id?: string | null
           workqueue_item_id?: string | null
@@ -7220,7 +7218,6 @@ export type Database = {
           storage_bucket?: string | null
           storage_path?: string
           ticket_id?: string | null
-          title?: string
           updated_at?: string
           uploaded_by_user_id?: string | null
           workqueue_item_id?: string | null

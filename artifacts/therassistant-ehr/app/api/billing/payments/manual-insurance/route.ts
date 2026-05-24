@@ -68,7 +68,6 @@ export async function POST(request: Request) {
         .insert({
           organization_id: organizationId,
           client_id: att.clientId ?? body.clientId ?? null,
-          title: att.fileName ?? "EOB attachment",
           file_name: att.fileName ?? "eob-attachment",
           mime_type: att.mimeType ?? "application/pdf",
           storage_path: att.storagePath ?? `manual-eob/${Date.now()}-${att.fileName ?? "eob"}`,

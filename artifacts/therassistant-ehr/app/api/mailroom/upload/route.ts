@@ -91,13 +91,11 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    const title = fileName || "Uploaded mailroom document";
     const { data, error } = await supabase
       .from("mailroom_items")
       .insert({
         organization_id: organizationId,
         client_id: clientId,
-        title,
         file_name: fileName,
         mime_type: mimeType,
         storage_path: storagePath,

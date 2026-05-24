@@ -321,8 +321,8 @@ function itemsPostRequest(body: Record<string, unknown>): Request {
   });
 }
 
-describe("POST /api/mailroom/items — title backfill (Task #403)", () => {
-  it("succeeds without a caller-supplied title and populates legacy `title` from fileName", async () => {
+describe("POST /api/mailroom/items — legacy `title` column dropped (Task #407)", () => {
+  it("succeeds without a caller-supplied title and does not write the dropped `title` column", async () => {
     const POST = await loadItemsPost();
     const res = await POST(
       itemsPostRequest({
@@ -336,26 +336,16 @@ describe("POST /api/mailroom/items — title backfill (Task #403)", () => {
 
     const mailroomInsert = insertCalls.find((c) => c.table === "mailroom_items");
     assert.ok(mailroomInsert, "expected a mailroom_items insert");
-    // Legacy NOT NULL `title` column must be populated; the caller did not
-    // supply one so it must fall back to the file name (not null / not empty).
-    assert.equal(mailroomInsert!.payload.title, "remit-april.pdf");
-    // Compat columns are still set alongside.
+    assert.ok(
+      !("title" in mailroomInsert!.payload),
+      "insert payload must not include the dropped `title` column",
+    );
+    // Compat columns are still set.
     assert.equal(mailroomInsert!.payload.file_name, "remit-april.pdf");
     assert.equal(mailroomInsert!.payload.status, "needs_review");
   });
 
-  it("falls back to a generic title when neither title nor fileName is supplied", async () => {
-    const POST = await loadItemsPost();
-    const res = await POST(itemsPostRequest({ organizationId: ORG_A }));
-    assert.equal(res.status, 200);
-
-    const mailroomInsert = insertCalls.find((c) => c.table === "mailroom_items");
-    assert.ok(mailroomInsert);
-    const title = String(mailroomInsert!.payload.title ?? "");
-    assert.ok(title.length > 0, "title must be non-empty to satisfy NOT NULL");
-  });
-
-  it("prefers a caller-supplied title over the derived file name", async () => {
+  it("ignores a caller-supplied title (column no longer exists)", async () => {
     const POST = await loadItemsPost();
     const res = await POST(
       itemsPostRequest({
@@ -366,14 +356,18 @@ describe("POST /api/mailroom/items — title backfill (Task #403)", () => {
     );
     assert.equal(res.status, 200);
     const mailroomInsert = insertCalls.find((c) => c.table === "mailroom_items");
-    assert.equal(mailroomInsert!.payload.title, "EOB from Aetna");
+    assert.ok(!("title" in mailroomInsert!.payload));
   });
 });
 
 describe("regression: /api/mailroom/items POST wiring", () => {
   const src = readFileSync("app/api/mailroom/items/route.ts", "utf8");
 
-  it("populates the legacy NOT NULL `title` column on insert (Task #403)", () => {
-    assert.match(src, /\.insert\(\{[\s\S]*?\btitle[,:][\s\S]*?\}\)/);
+  it("does not write the dropped legacy `title` column on the mailroom_items insert (Task #407)", () => {
+    // Match only the mailroom_items insert block (the file also inserts into
+    // workqueue_items, which legitimately has a `title:` column).
+    const m = src.match(/from\("mailroom_items"\)[\s\S]*?\.insert\(\{([\s\S]*?)\}\)/);
+    assert.ok(m, "expected a mailroom_items insert");
+    assert.doesNotMatch(m![1], /\btitle\s*[,:]/);
   });
 });

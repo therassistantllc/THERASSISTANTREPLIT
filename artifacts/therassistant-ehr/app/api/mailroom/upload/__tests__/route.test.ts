@@ -169,10 +169,9 @@ describe("POST /api/mailroom/upload — smoke", () => {
     assert.equal(insert.payload.source, "manual_upload");
     assert.equal(insert.payload.document_type, "lab_result");
     assert.equal(insert.payload.file_name, "scan.pdf");
-    // Legacy NOT NULL `title` column must be populated — derive from the
-    // uploaded file name so list views that still read `title` keep showing
-    // something meaningful. Regression: Task #403 (null title NOT NULL).
-    assert.equal(insert.payload.title, "scan.pdf");
+    // The legacy `title` column was dropped — the insert must NOT carry it
+    // (schemaGuard would also reject an unknown column).
+    assert.ok(!("title" in insert.payload), "insert must not include legacy `title`");
 
     // Storage path must also be namespaced by the session organization so an
     // attacker can't smuggle in a path that lands in another tenant's prefix.
@@ -246,11 +245,10 @@ describe("regression: /api/mailroom/upload route wiring", () => {
     assert.match(src, /storage\.from\(BUCKET\)\.remove\(\[storagePath\]\)/);
   });
 
-  it("populates the legacy NOT NULL `title` column on insert (Task #403)", () => {
-    // mailroom_items.title is still NOT NULL on the live DB even though the
-    // newer compat columns (file_name/status/source/notes) exist. The insert
-    // payload must include `title:` or every upload 422s with a not-null
-    // constraint violation.
-    assert.match(src, /\.insert\(\{[\s\S]*?\btitle[,:][\s\S]*?\}\)/);
+  it("does not write the dropped legacy `title` column on insert (Task #407)", () => {
+    // The legacy NOT NULL `title` column has been dropped from
+    // mailroom_items. The insert payload must not reference it any more —
+    // doing so would fail PostgREST with an unknown-column error.
+    assert.doesNotMatch(src, /\.insert\(\{[\s\S]*?\btitle\s*[,:][\s\S]*?\}\)/);
   });
 });

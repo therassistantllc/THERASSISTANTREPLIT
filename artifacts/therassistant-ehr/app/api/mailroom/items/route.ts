@@ -89,14 +89,12 @@ export async function POST(request: Request) {
     const clientId = clean(body.clientId) || null;
     const documentType = clean(body.documentType) || "payer_correspondence";
     const notes = clean(body.notes) || "Mailroom document routed for billing/admin review.";
-    const title = clean(body.title) || fileName || "Uploaded mailroom document";
 
     const { data, error } = await supabase
       .from("mailroom_items")
       .insert({
         organization_id: organizationId,
         client_id: clientId,
-        title,
         file_name: fileName,
         mime_type: mimeType,
         storage_path: storagePath,

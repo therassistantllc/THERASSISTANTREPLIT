@@ -86,16 +86,6 @@ export default function MailroomSettingsClient() {
         </div>
       )}
 
-      {/* Schema notice — permanent until a migration formally drops the legacy column */}
-      <div className="alert-panel" style={{ borderLeft: "3px solid var(--accent)", background: "var(--surface-2)" }}>
-        <strong>ℹ Dual-column notice:</strong> The <code>mailroom_items</code> table has both a{" "}
-        <code>status</code> column and a <code>mail_status</code> column. Both columns are preserved.
-        New writes from the mailroom UI target the canonical column selected below. A future migration
-        can consolidate them once all legacy workflows are confirmed migrated.
-        {/* Migration note: When ready, run: ALTER TABLE mailroom_items DROP COLUMN status; 
-            and update all queries that reference the old column. */}
-      </div>
-
       {loading ? (
         <div className="panel"><div className="empty-state">Loading…</div></div>
       ) : (

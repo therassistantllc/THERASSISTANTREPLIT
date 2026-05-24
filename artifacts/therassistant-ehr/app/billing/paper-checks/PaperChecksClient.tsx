@@ -423,49 +423,84 @@ function UploadEobModal({
   onClose: () => void;
   onSaved: (patch: Partial<Row>) => void;
 }) {
-  const [eobUrl, setEobUrl] = useState(row.paper_eob_url ?? "");
-  const [scanUrl, setScanUrl] = useState(row.scanned_check_url ?? "");
+  const [eobFile, setEobFile] = useState<File | null>(null);
+  const [scanFile, setScanFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function uploadOne(kind: "eob" | "scan", file: File): Promise<string> {
+    const fd = new FormData();
+    fd.append("organizationId", organizationId);
+    fd.append("kind", kind);
+    fd.append("file", file);
+    const res = await fetch(`/api/billing/paper-checks/${row.id}/upload`, {
+      method: "POST",
+      body: fd,
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.success === false) {
+      throw new Error(json?.error || "Upload failed");
+    }
+    return String(json.storage_path);
+  }
+
   async function save() {
-    if (!eobUrl.trim() && !scanUrl.trim()) {
-      setError("Provide a paper EOB or scanned check URL");
+    if (!eobFile && !scanFile) {
+      setError("Select a paper EOB or scanned check file to upload");
       return;
     }
     setSaving(true);
     setError(null);
-    const res = await fetch(`/api/billing/paper-checks/${row.id}/actions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        organizationId,
-        action: "upload_eob",
-        paper_eob_url: eobUrl.trim() || undefined,
-        scanned_check_url: scanUrl.trim() || undefined,
-      }),
-    });
-    const json = await res.json().catch(() => ({}));
-    setSaving(false);
-    if (!res.ok || json?.success === false) {
-      setError(json?.error || "Upload failed");
-      return;
+    try {
+      const patch: Partial<Row> = {};
+      if (eobFile) {
+        patch.paper_eob_url = await uploadOne("eob", eobFile);
+      }
+      if (scanFile) {
+        patch.scanned_check_url = await uploadOne("scan", scanFile);
+      }
+      onSaved(patch);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setSaving(false);
     }
-    onSaved({
-      paper_eob_url: eobUrl.trim() || row.paper_eob_url,
-      scanned_check_url: scanUrl.trim() || row.scanned_check_url,
-    });
-    onClose();
   }
+
+  const accept = "application/pdf,image/png,image/jpeg,image/webp";
+
   return (
     <ModalShell title={`Upload EOB — Check #${row.check_number ?? row.id.slice(0, 8)}`} onClose={onClose}>
       <p style={{ color: "#64748B", fontSize: 13, margin: "0 0 12px" }}>
-        Paste a URL to the scanned EOB or check image (object-storage upload coming soon).
+        Drag and drop or pick a scanned PDF / PNG / JPG (up to 25 MB). Files are
+        stored securely; the detail panel will show an inline preview.
       </p>
-      <label style={fieldLabel}>Paper EOB URL</label>
-      <input type="url" value={eobUrl} onChange={(e) => setEobUrl(e.target.value)} style={fieldInput} />
-      <div style={{ marginTop: 8 }}>
-        <label style={fieldLabel}>Scanned check URL</label>
-        <input type="url" value={scanUrl} onChange={(e) => setScanUrl(e.target.value)} style={fieldInput} />
+      <label style={fieldLabel}>Paper EOB file</label>
+      <input
+        type="file"
+        accept={accept}
+        onChange={(e) => setEobFile(e.target.files?.[0] ?? null)}
+        style={fieldInput}
+      />
+      {row.paper_eob_url ? (
+        <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>
+          Replacing current EOB on file.
+        </div>
+      ) : null}
+      <div style={{ marginTop: 12 }}>
+        <label style={fieldLabel}>Scanned check file</label>
+        <input
+          type="file"
+          accept={accept}
+          onChange={(e) => setScanFile(e.target.files?.[0] ?? null)}
+          style={fieldInput}
+        />
+        {row.scanned_check_url ? (
+          <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>
+            Replacing current scanned check on file.
+          </div>
+        ) : null}
       </div>
       {error ? <div style={{ color: "#B91C1C", marginTop: 8, fontSize: 13 }}>{error}</div> : null}
       <div style={buttonRow}>
@@ -473,10 +508,76 @@ function UploadEobModal({
           Cancel
         </button>
         <button type="button" className="button" onClick={save} disabled={saving}>
-          {saving ? "Saving…" : "Save"}
+          {saving ? "Uploading…" : "Upload"}
         </button>
       </div>
     </ModalShell>
+  );
+}
+
+function FilePreview({
+  checkId,
+  organizationId,
+  kind,
+  storedValue,
+}: {
+  checkId: string;
+  organizationId: string;
+  kind: "eob" | "scan";
+  storedValue: string;
+}) {
+  const isExternal = /^https?:\/\//i.test(storedValue);
+  const fileUrl = isExternal
+    ? storedValue
+    : `/api/billing/paper-checks/${checkId}/file?kind=${kind}&organizationId=${encodeURIComponent(organizationId)}`;
+
+  // Best-effort mime guess from path/extension so we pick <img> vs <iframe>.
+  const lower = storedValue.toLowerCase();
+  const isImage = /\.(png|jpe?g|webp|gif)(\?|$)/.test(lower);
+  const isPdf = /\.pdf(\?|$)/.test(lower);
+  // For external URLs we don't know the type for sure; fall back to iframe.
+  const renderAs: "img" | "iframe" = isImage ? "img" : isPdf || isExternal ? "iframe" : "iframe";
+
+  return (
+    <div>
+      <div
+        style={{
+          border: "1px solid #E5E7EB",
+          borderRadius: 6,
+          overflow: "hidden",
+          background: "#F8FAFC",
+          height: 340,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {renderAs === "img" ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={fileUrl}
+            alt={kind === "scan" ? "Scanned check" : "Paper EOB"}
+            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+          />
+        ) : (
+          <iframe
+            src={fileUrl}
+            title={kind === "scan" ? "Scanned check" : "Paper EOB"}
+            style={{ width: "100%", height: "100%", border: 0, background: "#fff" }}
+          />
+        )}
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <a
+          href={fileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ fontSize: 13, color: "#2563EB", textDecoration: "underline" }}
+        >
+          Open {kind === "scan" ? "scanned check" : "paper EOB"} in new tab ↗
+        </a>
+      </div>
+    </div>
   );
 }
 
@@ -1438,14 +1539,12 @@ export default function PaperChecksClient() {
               <DetailKV label="Received" value={formatDate(selectedRow.received_date)} />
               <div style={{ marginTop: 12 }}>
                 {selectedRow.scanned_check_url ? (
-                  <a
-                    href={selectedRow.scanned_check_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ fontSize: 13, color: "#2563EB", textDecoration: "underline" }}
-                  >
-                    Open scanned check ↗
-                  </a>
+                  <FilePreview
+                    checkId={selectedRow.id}
+                    organizationId={organizationId}
+                    kind="scan"
+                    storedValue={selectedRow.scanned_check_url}
+                  />
                 ) : (
                   <div style={{ color: "#94A3B8", fontSize: 13 }}>
                     No scanned check uploaded yet. Use “Upload EOB”.
@@ -1462,14 +1561,12 @@ export default function PaperChecksClient() {
           selectedRow ? (
             <div>
               {selectedRow.paper_eob_url ? (
-                <a
-                  href={selectedRow.paper_eob_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ fontSize: 13, color: "#2563EB", textDecoration: "underline" }}
-                >
-                  Open paper EOB ↗
-                </a>
+                <FilePreview
+                  checkId={selectedRow.id}
+                  organizationId={organizationId}
+                  kind="eob"
+                  storedValue={selectedRow.paper_eob_url}
+                />
               ) : (
                 <div style={{ color: "#94A3B8", fontSize: 13 }}>
                   No paper EOB uploaded yet. Use “Upload EOB”.

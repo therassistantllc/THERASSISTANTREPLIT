@@ -155,6 +155,14 @@ export const WORKQUEUES: WorkqueueDef[] = [
     status: "live",
   },
   {
+    id: "rejections_277ca",
+    title: "277CA Rejections",
+    description: "Claims rejected after clearinghouse / payer claim-level validation (277CA acknowledgements).",
+    href: "/billing/rejections-277ca",
+    stage: "submission_rejections",
+    status: "live",
+  },
+  {
     id: "payer_rejections",
     title: "Payer Rejections",
     description: "Claims the payer rejected for front-end edits — fix and resubmit.",

@@ -401,6 +401,14 @@ export const WORKQUEUES: WorkqueueDef[] = [
 
   // ── Patient & Oversight ─────────────────────────────────────────────────
   {
+    id: "patient_responsibility",
+    title: "Patient Responsibility Generated",
+    description: "Insurance has adjudicated — move the remaining balance to patient billing (deductible, copay, coinsurance, noncovered).",
+    href: "/billing/patient-responsibility",
+    stage: "patient_oversight",
+    status: "live",
+  },
+  {
     id: "patient_statements",
     title: "Patient Statements",
     description: "Statements queued for delivery — paper and electronic.",

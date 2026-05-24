@@ -130,6 +130,7 @@ export default function CasesPanel({
       return next;
     });
   const [payers, setPayers] = useState<Array<{ id: string; payer_name: string; payer_id: string | null }>>([]);
+  const [providers, setProviders] = useState<Array<{ id: string; provider_name: string }>>([]);
 
   // Staged "new case" draft. The user adds one or more insurance policies
   // (primary/secondary/tertiary) and a case name, then clicks Save case to
@@ -143,6 +144,8 @@ export default function CasesPanel({
     caseType: CaseType;
     notes: string;
     rows: Record<Priority, NewPolicyFields>;
+    charity: { providerId: string; dateFrom: string; dateTo: string; visitLimit: string };
+    selfPay: { flatFee: string };
   } | null>(null);
 
   const orgQ = useMemo(
@@ -179,6 +182,29 @@ export default function CasesPanel({
         }
       } catch {
         /* non-fatal — UI shows empty payer list */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgQ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/providers${orgQ}`, { cache: "no-store" });
+        const json = await res.json();
+        if (!cancelled && res.ok && json.success) {
+          setProviders(
+            (json.providers ?? []).map((p: { id: string; provider_name: string }) => ({
+              id: p.id,
+              provider_name: p.provider_name,
+            })),
+          );
+        }
+      } catch {
+        /* non-fatal — UI shows empty clinician list */
       }
     })();
     return () => {
@@ -224,6 +250,8 @@ export default function CasesPanel({
         secondary: { ...EMPTY_NEW_POLICY },
         tertiary: { ...EMPTY_NEW_POLICY },
       },
+      charity: { providerId: "", dateFrom: "", dateTo: "", visitLimit: "" },
+      selfPay: { flatFee: "" },
     });
   }
 
@@ -250,23 +278,66 @@ export default function CasesPanel({
 
   async function saveCaseDraft() {
     if (!caseDraft) return;
-    const filled = filledRows(caseDraft);
+    const isCharity = caseDraft.caseType === "charity";
+    const isSelfPay = caseDraft.caseType === "self_pay";
+    const filled = isCharity || isSelfPay ? [] : filledRows(caseDraft);
+
     // Derive case name from the primary payer if the user left it blank.
     const primaryRow = caseDraft.rows.primary;
     const primaryPayerName =
       payers.find((p) => p.id === primaryRow.payerId)?.payer_name?.trim() ?? "";
-    const name =
-      caseDraft.name.trim() || (primaryPayerName ? primaryPayerName : "");
+    const fallbackName = isCharity
+      ? "Charity Care"
+      : isSelfPay
+        ? "Self-Pay"
+        : primaryPayerName;
+    const name = caseDraft.name.trim() || fallbackName;
     if (!name) {
       setError("Enter a case name (or fill in the primary payer).");
       return;
     }
-    if (filled.length === 0) {
+
+    // Per-type validation. Charity / self-pay skip the insurance rows
+    // entirely and require their own fields instead.
+    let extraNotes = "";
+    if (isCharity) {
+      const { providerId, dateFrom, dateTo, visitLimit } = caseDraft.charity;
+      if (!providerId) {
+        setError("Select the clinician this charity care applies to.");
+        return;
+      }
+      if (!dateFrom || !dateTo) {
+        setError("Enter the dates of service (from and to) for charity care.");
+        return;
+      }
+      const clinicianName =
+        providers.find((p) => p.id === providerId)?.provider_name ?? providerId;
+      const lines = [
+        "[Charity Care]",
+        `Applies to services rendered by: ${clinicianName}`,
+        `For dates of services from: ${dateFrom} to: ${dateTo}`,
+      ];
+      if (visitLimit.trim()) lines.push(`Visit limit: ${visitLimit.trim()}`);
+      extraNotes = lines.join("\n");
+    } else if (isSelfPay) {
+      const fee = caseDraft.selfPay.flatFee.trim();
+      const feeNum = Number(fee);
+      if (!fee || !Number.isFinite(feeNum) || feeNum <= 0) {
+        setError("Enter a flat fee amount (greater than 0) for self-pay.");
+        return;
+      }
+      extraNotes = `[Self-Pay]\nFlat fee: $${feeNum.toFixed(2)}`;
+    } else if (filled.length === 0) {
       setError(
         "Fill in at least one insurance row (payer + member ID) before saving.",
       );
       return;
     }
+
+    const combinedNotes = [extraNotes, caseDraft.notes.trim()]
+      .filter(Boolean)
+      .join("\n\n");
+
     setBusy(`save-case-draft`);
     setError(null);
     try {
@@ -277,7 +348,7 @@ export default function CasesPanel({
           organizationId,
           name,
           caseType: caseDraft.caseType,
-          notes: caseDraft.notes.trim() || null,
+          notes: combinedNotes || null,
         }),
       });
       const caseJson = await caseRes.json().catch(() => ({}));
@@ -497,7 +568,12 @@ export default function CasesPanel({
                   (p) =>
                     caseDraft.rows[p].payerId ||
                     caseDraft.rows[p].policyNumber.trim(),
-                );
+                ) ||
+                caseDraft.charity.providerId !== "" ||
+                caseDraft.charity.dateFrom !== "" ||
+                caseDraft.charity.dateTo !== "" ||
+                caseDraft.charity.visitLimit.trim() !== "" ||
+                caseDraft.selfPay.flatFee.trim() !== "";
               if (
                 hasWork &&
                 typeof window !== "undefined" &&
@@ -521,6 +597,7 @@ export default function CasesPanel({
       {caseDraft ? <CaseDraftPanel
         draft={caseDraft}
         payers={payers}
+        providers={providers}
         busy={Boolean(busy)}
         onChangeName={(name) => setCaseDraft((d) => (d ? { ...d, name } : d))}
         onChangeType={(caseType) =>
@@ -528,6 +605,12 @@ export default function CasesPanel({
         }
         onChangeNotes={(notes) => setCaseDraft((d) => (d ? { ...d, notes } : d))}
         onUpdateRow={updateRow}
+        onUpdateCharity={(patch) =>
+          setCaseDraft((d) => (d ? { ...d, charity: { ...d.charity, ...patch } } : d))
+        }
+        onUpdateSelfPay={(patch) =>
+          setCaseDraft((d) => (d ? { ...d, selfPay: { ...d.selfPay, ...patch } } : d))
+        }
         onSave={saveCaseDraft}
         onCancel={() => {
           const hasWork =
@@ -537,7 +620,12 @@ export default function CasesPanel({
               (p) =>
                 caseDraft.rows[p].payerId ||
                 caseDraft.rows[p].policyNumber.trim(),
-            );
+            ) ||
+            caseDraft.charity.providerId !== "" ||
+            caseDraft.charity.dateFrom !== "" ||
+            caseDraft.charity.dateTo !== "" ||
+            caseDraft.charity.visitLimit.trim() !== "" ||
+            caseDraft.selfPay.flatFee.trim() !== "";
           if (
             hasWork &&
             typeof window !== "undefined" &&
@@ -1234,11 +1322,14 @@ function CreatePolicyForm({
 function CaseDraftPanel({
   draft,
   payers,
+  providers,
   busy,
   onChangeName,
   onChangeType,
   onChangeNotes,
   onUpdateRow,
+  onUpdateCharity,
+  onUpdateSelfPay,
   onSave,
   onCancel,
 }: {
@@ -1247,16 +1338,23 @@ function CaseDraftPanel({
     caseType: CaseType;
     notes: string;
     rows: Record<Priority, NewPolicyFields>;
+    charity: { providerId: string; dateFrom: string; dateTo: string; visitLimit: string };
+    selfPay: { flatFee: string };
   };
   payers: Array<{ id: string; payer_name: string; payer_id: string | null }>;
+  providers: Array<{ id: string; provider_name: string }>;
   busy: boolean;
   onChangeName: (v: string) => void;
   onChangeType: (v: CaseType) => void;
   onChangeNotes: (v: string) => void;
   onUpdateRow: (priority: Priority, patch: Partial<NewPolicyFields>) => void;
+  onUpdateCharity: (patch: Partial<{ providerId: string; dateFrom: string; dateTo: string; visitLimit: string }>) => void;
+  onUpdateSelfPay: (patch: Partial<{ flatFee: string }>) => void;
   onSave: () => void;
   onCancel: () => void;
 }) {
+  const isCharity = draft.caseType === "charity";
+  const isSelfPay = draft.caseType === "self_pay";
   const labelStyle: React.CSSProperties = {
     fontSize: "0.7rem",
     textTransform: "uppercase",
@@ -1312,75 +1410,163 @@ function CaseDraftPanel({
         </label>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: "0.4rem",
-          paddingTop: "0.5rem",
-          borderTop: "1px solid var(--border-color, #e5e7eb)",
-        }}
-      >
-        <span style={labelStyle}>Insurance — fill only the rows you need</span>
-        {PRIORITIES.map((priority) => {
-          const row = draft.rows[priority];
-          return (
-            <div
-              key={priority}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "90px 2fr 1fr 1fr 1fr",
-                gap: "0.4rem",
-                alignItems: "center",
-              }}
+      {isCharity ? (
+        <div
+          style={{
+            display: "grid",
+            gap: "0.5rem",
+            paddingTop: "0.5rem",
+            borderTop: "1px solid var(--border-color, #e5e7eb)",
+          }}
+        >
+          <label style={{ display: "grid", gap: 4 }}>
+            <span style={labelStyle}>Applies to services rendered by: *</span>
+            <select
+              value={draft.charity.providerId}
+              onChange={(e) => onUpdateCharity({ providerId: e.target.value })}
+              disabled={busy}
             >
-              <span style={{ textTransform: "capitalize", fontWeight: 500 }}>
-                {priority}
-              </span>
-              <select
-                value={row.payerId}
-                onChange={(e) =>
-                  onUpdateRow(priority, { payerId: e.target.value })
-                }
+              <option value="">— Select clinician —</option>
+              {providers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.provider_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: "0.5rem",
+            }}
+          >
+            <label style={{ display: "grid", gap: 4 }}>
+              <span style={labelStyle}>For dates of services from: *</span>
+              <input
+                type="date"
+                value={draft.charity.dateFrom}
+                onChange={(e) => onUpdateCharity({ dateFrom: e.target.value })}
                 disabled={busy}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 4 }}>
+              <span style={labelStyle}>To: *</span>
+              <input
+                type="date"
+                value={draft.charity.dateTo}
+                onChange={(e) => onUpdateCharity({ dateTo: e.target.value })}
+                disabled={busy}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 4 }}>
+              <span style={labelStyle}>Visit limit (optional)</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={draft.charity.visitLimit}
+                onChange={(e) => onUpdateCharity({ visitLimit: e.target.value })}
+                disabled={busy}
+                placeholder="e.g. 10"
+              />
+            </label>
+          </div>
+        </div>
+      ) : isSelfPay ? (
+        <div
+          style={{
+            display: "grid",
+            gap: "0.5rem",
+            paddingTop: "0.5rem",
+            borderTop: "1px solid var(--border-color, #e5e7eb)",
+          }}
+        >
+          <label style={{ display: "grid", gap: 4, maxWidth: 240 }}>
+            <span style={labelStyle}>Flat fee amount *</span>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={draft.selfPay.flatFee}
+              onChange={(e) => onUpdateSelfPay({ flatFee: e.target.value })}
+              disabled={busy}
+              placeholder="e.g. 150.00"
+              required
+            />
+          </label>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gap: "0.4rem",
+            paddingTop: "0.5rem",
+            borderTop: "1px solid var(--border-color, #e5e7eb)",
+          }}
+        >
+          <span style={labelStyle}>Insurance — fill only the rows you need</span>
+          {PRIORITIES.map((priority) => {
+            const row = draft.rows[priority];
+            return (
+              <div
+                key={priority}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "90px 2fr 1fr 1fr 1fr",
+                  gap: "0.4rem",
+                  alignItems: "center",
+                }}
               >
-                <option value="">— Select payer —</option>
-                {payers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.payer_name}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                value={row.policyNumber}
-                onChange={(e) =>
-                  onUpdateRow(priority, { policyNumber: e.target.value })
-                }
-                placeholder="Member ID *"
-                disabled={busy}
-              />
-              <input
-                type="text"
-                value={row.planName ?? ""}
-                onChange={(e) =>
-                  onUpdateRow(priority, { planName: e.target.value || null })
-                }
-                placeholder="Plan"
-                disabled={busy}
-              />
-              <input
-                type="text"
-                value={row.groupNumber ?? ""}
-                onChange={(e) =>
-                  onUpdateRow(priority, { groupNumber: e.target.value || null })
-                }
-                placeholder="Group #"
-                disabled={busy}
-              />
-            </div>
-          );
-        })}
-      </div>
+                <span style={{ textTransform: "capitalize", fontWeight: 500 }}>
+                  {priority}
+                </span>
+                <select
+                  value={row.payerId}
+                  onChange={(e) =>
+                    onUpdateRow(priority, { payerId: e.target.value })
+                  }
+                  disabled={busy}
+                >
+                  <option value="">— Select payer —</option>
+                  {payers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.payer_name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  value={row.policyNumber}
+                  onChange={(e) =>
+                    onUpdateRow(priority, { policyNumber: e.target.value })
+                  }
+                  placeholder="Member ID *"
+                  disabled={busy}
+                />
+                <input
+                  type="text"
+                  value={row.planName ?? ""}
+                  onChange={(e) =>
+                    onUpdateRow(priority, { planName: e.target.value || null })
+                  }
+                  placeholder="Plan"
+                  disabled={busy}
+                />
+                <input
+                  type="text"
+                  value={row.groupNumber ?? ""}
+                  onChange={(e) =>
+                    onUpdateRow(priority, { groupNumber: e.target.value || null })
+                  }
+                  placeholder="Group #"
+                  disabled={busy}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <label style={{ display: "grid", gap: 4 }}>
         <span style={labelStyle}>Comments</span>

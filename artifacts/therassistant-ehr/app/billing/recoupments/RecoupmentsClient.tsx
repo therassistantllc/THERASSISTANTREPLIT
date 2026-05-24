@@ -166,6 +166,7 @@ export default function RecoupmentsClient() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [busyRow, setBusyRow] = useState<string | null>(null);
+  const [offsetPickerRow, setOffsetPickerRow] = useState<Row | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -481,18 +482,20 @@ export default function RecoupmentsClient() {
     [runAction],
   );
 
-  const promptOffset = useCallback(
-    (row: Row) => {
-      const eraId = window.prompt(
-        "Offset against — enter the ERA claim_payment id (UUID) where this take-back was netted out (optional):",
-        row.offset_era_claim_payment_id ?? "",
-      );
-      if (eraId == null) return;
+  const promptOffset = useCallback((row: Row) => {
+    setOffsetPickerRow(row);
+  }, []);
+
+  const handleOffsetPicked = useCallback(
+    (eraClaimPaymentId: string) => {
+      const row = offsetPickerRow;
+      setOffsetPickerRow(null);
+      if (!row) return;
       void runAction(row.id, "apply_offset", {
-        ...(eraId ? { offset_era_claim_payment_id: eraId } : {}),
+        offset_era_claim_payment_id: eraClaimPaymentId,
       });
     },
-    [runAction],
+    [offsetPickerRow, runAction],
   );
 
   const promptNote = useCallback(
@@ -731,6 +734,7 @@ export default function RecoupmentsClient() {
   }, [summary]);
 
   return (
+    <>
     <WorkqueueShell<Row>
       title="Recoupments / Takebacks"
       description="Payer overpayment-recovery activity. Dispute, accept, refund, or offset each take-back."
@@ -758,6 +762,343 @@ export default function RecoupmentsClient() {
       detailActions={detailActions}
       message={message}
     />
+    {offsetPickerRow ? (
+      <OffsetPickerModal
+        row={offsetPickerRow}
+        organizationId={organizationId}
+        onCancel={() => setOffsetPickerRow(null)}
+        onPick={handleOffsetPicked}
+      />
+    ) : null}
+    </>
+  );
+}
+
+// ─── Offset picker modal ────────────────────────────────────────────────────
+
+type EraPaymentListItem = {
+  id: string;
+  paymentAmount: number;
+  checkNumber: string | null;
+  importedAt: string | null;
+  createdAt: string;
+  claimControlNumber: string | null;
+  payerClaimControlNumber: string | null;
+  payer: { id: string | null; name: string | null };
+  client: { id: string; displayName: string } | null;
+  professionalClaim: { claimNumber: string | null } | null;
+};
+
+function OffsetPickerModal({
+  row,
+  organizationId,
+  onCancel,
+  onPick,
+}: {
+  row: Row;
+  organizationId: string;
+  onCancel: () => void;
+  onPick: (id: string) => void;
+}) {
+  const [items, setItems] = useState<EraPaymentListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    row.offset_era_claim_payment_id ?? null,
+  );
+  const [showAllPayers, setShowAllPayers] = useState(false);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function go() {
+      setLoading(true);
+      setErr(null);
+      try {
+        const qs = new URLSearchParams({ organizationId });
+        const res = await fetch(
+          `/api/billing/era-payments?${qs.toString()}`,
+          { cache: "no-store" },
+        );
+        const json = (await res.json().catch(() => ({}))) as {
+          success?: boolean;
+          items?: EraPaymentListItem[];
+          error?: string;
+        };
+        if (cancelled) return;
+        if (!res.ok || !json.success) {
+          setErr(json.error ?? "Failed to load ERA payments");
+        } else {
+          setItems(json.items ?? []);
+        }
+      } catch (e) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void go();
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId]);
+
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return items
+      .filter((p) => {
+        if (!showAllPayers && row.payer_profile_id) {
+          if (p.payer.id && p.payer.id !== row.payer_profile_id) return false;
+          if (
+            !p.payer.id &&
+            row.payer_name &&
+            p.payer.name &&
+            p.payer.name.toLowerCase() !== row.payer_name.toLowerCase()
+          ) {
+            return false;
+          }
+        }
+        if (!needle) return true;
+        const hay = [
+          p.checkNumber,
+          p.payer.name,
+          p.client?.displayName,
+          p.professionalClaim?.claimNumber,
+          p.payerClaimControlNumber,
+          p.claimControlNumber,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(needle);
+      })
+      .sort((a, b) => {
+        const da = new Date(a.importedAt ?? a.createdAt).getTime();
+        const db = new Date(b.importedAt ?? b.createdAt).getTime();
+        return db - da;
+      });
+  }, [items, showAllPayers, row.payer_profile_id, row.payer_name, search]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onCancel}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#fff",
+          borderRadius: 8,
+          maxWidth: 880,
+          width: "100%",
+          maxHeight: "85vh",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+        }}
+      >
+        <div
+          style={{
+            padding: "16px 20px",
+            borderBottom: "1px solid #e2e8f0",
+          }}
+        >
+          <div style={{ fontSize: 16, fontWeight: 600 }}>
+            Apply offset against an ERA payment
+          </div>
+          <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
+            Recoupment of <strong>{formatMoney(row.recoupment_amount)}</strong>{" "}
+            from <strong>{row.payer_name}</strong>
+            {row.client_name ? ` for ${row.client_name}` : ""}. Pick the ERA
+            payment where this take-back was netted out.
+          </div>
+        </div>
+        <div
+          style={{
+            padding: "10px 20px",
+            borderBottom: "1px solid #e2e8f0",
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <input
+            type="search"
+            placeholder="Search check #, claim #, client…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              flex: 1,
+              minWidth: 220,
+              padding: "6px 10px",
+              border: "1px solid #cbd5e1",
+              borderRadius: 6,
+              fontSize: 13,
+            }}
+          />
+          {row.payer_profile_id ? (
+            <label
+              style={{
+                fontSize: 12,
+                color: "#475569",
+                display: "inline-flex",
+                gap: 6,
+                alignItems: "center",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={showAllPayers}
+                onChange={(e) => setShowAllPayers(e.target.checked)}
+              />
+              Show all payers
+            </label>
+          ) : null}
+        </div>
+        <div style={{ overflow: "auto", flex: 1 }}>
+          {loading ? (
+            <p style={{ padding: 20, fontSize: 13 }}>Loading ERA payments…</p>
+          ) : err ? (
+            <p style={{ padding: 20, fontSize: 13, color: "#b91c1c" }}>{err}</p>
+          ) : filtered.length === 0 ? (
+            <p style={{ padding: 20, fontSize: 13, color: "#64748b" }}>
+              No matching ERA payments found
+              {!showAllPayers && row.payer_profile_id
+                ? " for this payer. Try “Show all payers”."
+                : "."}
+            </p>
+          ) : (
+            <table
+              style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}
+            >
+              <thead
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  background: "#f8fafc",
+                  textAlign: "left",
+                  color: "#64748b",
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                }}
+              >
+                <tr>
+                  <th style={{ padding: "8px 12px", width: 32 }}></th>
+                  <th style={{ padding: "8px 12px" }}>Date</th>
+                  <th style={{ padding: "8px 12px" }}>Check / EFT #</th>
+                  <th style={{ padding: "8px 12px" }}>Payer</th>
+                  <th style={{ padding: "8px 12px" }}>Client</th>
+                  <th style={{ padding: "8px 12px" }}>Claim #</th>
+                  <th style={{ padding: "8px 12px", textAlign: "right" }}>
+                    Amount
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((p) => {
+                  const isSel = selectedId === p.id;
+                  return (
+                    <tr
+                      key={p.id}
+                      onClick={() => setSelectedId(p.id)}
+                      onDoubleClick={() => onPick(p.id)}
+                      style={{
+                        borderTop: "1px solid #e2e8f0",
+                        cursor: "pointer",
+                        background: isSel ? "#eef2ff" : "transparent",
+                      }}
+                    >
+                      <td style={{ padding: "8px 12px" }}>
+                        <input
+                          type="radio"
+                          name="offset-pick"
+                          checked={isSel}
+                          onChange={() => setSelectedId(p.id)}
+                        />
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        {formatDate(p.importedAt ?? p.createdAt)}
+                      </td>
+                      <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>
+                        {p.checkNumber ?? "—"}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        {p.payer.name ?? "—"}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        {p.client?.displayName ?? "—"}
+                      </td>
+                      <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 12 }}>
+                        {p.professionalClaim?.claimNumber ??
+                          p.payerClaimControlNumber ??
+                          p.claimControlNumber ??
+                          "—"}
+                      </td>
+                      <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                        <strong>{formatMoney(p.paymentAmount)}</strong>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div
+          style={{
+            padding: "12px 20px",
+            borderTop: "1px solid #e2e8f0",
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 8,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              padding: "6px 14px",
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              borderRadius: 6,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!selectedId}
+            onClick={() => selectedId && onPick(selectedId)}
+            style={{
+              padding: "6px 14px",
+              border: "1px solid #4338ca",
+              background: selectedId ? "#4338ca" : "#a5b4fc",
+              color: "#fff",
+              borderRadius: 6,
+              fontSize: 13,
+              cursor: selectedId ? "pointer" : "not-allowed",
+            }}
+          >
+            Apply offset
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

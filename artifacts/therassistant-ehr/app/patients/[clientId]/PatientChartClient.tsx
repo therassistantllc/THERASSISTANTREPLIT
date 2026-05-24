@@ -705,6 +705,25 @@ export default function PatientChartClient({
     }
   }
 
+  // Refresh the patient summary (insurance policies, demographics, etc.)
+  // and the cases list. Called after CasesPanel mutates so the upper
+  // "Insurance information" panel reflects newly saved policies.
+  async function reloadSummaryAndCases() {
+    try {
+      const [summaryRes, casesList] = await Promise.all([
+        fetch(`/api/patients/${clientId}/summary?organizationId=${encodeURIComponent(organizationId)}`, { cache: "no-store" }),
+        fetchList<CaseRowSummary>(`/api/clients/${clientId}/cases?organizationId=${encodeURIComponent(organizationId)}`, "cases"),
+      ]);
+      const summaryJson = (await summaryRes.json().catch(() => ({}))) as PatientSummary;
+      if (summaryRes.ok && summaryJson.success) {
+        setSummary(summaryJson);
+      }
+      setCases(casesList);
+    } catch {
+      // best-effort refresh; CasesPanel surfaces its own save errors
+    }
+  }
+
   async function reloadDemoAudit() {
     setAuditLoading(true);
     setAuditError(null);
@@ -2475,7 +2494,10 @@ export default function PatientChartClient({
             priority: p.priority ?? null,
             payer_name: p.payer_name ?? null,
           }))}
-          onMutate={() => void reloadDemoAudit()}
+          onMutate={() => {
+            void reloadSummaryAndCases();
+            void reloadDemoAudit();
+          }}
         />
       </section>
     </>

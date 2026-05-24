@@ -331,9 +331,35 @@ export default function CobIssuesClient() {
         const json = (await res.json().catch(() => ({}))) as {
           success?: boolean;
           error?: string;
+          clientUpdate?: {
+            fullUrl?: string;
+            url?: string;
+            deliveryMethod?: "clipboard" | "email";
+            expiresAt?: string | null;
+            email?: { sent?: boolean; to?: string | null; error?: string | null };
+          };
         };
         if (!res.ok || !json.success) {
           throw new Error(json.error ?? "Action failed");
+        }
+        if (action === "route_to_client_admin" && json.clientUpdate) {
+          const cu = json.clientUpdate;
+          const link = cu.fullUrl || cu.url || "";
+          if (cu.deliveryMethod === "email" && cu.email?.sent) {
+            setMessage({
+              tone: "success",
+              text: `Insurance update link emailed to ${cu.email.to}.`,
+            });
+          } else if (link && typeof window !== "undefined" && navigator.clipboard) {
+            await navigator.clipboard
+              .writeText(link)
+              .catch(() => undefined);
+            window.alert(
+              `Insurance update link generated and copied to your clipboard:\n\n${link}\n\nText or message it to the client.`,
+            );
+          } else if (link) {
+            window.alert(`Insurance update link:\n\n${link}`);
+          }
         }
         // Optimistic local update so the row reflects the new state
         // without waiting for the refetch round-trip.
@@ -377,6 +403,20 @@ export default function CobIssuesClient() {
       }
     },
     [organizationId, load],
+  );
+
+  const promptRouteToClient = useCallback(
+    (row: Row) => {
+      const choice = window.prompt(
+        `Send ${row.client_name} a secure insurance-update link.\n\n` +
+          `Type "email" to email it now, or just press OK to copy the link to your clipboard so you can text it.`,
+        "email",
+      );
+      if (choice === null) return;
+      const delivery = choice.trim().toLowerCase() === "email" ? "email" : "clipboard";
+      void runAction(row.id, "route_to_client_admin", { delivery });
+    },
+    [runAction],
   );
 
   const promptInsuranceOrder = useCallback(
@@ -439,12 +479,12 @@ export default function CobIssuesClient() {
       },
       {
         id: "route_to_client_admin",
-        label: "Route to client/admin",
-        onClick: (r) => void runAction(r.id, "route_to_client_admin"),
+        label: "Send client update link",
+        onClick: (r) => promptRouteToClient(r),
         disabled: (r) => busyRow === r.id,
       },
     ],
-    [runAction, promptInsuranceOrder, busyRow],
+    [runAction, promptInsuranceOrder, promptRouteToClient, busyRow],
   );
 
   const selectedRow = useMemo(
@@ -606,11 +646,11 @@ export default function CobIssuesClient() {
       },
       {
         id: "route_to_client_admin",
-        label: "Route to client/admin",
-        onClick: () => void runAction(row.id, "route_to_client_admin"),
+        label: "Send client update link",
+        onClick: () => promptRouteToClient(row),
       },
     ];
-  }, [selectedRow, runAction, promptInsuranceOrder]);
+  }, [selectedRow, runAction, promptInsuranceOrder, promptRouteToClient]);
 
   const headerActions: PrimaryAction[] = useMemo(
     () => [

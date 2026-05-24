@@ -332,6 +332,15 @@ export async function GET(request: Request) {
           cur.state = "client_update_needed";
           cur.cob_flagged = true;
           break;
+        case `${ACTION_EVENT_PREFIX}client_update_received`: {
+          // Client submitted the secure update form → claim is resolved.
+          cur.state = "resolved";
+          const ids = Array.isArray(md.ordered_policy_ids)
+            ? (md.ordered_policy_ids as unknown[]).map((x) => String(x))
+            : [];
+          if (ids.length > 0) cur.ordered_policy_ids = ids;
+          break;
+        }
         case `${ACTION_EVENT_PREFIX}reopen`:
           cur.state = "open";
           break;

@@ -307,6 +307,20 @@ export interface StripeRefund {
   metadata?: Record<string, string>;
 }
 
+export interface StripeChargeLike {
+  id: string;
+  status: string;
+  amount: number;
+  amount_refunded?: number;
+  refunded?: boolean;
+  captured?: boolean;
+  currency: string;
+  customer?: string | null;
+  payment_method?: string | null;
+  payment_intent?: string | null;
+  metadata?: Record<string, string>;
+}
+
 /**
  * Create a SetupIntent on a connected account to collect & save a
  * patient card without charging (Task #487). Frontend uses
@@ -388,6 +402,22 @@ export async function detachConnectPaymentMethod(input: {
 }
 
 /**
+ * Retrieve a Stripe charge (read-only) on a connected account. Used to
+ * recover the (customer, payment_method) pair off a prior successful
+ * charge so we can run a new off-session charge for the same patient
+ * without storing card metadata locally.
+ */
+export async function retrieveConnectCharge(input: {
+  chargeId: string;
+  connectedAccountId: string;
+}): Promise<StripeChargeLike> {
+  return stripeRequest<StripeChargeLike>(`/charges/${encodeURIComponent(input.chargeId)}`, {
+    method: "GET",
+    stripeAccount: input.connectedAccountId,
+  });
+}
+
+/**
  * Charge a previously-saved card off-session on a connected Express
  * account (Task #487). Confirms inline and returns the resulting
  * PaymentIntent. Throws StripeRequestError on failure (e.g.
@@ -459,6 +489,65 @@ export async function createConnectRefund(input: {
     stripeAccount: input.connectedAccountId ?? null,
     idempotencyKey: input.idempotencyKey,
     params,
+  });
+}
+
+/**
+ * Charge a previously stored Stripe customer + payment method off-session
+ * (i.e. without the patient present). Implements the standard Stripe
+ * MIT/off-session pattern: create a PaymentIntent with confirm=true,
+ * off_session=true, customer, payment_method, and disable redirects.
+ *
+ * Throws StripeRequestError if the charge fails (declined, requires
+ * authentication, network/auth errors). On success the returned
+ * PaymentIntent has status='succeeded' and latest_charge populated.
+ */
+export async function chargeSavedPaymentMethod(input: {
+  amountCents: number;
+  currency?: string;
+  connectedAccountId: string;
+  customerId: string;
+  paymentMethodId: string;
+  description?: string;
+  metadata: Record<string, string>;
+  idempotencyKey?: string;
+}): Promise<StripePaymentIntent> {
+  return stripeRequest<StripePaymentIntent>("/payment_intents", {
+    stripeAccount: input.connectedAccountId,
+    idempotencyKey: input.idempotencyKey,
+    params: {
+      amount: input.amountCents,
+      currency: (input.currency ?? "usd").toLowerCase(),
+      customer: input.customerId,
+      payment_method: input.paymentMethodId,
+      confirm: true,
+      off_session: true,
+      // off_session + redirects don't mix; never let Stripe try to redirect.
+      automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+      metadata: input.metadata,
+      ...(input.description ? { description: input.description } : {}),
+    },
+  });
+}
+
+/**
+ * Refund a Connect charge. Compensating action used when local
+ * persistence fails after a successful off-session charge so the patient
+ * is not silently overcharged.
+ */
+export async function refundConnectCharge(input: {
+  chargeId: string;
+  connectedAccountId: string;
+  reason?: string;
+  idempotencyKey?: string;
+}): Promise<{ id: string; status: string }> {
+  return stripeRequest<{ id: string; status: string }>("/refunds", {
+    stripeAccount: input.connectedAccountId,
+    idempotencyKey: input.idempotencyKey,
+    params: {
+      charge: input.chargeId,
+      ...(input.reason ? { reason: input.reason } : {}),
+    },
   });
 }
 

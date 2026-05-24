@@ -23,13 +23,31 @@
  *   - write_off:                  zeroes balance + sets invoice_status='voided'
  *                                 and inserts a patient_invoice_payments row
  *                                 with method='manual' to track the write-off
- *   - charge_card:                inserts a patient_invoice_payments row
- *                                 (method='card', status='posted') applied
- *                                 oldest-invoice-first; decrements balance
+ *   - charge_card:                runs a real Stripe charge off-session
+ *                                 against the patient's previously-stored
+ *                                 customer + payment_method (recovered
+ *                                 from the most recent successful
+ *                                 client_payments row). On Stripe success
+ *                                 inserts a patient_invoice_payments row
+ *                                 (method='stripe', status='posted',
+ *                                 external_payment_id=<stripe charge id>)
+ *                                 applied oldest-invoice-first; decrements
+ *                                 the invoice balance. Stripe failures
+ *                                 short-circuit before any DB mutation,
+ *                                 and the Stripe charge id is captured in
+ *                                 the audit_logs event_metadata.
  */
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { createHash } from "node:crypto";
+import {
+  chargeSavedPaymentMethod,
+  getStripeSecretKey,
+  refundConnectCharge,
+  retrieveConnectCharge,
+  StripeRequestError,
+} from "@/lib/stripe/connect";
 
 const ALLOWED = [
   "send_invoice",
@@ -226,44 +244,393 @@ export async function POST(
           { status: 400 },
         );
       }
+      if (openInvoices.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "No open invoices to apply payment to" },
+          { status: 422 },
+        );
+      }
+      // Cap charge at the patient's total open balance so we never
+      // collect more on Stripe than we can post to the local ledger
+      // (the leftover would be unaccounted money on the connected
+      // account). Reject explicitly instead of silently truncating —
+      // billers should know they typed too high.
+      const totalOpenBalance =
+        Math.round(
+          openInvoices.reduce((s, i) => s + money(i.balance_amount), 0) * 100,
+        ) / 100;
+      if (amount > totalOpenBalance) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Charge amount $${amount.toFixed(2)} exceeds open balance $${totalOpenBalance.toFixed(2)}`,
+          },
+          { status: 422 },
+        );
+      }
+      if (!getStripeSecretKey()) {
+        return NextResponse.json(
+          { success: false, error: "Online card payment is not configured" },
+          { status: 503 },
+        );
+      }
+
+      // Recover a reusable (customer, payment_method) pair from the
+      // patient's most-recent successful Stripe charge so we can run an
+      // off-session charge. We don't store card metadata locally — we
+      // rely on Stripe being the source of truth.
+      const { data: lastChargeRow, error: lastChargeErr } = await (supabase as any)
+        .from("client_payments")
+        .select("external_payment_id, stripe_charge_id, stripe_connected_account_id")
+        .eq("organization_id", organizationId)
+        .eq("client_id", id)
+        .eq("payment_method", "stripe")
+        .eq("posting_status", "posted")
+        .is("archived_at", null)
+        .not("external_payment_id", "is", null)
+        .order("posted_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastChargeErr) throw lastChargeErr;
+      const lastCharge = lastChargeRow as
+        | {
+            external_payment_id: string | null;
+            stripe_charge_id: string | null;
+            stripe_connected_account_id: string | null;
+          }
+        | null;
+      const priorChargeId = text(lastCharge?.stripe_charge_id) || text(lastCharge?.external_payment_id);
+      const connectedAccountId = text(lastCharge?.stripe_connected_account_id);
+      if (!priorChargeId || !connectedAccountId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "No saved card on file — ask the patient to pay an invoice via the portal first, then retry.",
+          },
+          { status: 422 },
+        );
+      }
+
+      // Look up the prior charge on Stripe to recover the customer +
+      // payment_method ids we need for the off-session re-charge.
+      let customerId = "";
+      let paymentMethodId = "";
+      try {
+        const prior = await retrieveConnectCharge({
+          chargeId: priorChargeId,
+          connectedAccountId,
+        });
+        customerId = text(prior.customer);
+        paymentMethodId = text(prior.payment_method);
+      } catch (err) {
+        const message =
+          err instanceof StripeRequestError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : "Failed to read prior charge from Stripe";
+        return NextResponse.json(
+          { success: false, error: `Could not load saved card: ${message}` },
+          { status: 502 },
+        );
+      }
+      if (!customerId || !paymentMethodId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Saved Stripe payment method is missing — ask the patient to re-enter their card via the portal.",
+          },
+          { status: 422 },
+        );
+      }
+
+      // Run the real charge BEFORE mutating invoices. We commit money
+      // first, then record it locally only on success.
+      const amountCents = Math.round(amount * 100);
+      // Deterministic idempotency key tied to (org, client, amount,
+      // current open-invoice state). Retries within the same state
+      // collapse to the same Stripe charge — Stripe returns the prior
+      // PaymentIntent instead of creating a duplicate. Once invoices
+      // change (because a charge actually succeeded and reduced
+      // balances), the key naturally rolls. Mirrors the pattern in
+      // lib/portal/invoiceCheckout.ts.
+      const invoiceSnapshot = openInvoices
+        .map((i) => `${text(i.id)}:${Math.round(money(i.balance_amount) * 100)}`)
+        .sort()
+        .join("|");
+      const snapshotHash = createHash("sha256")
+        .update(invoiceSnapshot)
+        .digest("hex")
+        .slice(0, 16);
+      const idempotencyKey = `pb-charge-${organizationId}-${id}-${amountCents}-${snapshotHash}`;
+      let chargeId: string | null = null;
+      let paymentIntentId: string | null = null;
+      try {
+        const intent = await chargeSavedPaymentMethod({
+          amountCents,
+          currency: "usd",
+          connectedAccountId,
+          customerId,
+          paymentMethodId,
+          description: `Patient balance charge for client ${id}`,
+          metadata: {
+            origin: "patient_billing_charge_card",
+            organization_id: organizationId,
+            client_id: id,
+            requested_amount_cents: String(amountCents),
+          },
+          idempotencyKey,
+        });
+        if (intent.status !== "succeeded") {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Stripe charge did not succeed (status=${intent.status})`,
+            },
+            { status: 402 },
+          );
+        }
+        paymentIntentId = text(intent.id) || null;
+        const latest = (intent as { latest_charge?: string | { id?: string } | null }).latest_charge;
+        if (typeof latest === "string") chargeId = latest;
+        else if (latest && typeof latest === "object") chargeId = text(latest.id) || null;
+
+        // Defense against idempotency-replay after a compensated
+        // failure: Stripe's idempotency cache returns the original
+        // PaymentIntent on a retry with the same key — including one
+        // we may have refunded ourselves. Re-read the charge and
+        // refuse to post locally if it's been (even partially)
+        // refunded or uncaptured. Without this guard, a retry after a
+        // successful local rollback + refund would re-post invoice
+        // balances against a charge that no longer holds funds.
+        if (!chargeId) {
+          return NextResponse.json(
+            { success: false, error: "Stripe PaymentIntent did not return a charge id" },
+            { status: 502 },
+          );
+        }
+        const verifyCharge = await retrieveConnectCharge({
+          chargeId,
+          connectedAccountId,
+        });
+        const refundedAmount = Number(verifyCharge.amount_refunded ?? 0);
+        if (
+          verifyCharge.status !== "succeeded" ||
+          verifyCharge.captured === false ||
+          verifyCharge.refunded === true ||
+          refundedAmount > 0
+        ) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Stripe charge ${chargeId} is not collectible (status=${verifyCharge.status}, refunded=${verifyCharge.refunded ?? false}, amount_refunded=${refundedAmount}). This is usually an idempotent retry of a previously compensated charge — change the amount or wait for the prior charge to clear, then retry.`,
+              stripe_charge_id: chargeId,
+            },
+            { status: 409 },
+          );
+        }
+      } catch (err) {
+        const message =
+          err instanceof StripeRequestError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : "Stripe charge failed";
+        return NextResponse.json(
+          { success: false, error: message },
+          { status: 402 },
+        );
+      }
+
+      // Stripe succeeded — now apply the payment to invoices oldest-first.
+      // supabase-js cannot wrap multi-row writes in a SQL transaction, so
+      // if a DB write fails mid-loop we have already collected money on
+      // Stripe but only partially recorded it locally. Compensate by
+      // refunding the Stripe charge so the patient is never silently
+      // overcharged. The compensating refund is itself idempotent (keyed
+      // off the charge id) so a retry collapses to the same Stripe
+      // refund object.
       let remaining = amount;
       const touched: string[] = [];
-      for (const inv of openInvoices) {
-        if (remaining <= 0) break;
-        const bal = money(inv.balance_amount);
-        const apply = Math.min(bal, remaining);
-        const newBal = Math.round((bal - apply) * 100) / 100;
-        const newPaid = money(inv.paid_amount) + apply;
-        const update: Record<string, unknown> = {
-          balance_amount: newBal,
-          paid_amount: Math.round(newPaid * 100) / 100,
-          updated_at: new Date().toISOString(),
-        };
-        if (newBal <= 0) update.invoice_status = "paid";
-        const { error } = await (supabase as any)
-          .from("patient_invoices")
-          .update(update)
-          .eq("id", inv.id);
-        if (error) throw error;
-        const { error: payErr } = await (supabase as any)
-          .from("patient_invoice_payments")
+      // Snapshot every invoice + payment-row mutation so a mid-loop
+      // failure can roll back to the pre-charge ledger state. supabase-js
+      // doesn't expose SQL transactions, so we implement compensating
+      // writes manually: any invoice we updated gets restored to its
+      // prior balance/paid/status, any payment row we inserted gets
+      // archived. Combined with the Stripe refund below this preserves
+      // the invariant "failed charge attempts do not modify invoice
+      // balances".
+      const invoicePriorState: Array<{
+        id: string;
+        balance_amount: number;
+        paid_amount: number;
+        invoice_status: string;
+      }> = [];
+      const insertedPaymentIds: string[] = [];
+      try {
+        for (const inv of openInvoices) {
+          if (remaining <= 0) break;
+          const bal = money(inv.balance_amount);
+          const apply = Math.min(bal, remaining);
+          const newBal = Math.round((bal - apply) * 100) / 100;
+          const newPaid = money(inv.paid_amount) + apply;
+          const update: Record<string, unknown> = {
+            balance_amount: newBal,
+            paid_amount: Math.round(newPaid * 100) / 100,
+            updated_at: new Date().toISOString(),
+          };
+          if (newBal <= 0) update.invoice_status = "paid";
+          const { error } = await (supabase as any)
+            .from("patient_invoices")
+            .update(update)
+            .eq("id", inv.id);
+          if (error) throw error;
+          // Record prior state ONLY after a successful write so the
+          // rollback list reflects writes we actually made.
+          invoicePriorState.push({
+            id: text(inv.id),
+            balance_amount: bal,
+            paid_amount: money(inv.paid_amount),
+            invoice_status: text(inv.invoice_status) || "open",
+          });
+          const { data: insertedPayment, error: payErr } = await (supabase as any)
+            .from("patient_invoice_payments")
+            .insert({
+              organization_id: organizationId,
+              patient_invoice_id: inv.id,
+              client_id: id,
+              amount: apply,
+              payment_method: "stripe",
+              payment_status: "posted",
+              external_payment_id: chargeId,
+              memo: text(body.note) || null,
+              paid_at: new Date().toISOString(),
+            })
+            .select("id")
+            .single();
+          if (payErr) throw payErr;
+          if (insertedPayment?.id) insertedPaymentIds.push(String(insertedPayment.id));
+          touched.push(text(inv.id));
+          remaining = Math.round((remaining - apply) * 100) / 100;
+        }
+      } catch (persistErr) {
+        const persistMessage =
+          persistErr instanceof Error ? persistErr.message : String(persistErr);
+
+        // Compensating local rollback first: restore every invoice we
+        // touched to its prior balance/paid/status, then archive every
+        // patient_invoice_payments row we inserted. Any failures here
+        // are recorded in the audit row so AR has a manual reconciliation
+        // trail.
+        const rollbackErrors: Array<{ kind: string; id: string; error: string }> = [];
+        for (const prior of invoicePriorState) {
+          const { error: rbErr } = await (supabase as any)
+            .from("patient_invoices")
+            .update({
+              balance_amount: prior.balance_amount,
+              paid_amount: prior.paid_amount,
+              invoice_status: prior.invoice_status,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", prior.id);
+          if (rbErr) {
+            rollbackErrors.push({ kind: "invoice", id: prior.id, error: rbErr.message });
+          }
+        }
+        if (insertedPaymentIds.length > 0) {
+          const { error: archErr } = await (supabase as any)
+            .from("patient_invoice_payments")
+            .update({
+              payment_status: "voided",
+              archived_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .in("id", insertedPaymentIds);
+          if (archErr) {
+            rollbackErrors.push({
+              kind: "payment",
+              id: insertedPaymentIds.join(","),
+              error: archErr.message,
+            });
+          }
+        }
+        const localRollback = rollbackErrors.length === 0 ? "restored" : "partial";
+
+        let refundOutcome = "skipped";
+        let refundError: string | null = null;
+        if (chargeId) {
+          try {
+            await refundConnectCharge({
+              chargeId,
+              connectedAccountId,
+              reason: "requested_by_customer",
+              idempotencyKey: `pb-charge-compensate-${chargeId}`,
+            });
+            refundOutcome = "refunded";
+          } catch (refundErr) {
+            refundOutcome = "failed";
+            refundError =
+              refundErr instanceof Error ? refundErr.message : String(refundErr);
+            console.error(
+              "[patient-billing.charge_card] compensating refund failed",
+              { chargeId, persistMessage, refundError },
+            );
+          }
+        }
+        // Audit the failure so AR has a trail even though we return 5xx.
+        await (supabase as any)
+          .from("audit_logs")
           .insert({
             organization_id: organizationId,
-            patient_invoice_id: inv.id,
-            client_id: id,
-            amount: apply,
-            payment_method: "card",
-            payment_status: "posted",
-            memo: text(body.note) || null,
-            paid_at: new Date().toISOString(),
+            patient_id: id,
+            event_type: "patient_billing_charge_card_persist_failed",
+            event_summary: "Stripe charge captured but local posting failed",
+            event_metadata: {
+              stripe_charge_id: chargeId,
+              stripe_payment_intent_id: paymentIntentId,
+              stripe_connected_account_id: connectedAccountId,
+              amount,
+              persist_error: persistMessage,
+              compensating_refund: refundOutcome,
+              ...(refundError ? { compensating_refund_error: refundError } : {}),
+              local_rollback: localRollback,
+              ...(rollbackErrors.length > 0 ? { local_rollback_errors: rollbackErrors } : {}),
+              rolled_back_invoice_ids: invoicePriorState.map((p) => p.id),
+              voided_payment_ids: insertedPaymentIds,
+              touched_invoice_ids: touched,
+            },
+            user_id: guard.userId,
+            action: "patient_billing_charge_card_persist_failed",
+            object_type: "client",
+            object_id: id,
           });
-        if (payErr) throw payErr;
-        touched.push(text(inv.id));
-        remaining = Math.round((remaining - apply) * 100) / 100;
+        const rollbackBlurb =
+          localRollback === "restored"
+            ? "Local invoice balances were restored to their prior state"
+            : "Local rollback was only partial — some invoices require manual reconciliation";
+        const refundBlurb =
+          refundOutcome === "refunded"
+            ? `Stripe charge ${chargeId} was refunded`
+            : `Stripe charge ${chargeId} refund ${refundOutcome === "failed" ? "FAILED" : "could not be issued"} — manual reconciliation required`;
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Charge captured but local posting failed (${persistMessage}). ${rollbackBlurb}. ${refundBlurb}.`,
+            stripe_charge_id: chargeId,
+            compensating_refund: refundOutcome,
+            local_rollback: localRollback,
+          },
+          { status: 500 },
+        );
       }
       metadata.amount = amount;
       metadata.applied = Math.round((amount - remaining) * 100) / 100;
       metadata.invoice_ids = touched;
+      metadata.stripe_charge_id = chargeId;
+      metadata.stripe_payment_intent_id = paymentIntentId;
+      metadata.stripe_connected_account_id = connectedAccountId;
     }
 
     if (action === "create_payment_plan") {

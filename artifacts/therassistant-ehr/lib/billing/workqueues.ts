@@ -70,7 +70,7 @@ export const WORKQUEUES: WorkqueueDef[] = [
     description: "Patients whose latest 270/271 eligibility check failed or returned a coverage problem.",
     href: "/billing/eligibility-issues",
     stage: "pre_submission",
-    status: "coming_soon",
+    status: "live",
   },
   {
     id: "authorization_required",

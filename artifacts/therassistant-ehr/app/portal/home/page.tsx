@@ -334,21 +334,14 @@ export default async function PatientPortalHomePage() {
                 {formatMoney(inv.amount)} billed · {formatMoney(inv.paid)} paid
               </div>
             </div>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "flex-end",
-                gap: 6,
-              }}
-            >
+            <div className="portal-item-right">
               <div className="portal-item-title" style={{ fontVariantNumeric: "tabular-nums" }}>
                 {formatMoney(inv.balance)}
               </div>
               {inv.balance > 0 ? (
-                <details>
+                <details className="portal-pay-details">
                   <summary
-                    className="button"
+                    className="button portal-pay-summary"
                     style={{ listStyle: "none", userSelect: "none" }}
                   >
                     Pay
@@ -402,7 +395,7 @@ export default async function PatientPortalHomePage() {
                   {doc.fileName ? ` · ${doc.fileName}` : ""}
                 </div>
               </div>
-              <a href={doc.downloadHref} className="button" download>
+              <a href={doc.downloadHref} className="button portal-item-action" download>
                 Download
               </a>
             </div>

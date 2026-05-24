@@ -1288,3 +1288,88 @@ textarea {
 .portal-return-tone-neutral {
   color: var(--navy);
 }
+
+.portal-item-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.portal-pay-details {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.portal-header {
+  flex-wrap: wrap;
+}
+
+/* Phones: stack header, invoice/document rows, and expand pay/download controls. */
+@media (max-width: 560px) {
+  .portal-shell {
+    padding: 20px 16px 56px;
+  }
+
+  .portal-shell-narrow {
+    padding: 32px 16px 56px;
+  }
+
+  .portal-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .portal-header form,
+  .portal-header .button {
+    width: 100%;
+  }
+
+  .portal-item-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .portal-item-right {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .portal-item-right .portal-item-title {
+    text-align: left;
+  }
+
+  .portal-pay-details {
+    align-items: stretch;
+  }
+
+  .portal-pay-summary,
+  .portal-item-action {
+    width: 100%;
+  }
+
+  .portal-pay-picker {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Comfortable tap targets on phones. */
+  .portal-header .button,
+  .portal-pay-summary,
+  .portal-item-action,
+  .portal-pay-picker .button,
+  .portal-pay-amount-row input {
+    min-height: 40px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    font-size: 14px;
+  }
+
+  .portal-pay-amount-row input {
+    font-size: 16px; /* prevent iOS zoom on focus */
+  }
+}

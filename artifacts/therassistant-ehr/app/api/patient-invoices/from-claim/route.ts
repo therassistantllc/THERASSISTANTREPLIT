@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
 import { markPatientInvoiceSent } from "@/lib/payments/patientInvoicePaymentService";
+import { attemptAutopayForInvoice } from "@/lib/payments/autopayService";
 
 export async function POST(request: Request) {
   try {
@@ -71,6 +72,19 @@ export async function POST(request: Request) {
       patientInvoiceId: invoiceId,
     });
 
+    // Best-effort autopay: if the patient has autopay on with a saved
+    // card, charge the new invoice immediately. Never fails the request —
+    // failures get surfaced into the Patient Billing queue separately.
+    const autopayResult = await attemptAutopayForInvoice({
+      organizationId,
+      patientInvoiceId: invoiceId,
+    }).catch((err) => ({
+      attempted: false,
+      ok: false,
+      code: "failed" as const,
+      message: err instanceof Error ? err.message : "Autopay attempt threw",
+    }));
+
     const { data: patientRow } = await (supabase as any)
       .from("clients")
       .select("first_name, last_name")
@@ -87,6 +101,7 @@ export async function POST(request: Request) {
       patientName,
       amount,
       sentResult,
+      autopayResult,
     });
   } catch (error) {
     console.error("Patient invoice from-claim error:", error);

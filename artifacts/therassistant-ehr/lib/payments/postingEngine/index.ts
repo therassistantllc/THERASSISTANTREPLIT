@@ -674,6 +674,23 @@ async function createPatientInvoiceIfNeeded(
     summary: `Patient invoice ${invoiceNumber(payment.id)} created from ERA PR balance ${responsibility.toFixed(2)}`,
   });
   if (audit) auditSink.push(audit.id);
+
+  // Best-effort autopay: if the patient has autopay on with a saved
+  // card, charge the freshly-created invoice's PR balance immediately.
+  try {
+    const { attemptAutopayForInvoice } = await import("@/lib/payments/autopayService");
+    await attemptAutopayForInvoice({
+      organizationId,
+      patientInvoiceId: String((inserted as { id: string }).id),
+      supabase,
+    });
+  } catch (autopayErr) {
+    console.warn(
+      "[postingEngine] autopay attempt failed (non-fatal)",
+      autopayErr instanceof Error ? autopayErr.message : autopayErr,
+    );
+  }
+
   return true;
 }
 

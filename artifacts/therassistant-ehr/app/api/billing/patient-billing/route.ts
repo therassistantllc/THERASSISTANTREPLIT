@@ -67,6 +67,9 @@ export type PatientBillingRow = {
   last_statement_at: string | null;
   payment_method: string | null;
   autopay_status: "on" | "off" | "unknown";
+  autopay_last_attempt_at: string | null;
+  autopay_last_attempt_status: "succeeded" | "failed" | null;
+  autopay_last_attempt_error: string | null;
   last_payment_at: string | null;
   last_payment_amount: number | null;
   next_follow_up_at: string | null;
@@ -208,7 +211,7 @@ export async function GET(request: Request) {
         ? supabase
             .from("clients")
             .select(
-              "id, first_name, last_name, primary_clinician_user_id, organization_id",
+              "id, first_name, last_name, primary_clinician_user_id, organization_id, autopay_enabled, stripe_payment_method_brand, stripe_payment_method_last4",
             )
             .in("id", clientIds)
         : Promise.resolve({ data: [] as DbRow[] }),
@@ -527,20 +530,55 @@ export async function GET(request: Request) {
         (p) => p.payment_status === "posted",
       );
       const paymentMethod = recentPosted?.payment_method ?? null;
+      // Source of truth for autopay enrollment is the persisted column
+      // `clients.autopay_enabled` (Task #590). Audit-event fallbacks only
+      // matter when the column is null (legacy rows pre-#590).
       let autopayStatus: PatientBillingRow["autopay_status"] = "unknown";
-      const autopayEv = agg.communications.find(
-        (c) => c.event_type === `${EVT}enable_autopay`,
-      );
-      const autopayOffEv = agg.communications
-        .slice()
-        .reverse()
-        .find((c) => c.event_type === `${EVT}disable_autopay`);
-      if (autopayOffEv && (!autopayEv || autopayOffEv.created_at > autopayEv.created_at)) {
-        autopayStatus = "off";
-      } else if (autopayEv) {
+      const persistedAutopay = (client as { autopay_enabled?: boolean | null })
+        .autopay_enabled;
+      if (persistedAutopay === true) {
         autopayStatus = "on";
-      } else if (paymentMethod === "card" || paymentMethod === "stripe") {
+      } else if (persistedAutopay === false) {
         autopayStatus = "off";
+      } else {
+        const autopayEv = agg.communications.find(
+          (c) => c.event_type === `${EVT}enable_autopay`,
+        );
+        const autopayOffEv = agg.communications
+          .slice()
+          .reverse()
+          .find((c) => c.event_type === `${EVT}disable_autopay`);
+        if (autopayOffEv && (!autopayEv || autopayOffEv.created_at > autopayEv.created_at)) {
+          autopayStatus = "off";
+        } else if (autopayEv) {
+          autopayStatus = "on";
+        } else if (paymentMethod === "card" || paymentMethod === "stripe") {
+          autopayStatus = "off";
+        }
+      }
+
+      // Autopay last-attempt status (Task #590): scan the most recent
+      // patient_billing_autopay_* event so the UI can flag failed
+      // auto-charges that need biller attention.
+      let autopayLastAttemptAt: string | null = null;
+      let autopayLastAttemptStatus: "succeeded" | "failed" | null = null;
+      let autopayLastAttemptError: string | null = null;
+      for (const ev of agg.communications) {
+        if (
+          ev.event_type === `${EVT}autopay_succeeded` ||
+          ev.event_type === `${EVT}autopay_failed`
+        ) {
+          if (!autopayLastAttemptAt || ev.created_at > autopayLastAttemptAt) {
+            autopayLastAttemptAt = ev.created_at;
+            autopayLastAttemptStatus =
+              ev.event_type === `${EVT}autopay_succeeded` ? "succeeded" : "failed";
+            const md = ev.metadata ?? {};
+            autopayLastAttemptError =
+              autopayLastAttemptStatus === "failed"
+                ? text((md as { error_message?: unknown }).error_message) || null
+                : null;
+          }
+        }
       }
 
       // Tab classification.
@@ -592,6 +630,9 @@ export async function GET(request: Request) {
         last_statement_at: lastStatementAt,
         payment_method: paymentMethod,
         autopay_status: autopayStatus,
+        autopay_last_attempt_at: autopayLastAttemptAt,
+        autopay_last_attempt_status: autopayLastAttemptStatus,
+        autopay_last_attempt_error: autopayLastAttemptError,
         last_payment_at: lastPayment?.paid_at ?? null,
         last_payment_amount: lastPayment?.amount ?? null,
         next_follow_up_at: nextFollowUpAt,

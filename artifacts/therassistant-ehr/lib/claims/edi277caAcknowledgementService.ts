@@ -38,34 +38,107 @@ function splitElements(segment: string): string[] {
   return segment.split("*").map((element) => element.trim());
 }
 
+type ParsedStc = {
+  raw: string;
+  category: string | null;
+  status: string | null;
+  entity: string | null;
+  actionCode: string | null;
+  monetaryAmount: string | null;
+  message: string | null;
+};
+
+function parseStcSegment(elements: string[]): ParsedStc {
+  const composite = normalizeText(elements[1]);
+  const [category, status, entity] = composite.split(":");
+  // STC11 carries the free-form Health Care Claim Status text the payer
+  // uses to describe why a claim was rejected. We surface it as `message`
+  // so per-claim classification can keyword-match the same way the
+  // batch-level message classifier does.
+  return {
+    raw: elements.join("*"),
+    category: category || null,
+    status: status || null,
+    entity: entity || null,
+    actionCode: normalizeText(elements[3]) || null,
+    monetaryAmount: normalizeText(elements[4]) || null,
+    message: normalizeText(elements[11]) || null,
+  };
+}
+
+function isRejectStc(entry: ParsedStc): boolean {
+  const category = normalizeText(entry.category).toUpperCase();
+  const status = normalizeText(entry.status).toUpperCase();
+  return (
+    ["A3", "A6", "A7", "A8", "E0"].includes(category) ||
+    ["562", "U", "R"].includes(status)
+  );
+}
+
+function isAcceptStc(entry: ParsedStc): boolean {
+  const category = normalizeText(entry.category).toUpperCase();
+  return ["A1", "A2", "A5"].includes(category);
+}
+
+export type Parsed277CaClaimRef = {
+  /** TRN02 from the 2200D loop — echoes the original 837P CLM01 (patient
+   *  account number) so we can match each per-claim status back to the
+   *  professional_claims row we submitted. */
+  trn: string;
+  stcStatuses: ParsedStc[];
+  message: string | null;
+};
+
 function parse277CA(rawContent: string) {
   const parsedSegments = splitSegments(rawContent).map(splitElements);
-  const stcSegments = parsedSegments.filter((elements) => elements[0] === "STC");
   const bht = parsedSegments.find((elements) => elements[0] === "BHT");
 
-  const stcStatuses = stcSegments.map((elements) => {
-    const composite = normalizeText(elements[1]);
-    const [category, status, entity] = composite.split(":");
-    return {
-      raw: elements.join("*"),
-      category: category || null,
-      status: status || null,
-      entity: entity || null,
-      actionCode: normalizeText(elements[3]) || null,
-      monetaryAmount: normalizeText(elements[4]) || null,
-    };
-  });
+  // Walk the segments in order so we can group each STC under the closest
+  // preceding TRN inside a 2200D (claim-level) loop. The 2200D loop only
+  // appears nested under HL*…*…*23 (claim/patient detail), so we track the
+  // current HL level and only attribute STCs to a claim when we're inside
+  // a 23-level HL. STCs that appear outside any claim loop (eg. at the
+  // transaction set or 2000A info-source level) are still kept on the
+  // top-level `stcStatuses` list for back-compat consumers like the
+  // documentation-request detector.
+  const stcStatuses: ParsedStc[] = [];
+  const claimRefs: Parsed277CaClaimRef[] = [];
+  let currentHlLevel: string | null = null;
+  let currentClaim: Parsed277CaClaimRef | null = null;
 
-  const hasReject = stcStatuses.some((entry) => {
-    const category = normalizeText(entry.category).toUpperCase();
-    const status = normalizeText(entry.status).toUpperCase();
-    return ["A3", "A6", "A7", "A8", "E0"].includes(category) || ["562", "U", "R"].includes(status);
-  });
+  for (const elements of parsedSegments) {
+    const tag = elements[0];
+    if (tag === "HL") {
+      // HL01 = id, HL02 = parent id, HL03 = level code. A new HL closes
+      // out any in-progress claim loop.
+      currentHlLevel = normalizeText(elements[3]) || null;
+      currentClaim = null;
+      continue;
+    }
+    if (tag === "TRN" && currentHlLevel === "23") {
+      const trn = normalizeText(elements[2]);
+      if (trn) {
+        currentClaim = { trn, stcStatuses: [], message: null };
+        claimRefs.push(currentClaim);
+      } else {
+        currentClaim = null;
+      }
+      continue;
+    }
+    if (tag === "STC") {
+      const entry = parseStcSegment(elements);
+      stcStatuses.push(entry);
+      if (currentClaim) {
+        currentClaim.stcStatuses.push(entry);
+        if (!currentClaim.message && entry.message) {
+          currentClaim.message = entry.message;
+        }
+      }
+    }
+  }
 
-  const hasAccept = stcStatuses.some((entry) => {
-    const category = normalizeText(entry.category).toUpperCase();
-    return ["A1", "A2", "A5"].includes(category);
-  });
+  const hasReject = stcStatuses.some(isRejectStc);
+  const hasAccept = stcStatuses.some(isAcceptStc);
 
   let outcome: Edi277CAOutcome = "unknown";
   if (hasReject && hasAccept) outcome = "partial";
@@ -76,6 +149,7 @@ function parse277CA(rawContent: string) {
     outcome,
     bht: bht ? bht.join("*") : null,
     stcStatuses,
+    claimRefs,
     segmentCount: parsedSegments.length,
   };
 }

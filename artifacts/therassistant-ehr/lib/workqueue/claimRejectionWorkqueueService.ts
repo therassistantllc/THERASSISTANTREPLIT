@@ -13,11 +13,10 @@ type ParsedStcEntry = {
   category?: string | null;
   status?: string | null;
   entity?: string | null;
+  message?: string | null;
 };
 
-function extractStcEntries(parsed: Record<string, unknown> | null | undefined): ParsedStcEntry[] {
-  if (!parsed) return [];
-  const raw = (parsed as { stcStatuses?: unknown }).stcStatuses;
+function toStcEntries(raw: unknown): ParsedStcEntry[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
@@ -25,7 +24,63 @@ function extractStcEntries(parsed: Record<string, unknown> | null | undefined): 
       category: typeof e.category === "string" ? e.category : null,
       status: typeof e.status === "string" ? e.status : null,
       entity: typeof e.entity === "string" ? e.entity : null,
+      message: typeof e.message === "string" ? e.message : null,
     }));
+}
+
+function extractStcEntries(parsed: Record<string, unknown> | null | undefined): ParsedStcEntry[] {
+  if (!parsed) return [];
+  return toStcEntries((parsed as { stcStatuses?: unknown }).stcStatuses);
+}
+
+type ParsedClaimRef = {
+  trn: string;
+  stcStatuses: ParsedStcEntry[];
+  message: string | null;
+};
+
+function extractClaimRefs(parsed: Record<string, unknown> | null | undefined): ParsedClaimRef[] {
+  if (!parsed) return [];
+  const raw = (parsed as { claimRefs?: unknown }).claimRefs;
+  if (!Array.isArray(raw)) return [];
+  const out: ParsedClaimRef[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const obj = item as Record<string, unknown>;
+    const trn = typeof obj.trn === "string" ? obj.trn.trim() : "";
+    if (!trn) continue;
+    out.push({
+      trn,
+      stcStatuses: toStcEntries(obj.stcStatuses),
+      message: typeof obj.message === "string" ? obj.message : null,
+    });
+  }
+  return out;
+}
+
+function buildClaimRefIndex(refs: ParsedClaimRef[]): Map<string, ParsedClaimRef> {
+  // Index by the trimmed/uppercased TRN value so we can match it against
+  // a claim's patient_account_number or claim_number regardless of
+  // surrounding whitespace or case in the inbound 277CA.
+  const idx = new Map<string, ParsedClaimRef>();
+  for (const ref of refs) {
+    const key = ref.trn.toUpperCase();
+    if (!idx.has(key)) idx.set(key, ref);
+  }
+  return idx;
+}
+
+function lookupClaimRef(
+  index: Map<string, ParsedClaimRef>,
+  claim: ClaimRow,
+): ParsedClaimRef | null {
+  if (index.size === 0) return null;
+  for (const candidate of [claim.patient_account_number, claim.claim_number, claim.id]) {
+    if (!candidate) continue;
+    const hit = index.get(String(candidate).trim().toUpperCase());
+    if (hit) return hit;
+  }
+  return null;
 }
 
 function pickStringField(
@@ -151,40 +206,51 @@ export async function routeRejectedClaimsToWorkqueue(
       ? await loadRejection277CaAutoRouteSettings(supabase, input.organizationId)
       : null;
 
-  // Classify once at the batch level. The current 277CA parser only emits
-  // batch-level STC entries (no per-claim breakdown), so every claim in
-  // this batch shares the same auto-route decision.
-  let autoRouteDecision: ReturnType<typeof pickAutoRouteForRejection277Ca> = null;
-  if (input.source === "277CA" && autoRouteSettings?.enabled) {
-    const stcEntries = extractStcEntries(input.parsedContent ?? null);
-    const message = pickStringField(input.parsedContent ?? null, [
-      "rejection_reason",
-      "status_message",
-      "message",
-      "free_form_message",
-    ]);
+  // Per-claim STC index — the 277CA parser groups STC segments under the
+  // 2200D TRN that identifies each claim, so different claims in the same
+  // batch can carry different rejection reasons. We fall back to the
+  // batch-level entries when a claim has no per-claim ref (eg. older acks
+  // that only carried transaction-level STCs).
+  const claimRefIndex = buildClaimRefIndex(extractClaimRefs(input.parsedContent ?? null));
+  const batchLevelStcEntries = extractStcEntries(input.parsedContent ?? null);
+  const batchLevelMessage = pickStringField(input.parsedContent ?? null, [
+    "rejection_reason",
+    "status_message",
+    "message",
+    "free_form_message",
+  ]);
+  const batchLevelCategory = pickStringField(input.parsedContent ?? null, [
+    "category_code",
+    "stc_category_code",
+  ]);
+  const batchLevelStatus = pickStringField(input.parsedContent ?? null, [
+    "status_code",
+    "stc_status_code",
+  ]);
+  const batchLevelEntity = pickStringField(input.parsedContent ?? null, [
+    "entity_code",
+    "stc_entity_code",
+  ]);
+
+  function classifyClaim(claim: ClaimRow): ReturnType<typeof pickAutoRouteForRejection277Ca> {
+    if (input.source !== "277CA" || !autoRouteSettings?.enabled) return null;
+    const ref = lookupClaimRef(claimRefIndex, claim);
+    const stcEntries = ref ? ref.stcStatuses : batchLevelStcEntries;
+    const message = ref?.message ?? batchLevelMessage;
     const decision = pickAutoRouteForRejection277Ca({
       stcEntries,
       message,
-      categoryCode: pickStringField(input.parsedContent ?? null, [
-        "category_code",
-        "stc_category_code",
-      ]),
-      statusCode: pickStringField(input.parsedContent ?? null, [
-        "status_code",
-        "stc_status_code",
-      ]),
-      entityCode: pickStringField(input.parsedContent ?? null, [
-        "entity_code",
-        "stc_entity_code",
-      ]),
+      // Only fall back to the batch-level singular code hints when we don't
+      // have a per-claim STC list at all — otherwise the per-claim entries
+      // already carry the codes inside `stcEntries`.
+      categoryCode: ref ? null : batchLevelCategory,
+      statusCode: ref ? null : batchLevelStatus,
+      entityCode: ref ? null : batchLevelEntity,
     });
-    if (
-      (decision?.tab === "invalid_member" && autoRouteSettings.routeInvalidMember) ||
-      (decision?.tab === "invalid_provider" && autoRouteSettings.routeInvalidProvider)
-    ) {
-      autoRouteDecision = decision;
-    }
+    if (!decision) return null;
+    if (decision.tab === "invalid_member" && !autoRouteSettings.routeInvalidMember) return null;
+    if (decision.tab === "invalid_provider" && !autoRouteSettings.routeInvalidProvider) return null;
+    return decision;
   }
 
   for (const claim of (claims ?? []) as ClaimRow[]) {
@@ -200,6 +266,9 @@ export async function routeRejectedClaimsToWorkqueue(
         continue;
       }
 
+      const claimRef = lookupClaimRef(claimRefIndex, claim);
+      const autoRouteDecision = classifyClaim(claim);
+
       const baseContext: Record<string, unknown> = {
         source: input.source,
         outcome: input.outcome,
@@ -210,6 +279,15 @@ export async function routeRejectedClaimsToWorkqueue(
         patient_account_number: claim.patient_account_number,
         parsed_content: input.parsedContent ?? {},
       };
+
+      // Surface the matched per-claim STC slice so downstream UIs (and
+      // human reviewers reading the workqueue context) can see exactly
+      // which STC entries drove the routing decision for this claim.
+      if (claimRef) {
+        baseContext.claim_ref_trn = claimRef.trn;
+        baseContext.claim_stc_statuses = claimRef.stcStatuses;
+        if (claimRef.message) baseContext.claim_message = claimRef.message;
+      }
 
       if (autoRouteDecision) {
         baseContext.auto_routed = true;

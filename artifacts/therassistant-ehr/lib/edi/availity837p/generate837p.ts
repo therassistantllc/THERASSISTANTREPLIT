@@ -13,6 +13,11 @@ import {
   generateControlNumber,
   sanitizeX12,
 } from "./x12";
+import {
+  deriveCobFromClaim,
+  emitClaimCobLoops,
+  emitServiceLineCobLoops,
+} from "./cobSegments";
 
 function formatTimeHHmm(date: Date): string {
   const hh = String(date.getHours()).padStart(2, "0");
@@ -196,7 +201,12 @@ export function generateAvaility837PBatch(
   const hasPatientLoop = !parties.patient_is_subscriber;
 
   segments.push(buildSegment(["HL", "2", "1", "22", hasPatientLoop ? "1" : "0"]));
-  segments.push(buildSegment(["SBR", "P", "18", "", "", "", "", "", "", "CI"]));
+  // SBR01 responsibility code: 'S' when this claim is destined for the
+  // SECONDARY payer (child cloned from a primary-paid claim), otherwise 'P'.
+  const destinationResponsibility = claim.cob_billing_role === "secondary" ? "S" : "P";
+  segments.push(
+    buildSegment(["SBR", destinationResponsibility, "18", "", "", "", "", "", "", "CI"]),
+  );
 
   segments.push(
     buildSegment([
@@ -364,6 +374,16 @@ export function generateAvaility837PBatch(
     );
   }
 
+  // Loop 2320/2330A/2330B — primary payer adjudication summary. Emits only
+  // for child claims with `cob_billing_role='secondary'` whose billSecondary
+  // stamping populated prior_payer_eob_data with the primary subscriber/payer
+  // identifying fields. Without these loops the secondary payer rejects the
+  // claim as "missing other payer information."
+  const cobPrimary = deriveCobFromClaim(claim);
+  if (cobPrimary) {
+    for (const seg of emitClaimCobLoops(cobPrimary)) segments.push(seg);
+  }
+
   serviceLines.forEach((line, index) => {
     segments.push(buildSegment(["LX", index + 1]));
     segments.push(
@@ -380,6 +400,10 @@ export function generateAvaility837PBatch(
     );
 
     segments.push(buildSegment(["DTP", "472", "D8", formatServiceDate(line.service_date_from)]));
+    // Loop 2430 per-line ERA breakdown (SVD/CAS/DTP*573).
+    if (cobPrimary) {
+      for (const seg of emitServiceLineCobLoops(line, cobPrimary)) segments.push(seg);
+    }
   });
 
   const messageWithoutTrailer = segments.join("");

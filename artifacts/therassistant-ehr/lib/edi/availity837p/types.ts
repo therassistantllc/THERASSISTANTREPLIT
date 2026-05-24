@@ -59,6 +59,20 @@ export interface ProfessionalClaim {
   last_validated_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  // COB (Coordination of Benefits) fields — populated on child claims
+  // created by `cobBilling.billSecondary`. When `cob_billing_role` is
+  // 'secondary' AND the `prior_payer_*` fields are populated, the 837P
+  // generator emits Loop 2320/2330A/2330B + per-line 2430 SVD/CAS/DTP*573.
+  cob_billing_role?: "primary" | "secondary" | "tertiary" | null;
+  original_claim_id?: string | null;
+  prior_payer_profile_id?: string | null;
+  prior_payer_paid_amount?: number | string | null;
+  prior_payer_adjustment_amount?: number | string | null;
+  prior_payer_patient_responsibility_amount?: number | string | null;
+  // Structured payload — see `cobSegments.deriveCobFromClaim` for the
+  // expected fields (primary_payer_name/id, primary_subscriber_*, ERA
+  // cas_adjustments[], per-line service_lines[]).
+  prior_payer_eob_data?: Record<string, unknown> | null;
 }
 
 export interface ProfessionalClaimServiceLine {

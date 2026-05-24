@@ -48,6 +48,30 @@ function normalizeClaim(row: Row): ProfessionalClaim {
     last_validated_at: (row.last_validated_at as string | null | undefined) ?? null,
     created_at: (row.created_at as string | null | undefined) ?? null,
     updated_at: (row.updated_at as string | null | undefined) ?? null,
+    // COB pass-through — drives the secondary-child COB loops emitted by
+    // generate837pMultiClaimBatch when cob_billing_role==='secondary'.
+    cob_billing_role:
+      row.cob_billing_role === "primary" ||
+      row.cob_billing_role === "secondary" ||
+      row.cob_billing_role === "tertiary"
+        ? row.cob_billing_role
+        : null,
+    original_claim_id: (row.original_claim_id as string | null | undefined) ?? null,
+    prior_payer_profile_id: (row.prior_payer_profile_id as string | null | undefined) ?? null,
+    prior_payer_paid_amount:
+      (row.prior_payer_paid_amount as number | string | null | undefined) ?? null,
+    prior_payer_adjustment_amount:
+      (row.prior_payer_adjustment_amount as number | string | null | undefined) ?? null,
+    prior_payer_patient_responsibility_amount:
+      (row.prior_payer_patient_responsibility_amount as
+        | number
+        | string
+        | null
+        | undefined) ?? null,
+    prior_payer_eob_data:
+      row.prior_payer_eob_data && typeof row.prior_payer_eob_data === "object"
+        ? (row.prior_payer_eob_data as Record<string, unknown>)
+        : null,
   };
 }
 

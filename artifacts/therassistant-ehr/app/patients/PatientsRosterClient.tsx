@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MoreVertical, Search, Upload } from "lucide-react";
+import { MoreVertical, Plus, Search, Upload } from "lucide-react";
 import { DEFAULT_ORG_ID } from "@/lib/config";
 import styles from "./roster.module.css";
 import ClientImportDialog from "./ClientImportDialog";
+import AddClientDialog from "./AddClientDialog";
 
 type EligibilityState = {
   status: "none" | "active" | "inactive" | "pending" | "error" | "stale";
@@ -151,6 +152,7 @@ export default function PatientsRosterClient({
   const [error, setError] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const requestSeqRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -249,6 +251,13 @@ export default function PatientsRosterClient({
           >
             <Upload size={14} /> Import CSV
           </button>
+          <button
+            type="button"
+            className={styles.headerBtn}
+            onClick={() => setAddOpen(true)}
+          >
+            <Plus size={14} /> Add New Client
+          </button>
         </div>
       </header>
 
@@ -257,6 +266,13 @@ export default function PatientsRosterClient({
         organizationId={organizationId}
         onClose={() => setImportOpen(false)}
         onImported={() => loadClients(query)}
+      />
+
+      <AddClientDialog
+        open={addOpen}
+        organizationId={organizationId}
+        onClose={() => setAddOpen(false)}
+        onCreated={() => loadClients(query)}
       />
 
 

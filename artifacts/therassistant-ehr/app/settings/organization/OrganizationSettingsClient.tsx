@@ -150,7 +150,7 @@ function CmsBox({
 }) {
   return (
     <div style={{ padding: "8px 10px", minHeight: 64, ...style }}>
-      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#5c6e82", marginBottom: 5, fontFamily: "sans-serif" }}>
+      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#5c6e82", marginBottom: 5 }}>
         <span style={{ background: "#e8edf2", borderRadius: 3, padding: "1px 5px", marginRight: 5 }}>{boxNum}</span>
         {label}
       </div>

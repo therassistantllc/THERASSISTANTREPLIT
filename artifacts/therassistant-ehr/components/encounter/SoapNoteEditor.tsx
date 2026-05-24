@@ -260,7 +260,7 @@ export default function SoapNoteEditor({ data, onChange, disabled = false }: Pro
           padding: 0.75rem;
           border: 1px solid var(--line);
           border-radius: 4px;
-          font-family: monospace;
+          font-family: inherit;
           font-size: 0.9rem;
         }
 

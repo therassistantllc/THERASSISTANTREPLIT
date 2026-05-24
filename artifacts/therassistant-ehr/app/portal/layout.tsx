@@ -12,8 +12,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         minHeight: "100dvh",
         background: "#f6f8fb",
         color: "#1f2937",
-        fontFamily:
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
       }}
     >
       {children}

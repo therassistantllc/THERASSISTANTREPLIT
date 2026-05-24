@@ -354,7 +354,7 @@ export default function NoteTemplatesClient() {
           font-family: inherit;
         }
         .template-form textarea {
-          font-family: monospace;
+          font-family: inherit;
           font-size: 0.9rem;
         }
         .template-form-row {

@@ -112,10 +112,6 @@ export default function CasesPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newType, setNewType] = useState<CaseType>("commercial");
-  const [newNotes, setNewNotes] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<{ name: string; caseType: CaseType; notes: string }>({
     name: "",
@@ -123,8 +119,19 @@ export default function CasesPanel({
     notes: "",
   });
   const [addingPolicyForCaseId, setAddingPolicyForCaseId] = useState<string | null>(null);
-  const [addingStandaloneInsurance, setAddingStandaloneInsurance] = useState(false);
   const [payers, setPayers] = useState<Array<{ id: string; payer_name: string; payer_id: string | null }>>([]);
+
+  // Staged "new case" draft. The user adds one or more insurance policies
+  // (primary/secondary/tertiary) and a case name, then clicks Save case to
+  // commit everything together. Policies are NOT POSTed until save.
+  type StagedPolicy = { priority: Priority; fields: NewPolicyFields };
+  const [caseDraft, setCaseDraft] = useState<{
+    open: boolean;
+    name: string;
+    caseType: CaseType;
+    policies: StagedPolicy[];
+    addingPriority: Priority | null;
+  } | null>(null);
 
   const orgQ = useMemo(
     () => `?organizationId=${encodeURIComponent(organizationId)}`,
@@ -195,47 +202,151 @@ export default function CasesPanel({
     }
   }
 
-  async function handleCreate() {
-    if (!newName.trim()) {
+  function openCaseDraft() {
+    setCaseDraft({
+      open: true,
+      name: "",
+      caseType: "commercial",
+      policies: [],
+      // Auto-open the primary insurance form on first click so the user
+      // doesn't need to click twice to start entering insurance.
+      addingPriority: "primary",
+    });
+  }
+
+  function cancelCaseDraft() {
+    setCaseDraft(null);
+  }
+
+  function stageDraftPolicy(fields: NewPolicyFields, priority: Priority) {
+    setCaseDraft((d) =>
+      d
+        ? {
+            ...d,
+            policies: [
+              ...d.policies.filter((p) => p.priority !== priority),
+              { priority, fields },
+            ],
+            addingPriority: null,
+          }
+        : d,
+    );
+  }
+
+  function removeDraftPolicy(priority: Priority) {
+    setCaseDraft((d) =>
+      d ? { ...d, policies: d.policies.filter((p) => p.priority !== priority) } : d,
+    );
+  }
+
+  async function saveCaseDraft() {
+    if (!caseDraft) return;
+    const name = caseDraft.name.trim();
+    if (!name) {
       setError("Case name is required.");
       return;
     }
-    setBusy(`create-case`);
+    if (caseDraft.policies.length === 0) {
+      setError("Add at least one insurance policy before saving.");
+      return;
+    }
+    setBusy(`save-case-draft`);
     setError(null);
     try {
-      const res = await fetch(`/api/clients/${clientId}/cases`, {
+      const caseRes = await fetch(`/api/clients/${clientId}/cases`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           organizationId,
-          name: newName.trim(),
-          caseType: newType,
-          notes: newNotes.trim() || null,
+          name,
+          caseType: caseDraft.caseType,
+          notes: null,
         }),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.success) {
+      const caseJson = await caseRes.json().catch(() => ({}));
+      if (!caseRes.ok || !caseJson.success) {
         const msg =
-          json.error ??
-          (Array.isArray(json.errors)
-            ? json.errors.map((e: { message?: string }) => e.message).join("; ")
+          caseJson.error ??
+          (Array.isArray(caseJson.errors)
+            ? caseJson.errors.map((e: { message?: string }) => e.message).join("; ")
             : "Failed to create case");
         throw new Error(msg);
       }
-      const newCaseId: string | undefined = json.case?.id;
+      const newCaseId: string | undefined = caseJson.case?.id;
+      if (!newCaseId) throw new Error("Case created but id missing");
+
+      const createdPolicyIds: string[] = [];
+      // Rollback archives the case we just made. The policy DELETE endpoint
+      // doesn't exist yet, so any policies already saved remain in the
+      // patient's "available policies" list — the user can attach them to a
+      // new case or ignore them.
+      const rollback = async (): Promise<{ caseRolledBack: boolean; orphanPolicies: string[] }> => {
+        let caseRolledBack = false;
+        try {
+          const r = await fetch(`/api/clients/${clientId}/cases/${newCaseId}${orgQ}`, {
+            method: "DELETE",
+          });
+          caseRolledBack = r.ok;
+        } catch {
+          /* leave caseRolledBack = false */
+        }
+        return { caseRolledBack, orphanPolicies: [...createdPolicyIds] };
+      };
+      const formatRollback = (r: { caseRolledBack: boolean; orphanPolicies: string[] }) => {
+        const parts: string[] = [];
+        if (!r.caseRolledBack) parts.push("case could not be rolled back — review chart");
+        if (r.orphanPolicies.length > 0) {
+          parts.push(
+            `${r.orphanPolicies.length} insurance policy/policies were saved and are available to attach`,
+          );
+        }
+        return parts.length ? ` (${parts.join("; ")})` : "";
+      };
+
+      // Save policies in priority order so primary always lands first.
+      const ordered = [...caseDraft.policies].sort(
+        (a, b) => PRIORITIES.indexOf(a.priority) - PRIORITIES.indexOf(b.priority),
+      );
+      for (const staged of ordered) {
+        const polRes = await fetch(`/api/clients/${clientId}/policies`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ organizationId, priority: staged.priority, ...staged.fields }),
+        });
+        const polJson = await polRes.json().catch(() => ({}));
+        if (!polRes.ok || !polJson.success) {
+          const r = await rollback();
+          throw new Error(
+            `Failed to save ${staged.priority} insurance: ${polJson.error ?? "unknown error"}${formatRollback(r)}`,
+          );
+        }
+        createdPolicyIds.push(polJson.policyId);
+        const attachRes = await fetch(
+          `/api/clients/${clientId}/cases/${newCaseId}/policies`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              organizationId,
+              policyId: polJson.policyId,
+              priority: staged.priority,
+            }),
+          },
+        );
+        const attachJson = await attachRes.json().catch(() => ({}));
+        if (!attachRes.ok || !attachJson.success) {
+          const r = await rollback();
+          throw new Error(
+            `Failed to attach ${staged.priority} insurance to case: ${attachJson.error ?? "unknown error"}${formatRollback(r)}`,
+          );
+        }
+      }
+
+      setCaseDraft(null);
       await load();
       onMutate?.();
-      setShowCreate(false);
-      setNewName("");
-      setNewType("commercial");
-      setNewNotes("");
-      // Reduce clicks: open the insurance form on the newly created case
-      // unless it's a self-pay / charity case where insurance doesn't apply.
-      if (newCaseId && newType !== "self_pay" && newType !== "charity") {
-        setAddingPolicyForCaseId(newCaseId);
-      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create case");
+      setError(e instanceof Error ? e.message : "Failed to save case");
     } finally {
       setBusy(null);
     }
@@ -275,83 +386,6 @@ export default function CasesPanel({
       policyId,
       priority,
     });
-  }
-
-  async function createCaseWithInsurance(fields: NewPolicyFields, priority: Priority) {
-    setBusy(`create-case-with-insurance`);
-    setError(null);
-    try {
-      const payer = payers.find((p) => p.id === fields.payerId);
-      const caseName = payer?.payer_name?.trim() || "Insurance";
-      const caseRes = await fetch(`/api/clients/${clientId}/cases`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organizationId,
-          name: caseName,
-          caseType: "commercial",
-          notes: null,
-        }),
-      });
-      const caseJson = await caseRes.json().catch(() => ({}));
-      if (!caseRes.ok || !caseJson.success) {
-        const msg =
-          caseJson.error ??
-          (Array.isArray(caseJson.errors)
-            ? caseJson.errors.map((e: { message?: string }) => e.message).join("; ")
-            : "Failed to create case");
-        throw new Error(msg);
-      }
-      const newCaseId: string | undefined = caseJson.case?.id;
-      if (!newCaseId) throw new Error("Case created but id missing");
-
-      // Rollback helper: if the policy create or attach fails, archive the
-      // case we just made so the user doesn't end up with an empty
-      // "Insurance" case sitting on their chart.
-      const rollbackCase = async () => {
-        try {
-          await fetch(
-            `/api/clients/${clientId}/cases/${newCaseId}${orgQ}`,
-            { method: "DELETE" },
-          );
-        } catch {
-          /* best-effort */
-        }
-      };
-
-      const createRes = await fetch(`/api/clients/${clientId}/policies`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationId, priority, ...fields }),
-      });
-      const createJson = await createRes.json().catch(() => ({}));
-      if (!createRes.ok || !createJson.success) {
-        await rollbackCase();
-        throw new Error(createJson.error ?? "Failed to create insurance policy");
-      }
-      const attachRes = await fetch(`/api/clients/${clientId}/cases/${newCaseId}/policies`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationId, policyId: createJson.policyId, priority }),
-      });
-      const attachJson = await attachRes.json().catch(() => ({}));
-      if (!attachRes.ok || !attachJson.success) {
-        await rollbackCase();
-        await load();
-        onMutate?.();
-        throw new Error(
-          (attachJson.error ?? "Failed to attach the new policy to the case") +
-            " — the policy was saved and is available to attach.",
-        );
-      }
-      setAddingStandaloneInsurance(false);
-      await load();
-      onMutate?.();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add insurance");
-    } finally {
-      setBusy(null);
-    }
   }
 
   async function createAndAttachPolicy(caseId: string, fields: NewPolicyFields, priority: Priority) {
@@ -413,26 +447,193 @@ export default function CasesPanel({
         <button
           type="button"
           className="button"
-          onClick={() => setAddingStandaloneInsurance((v) => !v)}
+          onClick={() => {
+            if (caseDraft) {
+              const hasWork =
+                caseDraft.name.trim().length > 0 || caseDraft.policies.length > 0;
+              if (
+                hasWork &&
+                typeof window !== "undefined" &&
+                !window.confirm("Discard this new case and the insurance you've entered?")
+              ) {
+                return;
+              }
+              cancelCaseDraft();
+            } else {
+              openCaseDraft();
+            }
+          }}
           disabled={Boolean(busy)}
         >
-          {addingStandaloneInsurance ? "Cancel" : "+ New case"}
+          {caseDraft ? "Cancel" : "+ New case"}
         </button>
       </header>
 
       {error ? <div className="alert-panel">{error}</div> : null}
 
-      {addingStandaloneInsurance ? (
-        <div className="content-card-section" style={{ padding: "0.75rem 0" }}>
-          <CreatePolicyForm
-            payers={payers}
-            availablePriorities={PRIORITIES}
-            disabled={Boolean(busy)}
-            onCancel={() => setAddingStandaloneInsurance(false)}
-            onSubmit={(fields, priority) => createCaseWithInsurance(fields, priority)}
-            submitLabel="Save case"
-            heading="New case — insurance information"
-          />
+      {caseDraft ? (
+        <div
+          className="content-card-section"
+          style={{
+            display: "grid",
+            gap: "0.75rem",
+            padding: "0.75rem",
+            border: "1px solid var(--border-color, #e5e7eb)",
+            borderRadius: 8,
+            background: "var(--surface-color, #fafafa)",
+            margin: "0.5rem 0",
+          }}
+        >
+          <strong>New case</strong>
+
+          {caseDraft.policies.length > 0 ? (
+            <div style={{ display: "grid", gap: "0.4rem" }}>
+              {[...caseDraft.policies]
+                .sort((a, b) => PRIORITIES.indexOf(a.priority) - PRIORITIES.indexOf(b.priority))
+                .map((p) => (
+                  <div
+                    key={p.priority}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "0.4rem 0.6rem",
+                      border: "1px solid var(--border-color, #e5e7eb)",
+                      borderRadius: 6,
+                      background: "white",
+                    }}
+                  >
+                    <span>
+                      <strong style={{ textTransform: "capitalize" }}>{p.priority}:</strong>{" "}
+                      {payers.find((pp) => pp.id === p.fields.payerId)?.payer_name ?? "Insurance"}
+                      {p.fields.policyNumber ? ` — ${p.fields.policyNumber}` : ""}
+                    </span>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      onClick={() => removeDraftPolicy(p.priority)}
+                      disabled={Boolean(busy)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+            </div>
+          ) : null}
+
+          {caseDraft.addingPriority ? (
+            <CreatePolicyForm
+              payers={payers}
+              availablePriorities={[caseDraft.addingPriority]}
+              disabled={Boolean(busy)}
+              onCancel={() =>
+                setCaseDraft((d) => (d ? { ...d, addingPriority: null } : d))
+              }
+              onSubmit={(fields, priority) => stageDraftPolicy(fields, priority)}
+              submitLabel={`Save ${caseDraft.addingPriority}`}
+              heading={`${caseDraft.addingPriority[0].toUpperCase()}${caseDraft.addingPriority.slice(1)} insurance information`}
+            />
+          ) : (
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              {PRIORITIES.filter(
+                (p) => !caseDraft.policies.some((sp) => sp.priority === p),
+              ).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() =>
+                    setCaseDraft((d) => (d ? { ...d, addingPriority: p } : d))
+                  }
+                  disabled={Boolean(busy)}
+                >
+                  + Add {p} insurance
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "grid",
+              gap: "0.5rem",
+              paddingTop: "0.5rem",
+              borderTop: "1px solid var(--border-color, #e5e7eb)",
+            }}
+          >
+            <label style={{ display: "grid", gap: 4 }}>
+              <span
+                style={{
+                  fontSize: "0.7rem",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.02em",
+                  color: "var(--muted-color, #6b7280)",
+                  fontWeight: 500,
+                }}
+              >
+                Save case under *
+              </span>
+              <input
+                type="text"
+                value={caseDraft.name}
+                onChange={(e) =>
+                  setCaseDraft((d) => (d ? { ...d, name: e.target.value } : d))
+                }
+                placeholder="e.g. Aetna PPO, Workers Comp – ACME, etc."
+                disabled={Boolean(busy)}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 4 }}>
+              <span
+                style={{
+                  fontSize: "0.7rem",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.02em",
+                  color: "var(--muted-color, #6b7280)",
+                  fontWeight: 500,
+                }}
+              >
+                Case type
+              </span>
+              <select
+                value={caseDraft.caseType}
+                onChange={(e) =>
+                  setCaseDraft((d) =>
+                    d ? { ...d, caseType: e.target.value as CaseType } : d,
+                  )
+                }
+                disabled={Boolean(busy)}
+              >
+                {(Object.keys(CASE_TYPE_LABELS) as CaseType[]).map((t) => (
+                  <option key={t} value={t}>
+                    {CASE_TYPE_LABELS[t]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button
+                type="button"
+                className="button"
+                onClick={saveCaseDraft}
+                disabled={
+                  Boolean(busy) ||
+                  !caseDraft.name.trim() ||
+                  caseDraft.policies.length === 0
+                }
+              >
+                Save case
+              </button>
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={cancelCaseDraft}
+                disabled={Boolean(busy)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -894,6 +1095,13 @@ function CreatePolicyForm({
     ...EMPTY_NEW_POLICY,
     payerId: payers[0]?.id ?? "",
   });
+  // Auto-populate payerId once payers finish loading (the form may have
+  // mounted before /api/insurance-payers responded).
+  useEffect(() => {
+    if (!draft.payerId && payers[0]?.id) {
+      setDraft((d) => ({ ...d, payerId: payers[0].id }));
+    }
+  }, [payers, draft.payerId]);
   const set = <K extends keyof NewPolicyFields>(k: K, v: NewPolicyFields[K]) =>
     setDraft((d) => ({ ...d, [k]: v }));
   const text = (k: keyof NewPolicyFields) =>

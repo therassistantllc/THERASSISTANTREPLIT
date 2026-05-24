@@ -33,6 +33,47 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { buildSecondary837PBatch } from "@/lib/claims/buildSecondary837PBatch";
+import { submitClaim837PBatch } from "@/lib/claims/submit837PBatch";
+
+async function recordSecBillingError(
+  supabase: ReturnType<typeof createServerSupabaseAdminClient>,
+  args: {
+    organizationId: string;
+    claimId: string;
+    patientId: string | null;
+    appointmentId: string | null;
+    userId: string | null | undefined;
+    failedAction: "generate" | "submit";
+    error: string;
+    extra?: Record<string, unknown>;
+  },
+): Promise<void> {
+  if (!supabase) return;
+  const nowIso = new Date().toISOString();
+  await (supabase as any)
+    .from("professional_claims")
+    .update({
+      secondary_billing_state: "error",
+      secondary_billing_last_error: args.error.slice(0, 1000),
+      updated_at: nowIso,
+    })
+    .eq("id", args.claimId)
+    .eq("organization_id", args.organizationId);
+  await (supabase as any).from("audit_logs").insert({
+    organization_id: args.organizationId,
+    claim_id: args.claimId,
+    patient_id: args.patientId,
+    appointment_id: args.appointmentId,
+    event_type: "sec_billing_error",
+    event_summary: `Secondary billing ${args.failedAction} failed`,
+    event_metadata: { failed_action: args.failedAction, error: args.error, ...(args.extra ?? {}) },
+    user_id: args.userId ?? null,
+    action: "sec_billing_error",
+    object_type: "claim",
+    object_id: args.claimId,
+  });
+}
 
 const ALLOWED = [
   "generate",
@@ -139,6 +180,85 @@ export async function POST(
     // ── 1. Apply authoritative claim-level mutations ──────────────────
     const nowIso = new Date().toISOString();
     const claimUpdate: Record<string, unknown> = { updated_at: nowIso };
+
+    // For generate/submit we drive the real 837P pipeline BEFORE applying
+    // the optimistic state column update. Any failure flips the claim to
+    // `error` + writes a `sec_billing_error` audit and short-circuits.
+    if (action === "generate") {
+      const result = await buildSecondary837PBatch({ claimId: id, organizationId });
+      if (!result.ok) {
+        await recordSecBillingError(supabase, {
+          organizationId,
+          claimId: id,
+          patientId: claim.patient_id ?? null,
+          appointmentId: claim.appointment_id ?? null,
+          userId: guard.userId,
+          failedAction: "generate",
+          error: result.error ?? "Unknown generation error",
+        });
+        return NextResponse.json(
+          { success: false, error: result.error ?? "Failed to generate secondary 837P" },
+          { status: 422 },
+        );
+      }
+      metadata.batch_id = result.batchId;
+      metadata.batch_number = result.batchNumber;
+      metadata.file_name = result.fileName;
+    } else if (action === "submit") {
+      // Find the most recent active secondary batch for this claim.
+      const { data: linkRow, error: linkErr } = await (supabase as any)
+        .from("claim_837p_batch_claims")
+        .select("batch_id, created_at")
+        .eq("organization_id", organizationId)
+        .eq("professional_claim_id", id)
+        .eq("submission_kind", "secondary")
+        .is("archived_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (linkErr || !linkRow) {
+        const msg =
+          linkErr?.message ??
+          "No generated secondary 837P batch found for this claim. Generate the claim before submitting.";
+        await recordSecBillingError(supabase, {
+          organizationId,
+          claimId: id,
+          patientId: claim.patient_id ?? null,
+          appointmentId: claim.appointment_id ?? null,
+          userId: guard.userId,
+          failedAction: "submit",
+          error: msg,
+        });
+        return NextResponse.json({ success: false, error: msg }, { status: 422 });
+      }
+      const submitResult = await submitClaim837PBatch({
+        batchId: String((linkRow as Record<string, unknown>).batch_id),
+        organizationId,
+      });
+      if (!submitResult.ok) {
+        await recordSecBillingError(supabase, {
+          organizationId,
+          claimId: id,
+          patientId: claim.patient_id ?? null,
+          appointmentId: claim.appointment_id ?? null,
+          userId: guard.userId,
+          failedAction: "submit",
+          error: submitResult.error ?? "Availity submission failed",
+          extra: {
+            batch_id: submitResult.batchId,
+            attempt: submitResult.attempt,
+            http_status: submitResult.httpStatus,
+          },
+        });
+        return NextResponse.json(
+          { success: false, error: submitResult.error ?? "Submission failed" },
+          { status: submitResult.status || 502 },
+        );
+      }
+      metadata.batch_id = submitResult.batchId;
+      metadata.availity_transaction_id = submitResult.externalTransactionId;
+      metadata.attempt = submitResult.attempt;
+    }
 
     switch (action) {
       case "generate":

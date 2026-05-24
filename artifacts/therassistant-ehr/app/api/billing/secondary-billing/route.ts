@@ -129,6 +129,11 @@ export interface SecondaryRow {
   follow_up_due: string | null;
   policies: SecondaryPolicySummary[];
   era: SecondaryEraSummary | null;
+  secondary_batch_id: string | null;
+  secondary_batch_number: string | null;
+  secondary_batch_status: string | null;
+  secondary_batch_submitted_at: string | null;
+  availity_transaction_id: string | null;
 }
 
 export interface SecondarySummary {
@@ -293,6 +298,7 @@ export async function GET(request: Request) {
       { data: payerProfiles },
       { data: audit },
       { data: eraPayments },
+      { data: secondaryBatchLinks },
       { data: assignedUsers },
     ] = await Promise.all([
       clientIds.length
@@ -334,6 +340,15 @@ export async function GET(request: Request) {
           "id, era_import_batch_id, professional_claim_id, clp03_total_charge, clp04_payment_amount, clp05_patient_responsibility, payer_claim_control_number, cas_adjustments, service_lines, created_at, archived_at",
         )
         .eq("organization_id", organizationId)
+        .in("professional_claim_id", claimIds)
+        .is("archived_at", null),
+      (supabase as any)
+        .from("claim_837p_batch_claims")
+        .select(
+          "professional_claim_id, batch_id, created_at, claim_837p_batches!inner(id, batch_number, batch_status, submitted_at, availity_transaction_id, submission_kind)",
+        )
+        .eq("organization_id", organizationId)
+        .eq("submission_kind", "secondary")
         .in("professional_claim_id", claimIds)
         .is("archived_at", null),
       assignedUserIds.length
@@ -384,6 +399,24 @@ export async function GET(request: Request) {
       if (!k) continue;
       const cur = eraByClaim.get(k);
       if (!cur || text(e.created_at) > text(cur.created_at)) eraByClaim.set(k, e);
+    }
+
+    // Map claim_id → most-recent active secondary 837P batch row so the
+    // queue row can show the real batch number, transaction id, and
+    // submission state instead of just the audit event timestamp.
+    const secondaryBatchByClaim = new Map<string, DbRow>();
+    for (const link of ((secondaryBatchLinks ?? []) as DbRow[])) {
+      const k = text((link as DbRow).professional_claim_id);
+      if (!k) continue;
+      const batch = (link as DbRow).claim_837p_batches as DbRow | undefined;
+      if (!batch) continue;
+      const cur = secondaryBatchByClaim.get(k);
+      if (!cur || text((link as DbRow).created_at) > text(cur.__link_created_at as string)) {
+        secondaryBatchByClaim.set(k, {
+          ...batch,
+          __link_created_at: text((link as DbRow).created_at),
+        });
+      }
     }
 
     // Last `sec_billing_*` action timestamp per claim (for display).
@@ -574,6 +607,26 @@ export async function GET(request: Request) {
         follow_up_due: followUpDue,
         policies: policySummaries,
         era: eraSummary,
+        secondary_batch_id: (() => {
+          const b = secondaryBatchByClaim.get(claimId);
+          return b ? text(b.id) || null : null;
+        })(),
+        secondary_batch_number: (() => {
+          const b = secondaryBatchByClaim.get(claimId);
+          return b ? text(b.batch_number) || null : null;
+        })(),
+        secondary_batch_status: (() => {
+          const b = secondaryBatchByClaim.get(claimId);
+          return b ? text(b.batch_status) || null : null;
+        })(),
+        secondary_batch_submitted_at: (() => {
+          const b = secondaryBatchByClaim.get(claimId);
+          return b ? text(b.submitted_at) || null : null;
+        })(),
+        availity_transaction_id: (() => {
+          const b = secondaryBatchByClaim.get(claimId);
+          return b ? text(b.availity_transaction_id) || null : null;
+        })(),
       };
 
       allItems.push(row);

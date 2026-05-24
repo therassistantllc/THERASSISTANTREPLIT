@@ -12,3 +12,4 @@
 - [Migration drift audit sweep](migration-drift-audit.md) — parse migrations + check info_schema; carry a rename map and guard enum/foreign-shape mismatches before replay.
 - [ERA take-back auto-detection](era-takeback-auto-seed.md) — PLB WO/FB/J1/72 + neg-CLP/CLP02=22 auto-seed `payment_recoupments`; bypass `recordRecoupment` (its posted-status guard), dedupe on (org,source,amount,reason), offset = largest pos-pay in same batch.
 - [Stripe Connect refund header](stripe-connect-refund-header.md) — refunding a Connect charge requires `Stripe-Account: acct_…`; without it the refund 404s. Persist the connected account id at charge time.
+- [Secondary 837P COB loops](secondary-837p-cob-loops.md) — 2000B SBR*S, 2320 SBR*P+CAS+AMT*D+AMT*F2+OI, 2330A/2330B, 2400 SVD+CAS+DTP*573; rewrite parties snapshot (swap subscriber/payer) before emitting.

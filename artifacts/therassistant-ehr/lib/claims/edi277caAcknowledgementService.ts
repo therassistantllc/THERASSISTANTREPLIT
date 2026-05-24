@@ -182,26 +182,75 @@ async function loadLinkedClaimIds(batchId: string) {
   return (data ?? []).map((row: { claim_id: string }) => String(row.claim_id));
 }
 
+type ClaimContextRow = {
+  patient_id: string | null;
+  appointment_id: string | null;
+  patient_account_number: string | null;
+  claim_number: string | null;
+};
+
 async function loadClaimContexts(
   organizationId: string,
   claimIds: string[],
-): Promise<Map<string, { patient_id: string | null; appointment_id: string | null }>> {
-  const out = new Map<string, { patient_id: string | null; appointment_id: string | null }>();
+): Promise<Map<string, ClaimContextRow>> {
+  const out = new Map<string, ClaimContextRow>();
   if (claimIds.length === 0) return out;
   const supabase = createServerSupabaseAdminClient();
   if (!supabase) return out;
   const { data } = await supabase
     .from("professional_claims")
-    .select("id, patient_id, appointment_id")
+    .select("id, patient_id, appointment_id, patient_account_number, claim_number")
     .eq("organization_id", organizationId)
     .in("id", claimIds);
-  for (const row of (data ?? []) as Array<{ id: string; patient_id: string | null; appointment_id: string | null }>) {
+  for (const row of (data ?? []) as Array<{
+    id: string;
+    patient_id: string | null;
+    appointment_id: string | null;
+    patient_account_number: string | null;
+    claim_number: string | null;
+  }>) {
     out.set(String(row.id), {
       patient_id: row.patient_id ?? null,
       appointment_id: row.appointment_id ?? null,
+      patient_account_number: row.patient_account_number ?? null,
+      claim_number: row.claim_number ?? null,
     });
   }
   return out;
+}
+
+/**
+ * Resolve each parsed 277CA claim ref (keyed by TRN02 echoing the
+ * original 837P CLM01) back to one or more linked professional_claims
+ * rows. Matching is case/whitespace-insensitive against
+ * patient_account_number, claim_number, then the claim id itself —
+ * mirrors the workqueue routing service's lookup so both paths agree
+ * on which claim a TRN names.
+ */
+function matchClaimsForTrn(
+  trn: string,
+  linkedClaimIds: string[],
+  contexts: Map<string, ClaimContextRow>,
+): string[] {
+  const key = trn.trim().toUpperCase();
+  if (!key) return [];
+  const matches: string[] = [];
+  for (const claimId of linkedClaimIds) {
+    const ctx = contexts.get(claimId);
+    const candidates = [
+      ctx?.patient_account_number,
+      ctx?.claim_number,
+      claimId,
+    ];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      if (String(candidate).trim().toUpperCase() === key) {
+        matches.push(claimId);
+        break;
+      }
+    }
+  }
+  return matches;
 }
 
 function batchStatusForOutcome(outcome: Edi277CAOutcome) {
@@ -348,31 +397,55 @@ export async function intake277CAAcknowledgement(
   // ── Auto-seed Medical Review queue from 277CA documentation requests. ──
   // When the ack carries STC entries indicating the payer is asking for
   // additional documentation (e.g. category A6 with status 287/324/354),
-  // write a `medical_review_requested` audit row per linked claim so the
-  // /billing/medical-review queue picks the claim up automatically. This
-  // is idempotent on (claim, origin, acknowledgement id) so re-ingesting
-  // the same 277CA does not flood the queue.
-  const detected = detect277CADocumentationRequest({ stcStatuses: parsed.stcStatuses });
-  if (detected && linkedClaimIds.length > 0) {
+  // write a `medical_review_requested` audit row for the specific claim
+  // named by the matching 2200D TRN — NOT every claim in the batch. The
+  // 277CA's HL/CLM hierarchy ties each STC to one claim control number,
+  // so a documentation request for one of many claims must not seed the
+  // queue for the other unrelated claims sharing the same batch. The
+  // write is idempotent on (claim, origin, acknowledgement id) so
+  // re-ingesting the same 277CA does not flood the queue.
+  if (linkedClaimIds.length > 0 && parsed.claimRefs.length > 0) {
     const contexts = await loadClaimContexts(input.organizationId, linkedClaimIds);
-    for (const claimId of linkedClaimIds) {
-      const ctx = contexts.get(claimId);
-      const writeResult = await writeMedicalReviewRequestAudit(supabase, {
-        organizationId: input.organizationId,
-        claimId,
-        clientId: ctx?.patient_id ?? null,
-        appointmentId: ctx?.appointment_id ?? null,
-        detected,
-        origin: "277CA",
-        sourceObjectId: acknowledgementId,
+    const seededClaimIds = new Set<string>();
+
+    for (const claimRef of parsed.claimRefs) {
+      const perClaimDetected = detect277CADocumentationRequest({
+        stcStatuses: claimRef.stcStatuses,
       });
-      if (writeResult.status === "error") {
-        // Non-fatal: log but don't fail the whole ingest — the rejected
-        // workqueue routing already succeeded and the queue can be
-        // re-seeded by re-ingesting the same ack.
+      if (!perClaimDetected) continue;
+
+      const matchedClaimIds = matchClaimsForTrn(claimRef.trn, linkedClaimIds, contexts);
+      if (matchedClaimIds.length === 0) {
+        // Per-claim STC says "send docs" but we couldn't match the TRN
+        // back to a known claim in this batch — log and skip rather
+        // than fanning out to unrelated claims.
         console.warn(
-          `[277CA medical-review seed] failed for claim ${claimId}: ${writeResult.error}`,
+          `[277CA medical-review seed] no claim matched TRN ${claimRef.trn} in batch ${batchId}`,
         );
+        continue;
+      }
+
+      for (const claimId of matchedClaimIds) {
+        if (seededClaimIds.has(claimId)) continue;
+        seededClaimIds.add(claimId);
+        const ctx = contexts.get(claimId);
+        const writeResult = await writeMedicalReviewRequestAudit(supabase, {
+          organizationId: input.organizationId,
+          claimId,
+          clientId: ctx?.patient_id ?? null,
+          appointmentId: ctx?.appointment_id ?? null,
+          detected: perClaimDetected,
+          origin: "277CA",
+          sourceObjectId: acknowledgementId,
+        });
+        if (writeResult.status === "error") {
+          // Non-fatal: log but don't fail the whole ingest — the rejected
+          // workqueue routing already succeeded and the queue can be
+          // re-seeded by re-ingesting the same ack.
+          console.warn(
+            `[277CA medical-review seed] failed for claim ${claimId}: ${writeResult.error}`,
+          );
+        }
       }
     }
   }

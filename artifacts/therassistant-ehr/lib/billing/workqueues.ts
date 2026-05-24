@@ -222,11 +222,11 @@ export const WORKQUEUES: WorkqueueDef[] = [
   },
   {
     id: "coordination_of_benefits",
-    title: "Coordination of Benefits",
+    title: "COB Issues",
     description: "Claims requiring COB updates before secondary/tertiary billing.",
-    href: "/billing/cob",
+    href: "/billing/cob-issues",
     stage: "adjudication_denials",
-    status: "coming_soon",
+    status: "live",
   },
 
   // ── Payments & ERA ──────────────────────────────────────────────────────

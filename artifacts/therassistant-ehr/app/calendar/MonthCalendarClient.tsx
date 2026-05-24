@@ -199,6 +199,15 @@ export default function MonthCalendarClient() {
 
   const [collectOpen, setCollectOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createInitialDate, setCreateInitialDate] = useState<string | null>(null);
+
+  function openCreateForDate(day: Date) {
+    const y = day.getFullYear();
+    const m = String(day.getMonth() + 1).padStart(2, "0");
+    const d = String(day.getDate()).padStart(2, "0");
+    setCreateInitialDate(`${y}-${m}-${d}`);
+    setCreateOpen(true);
+  }
 
   // Calendar grid: start at start-of-week of month-start, render 6 weeks.
   const gridStart = useMemo(() => startOfWeek(startOfMonth(cursor)), [cursor]);
@@ -595,7 +604,17 @@ export default function MonthCalendarClient() {
             return (
               <div
                 key={key}
+                role="button"
+                tabIndex={0}
+                aria-label={`Add appointment on ${day.toLocaleDateString()}`}
                 className={`${styles.cell} ${inMonth ? "" : styles.cellOther} ${isToday ? styles.cellToday : ""}`}
+                onClick={() => openCreateForDate(day)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openCreateForDate(day);
+                  }
+                }}
               >
                 <span className={styles.dayNum}>{day.getDate()}</span>
                 {visible.map((appt) => {
@@ -611,7 +630,10 @@ export default function MonthCalendarClient() {
                     <div
                       key={appt.id}
                       className={`${styles.chip} ${chipClassFor(appt.status)}`}
-                      onClick={() => setSelectedId(appt.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedId(appt.id);
+                      }}
                       title={titleParts.join(" — ")}
                     >
                       <strong>{fmtTime(appt.scheduledStartAt)}</strong>{" "}
@@ -632,7 +654,10 @@ export default function MonthCalendarClient() {
                 {overflow > 0 ? (
                   <div
                     className={styles.overflow}
-                    onClick={() => setSelectedId(dayAppointments[3].id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedId(dayAppointments[3].id);
+                    }}
                   >
                     +{overflow} more
                   </div>
@@ -945,9 +970,14 @@ export default function MonthCalendarClient() {
       {createOpen ? (
         <CreateAppointmentModal
           organizationId={ORG_ID}
-          onClose={() => setCreateOpen(false)}
+          initialDate={createInitialDate}
+          onClose={() => {
+            setCreateOpen(false);
+            setCreateInitialDate(null);
+          }}
           onCreated={async () => {
             setCreateOpen(false);
+            setCreateInitialDate(null);
             await loadAppointments();
           }}
         />
@@ -1369,10 +1399,12 @@ function StripeCardCharge({
 
 function CreateAppointmentModal({
   organizationId,
+  initialDate,
   onClose,
   onCreated,
 }: {
   organizationId: string;
+  initialDate?: string | null;
   onClose: () => void;
   onCreated: () => void | Promise<void>;
 }) {
@@ -1381,6 +1413,11 @@ function CreateAppointmentModal({
   const [clientId, setClientId] = useState("");
   const [providerId, setProviderId] = useState("");
   const [startAt, setStartAt] = useState<string>(() => {
+    if (initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
+      const now = new Date();
+      const hour = now.getHours() < 8 || now.getHours() >= 18 ? 9 : now.getHours() + 1;
+      return `${initialDate}T${String(hour).padStart(2, "0")}:00`;
+    }
     const d = new Date();
     d.setMinutes(0, 0, 0);
     d.setHours(d.getHours() + 1);

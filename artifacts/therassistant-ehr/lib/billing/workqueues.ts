@@ -139,6 +139,14 @@ export const WORKQUEUES: WorkqueueDef[] = [
     status: "live",
   },
   {
+    id: "rejections_999",
+    title: "999 Rejections",
+    description: "Claims and batches rejected at the file/syntax level on the 999 acknowledgement.",
+    href: "/billing/rejections-999",
+    stage: "submission_rejections",
+    status: "live",
+  },
+  {
     id: "payer_rejections",
     title: "Payer Rejections",
     description: "Claims the payer rejected for front-end edits — fix and resubmit.",

@@ -39,6 +39,14 @@ export const WORKQUEUE_STAGES: Array<{ id: WorkqueueStage; label: string }> = [
 export const WORKQUEUES: WorkqueueDef[] = [
   // ── Executive ───────────────────────────────────────────────────────────
   {
+    id: "my_inbox",
+    title: "My Inbox",
+    description: "Eligibility issues routed to you for clinician verification or admin follow-up.",
+    href: "/billing/my-inbox",
+    stage: "executive",
+    status: "live",
+  },
+  {
     id: "executive_priority",
     title: "Executive / Priority",
     description: "High-level action list for owners and admins — the highest-impact claims across every stage.",

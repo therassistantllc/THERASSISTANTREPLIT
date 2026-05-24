@@ -266,6 +266,7 @@ export default function AppSidebarNav() {
 
       {billingOpen ? (
         <div className={styles.subnav}>
+          <SubNavLinkIcon href="/billing/my-inbox" icon={<TasksIcon />} label="My Inbox" prefixes={["/billing/my-inbox"]} pathname={pathname} badge={<MyInboxBadge />} />
           <SubNavLinkIcon href="/billing/charge-capture" icon={<ClipboardIcon />} label="Charges" prefixes={["/billing/charge-capture"]} pathname={pathname} />
           <SubNavLinkIcon href="/billing/documentation-pending" icon={<EditIcon />} label="Documentation Pending" prefixes={["/billing/documentation-pending"]} pathname={pathname} />
           <SubNavLinkIcon href="/billing/no-response" icon={<CheckCircleIcon />} label="No Response" prefixes={["/billing/no-response", "/billing/claim-readiness"]} pathname={pathname} />
@@ -345,9 +346,10 @@ function NavLink({
 }
 
 function SubNavLinkIcon({
-  href, icon, label, prefixes, pathname,
+  href, icon, label, prefixes, pathname, badge,
 }: {
   href: string; icon: React.ReactNode; label: string; prefixes: string[]; pathname: string;
+  badge?: React.ReactNode;
 }) {
   const isActive = prefixes.some((p) => pathname.startsWith(p));
   return (
@@ -357,8 +359,51 @@ function SubNavLinkIcon({
       aria-current={isActive ? "page" : undefined}
     >
       <span className={styles.subnavIcon}>{icon}</span>
-      {label}
+      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      {badge ?? null}
     </Link>
+  );
+}
+
+function MyInboxBadge() {
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/billing/my-inbox?countOnly=1", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = (await res.json()) as { count?: number };
+        if (!cancelled) setCount(typeof json.count === "number" ? json.count : 0);
+      } catch {
+        /* badge is best-effort; ignore failures */
+      }
+    }
+    void load();
+    const t = setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
+  if (!count) return null;
+  return (
+    <span
+      aria-label={`${count} routed eligibility items`}
+      style={{
+        background: "#DC2626",
+        color: "#FFFFFF",
+        borderRadius: 999,
+        fontSize: 10.5,
+        fontWeight: 700,
+        padding: "1px 7px",
+        minWidth: 18,
+        textAlign: "center",
+        lineHeight: 1.4,
+      }}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
   );
 }
 

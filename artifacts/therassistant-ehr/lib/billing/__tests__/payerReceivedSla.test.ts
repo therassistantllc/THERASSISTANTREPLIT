@@ -110,3 +110,127 @@ describe("loadPayerReceivedClaims uses per-payer SLA for expected adjudication",
     assert.equal(iso, "2026-05-31T00:00:00.000Z");
   });
 });
+
+async function rowsFor(sla: number | null, receivedAt: string) {
+  const fixture = baseFixture(sla);
+  const claim = fixture.professional_claims[0];
+  claim.submitted_at = receivedAt;
+  claim.created_at = receivedAt;
+  claim.updated_at = receivedAt;
+  fixture.appointments[0].scheduled_start_at = receivedAt;
+  const sb = fakeSupabase(fixture) as unknown as Parameters<
+    typeof loadPayerReceivedClaims
+  >[0]["supabase"];
+  return loadPayerReceivedClaims({ supabase: sb, organizationId: ORG });
+}
+
+describe("loadPayerReceivedClaims flags SLA-breached claims as overdue", () => {
+  it("flags a claim whose expected adjudication date is in the past", async () => {
+    // 14-day SLA, received 60 days ago → expected ~46 days past
+    const receivedAt = new Date(Date.now() - 60 * 86400_000).toISOString();
+    const rows = await rowsFor(14, receivedAt);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].overdue, true);
+    assert.ok(rows[0].daysOverdue >= 40, `daysOverdue=${rows[0].daysOverdue}`);
+  });
+
+  it("does NOT flag a fresh claim still inside its SLA window", async () => {
+    // 30-day SLA, received 5 days ago → still well inside SLA
+    const receivedAt = new Date(Date.now() - 5 * 86400_000).toISOString();
+    const rows = await rowsFor(30, receivedAt);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].overdue, false);
+    assert.equal(rows[0].daysOverdue, 0);
+  });
+
+  it("classifies an approaching-SLA claim into the approaching_follow_up tab", async () => {
+    // 14-day SLA, received 12 days ago → 2 days until expected, well inside
+    // the ceil(14*0.25)=4 day approaching window.
+    const receivedAt = new Date(Date.now() - 12 * 86400_000).toISOString();
+    const rows = await rowsFor(14, receivedAt);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].overdue, false);
+    assert.equal(rows[0].tab, "approaching_follow_up");
+  });
+
+  it("does NOT treat a 60-day-SLA claim as approaching when 7 days from now", async () => {
+    // Old logic (flat 7-day) would mark this as approaching; SLA-derived
+    // window for 60-day SLA is ~15 days, so a claim received 53 days ago
+    // (7 days from expected) IS still approaching. Use 40 days ago instead:
+    // 20 days from expected → outside approaching window for 60-day SLA.
+    const receivedAt = new Date(Date.now() - 40 * 86400_000).toISOString();
+    const rows = await rowsFor(60, receivedAt);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].overdue, false);
+    assert.notEqual(rows[0].tab, "approaching_follow_up");
+  });
+});
+
+describe("loadPayerReceivedClaims default sort + overdue filter", () => {
+  it("sorts overdue rows ahead of non-overdue rows", async () => {
+    const oldReceived = new Date(Date.now() - 90 * 86400_000).toISOString();
+    const newReceived = new Date(Date.now() - 2 * 86400_000).toISOString();
+    const fixture = baseFixture(30);
+    fixture.professional_claims = [
+      {
+        ...fixture.professional_claims[0],
+        id: "claim-fresh",
+        claim_number: "C-FRESH",
+        submitted_at: newReceived,
+        created_at: newReceived,
+        updated_at: newReceived,
+      },
+      {
+        ...fixture.professional_claims[0],
+        id: "claim-overdue",
+        claim_number: "C-OVERDUE",
+        submitted_at: oldReceived,
+        created_at: oldReceived,
+        updated_at: oldReceived,
+      },
+    ];
+    const sb = fakeSupabase(fixture) as unknown as Parameters<
+      typeof loadPayerReceivedClaims
+    >[0]["supabase"];
+    const rows = await loadPayerReceivedClaims({ supabase: sb, organizationId: ORG });
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].id, "claim-overdue");
+    assert.equal(rows[0].overdue, true);
+    assert.equal(rows[1].id, "claim-fresh");
+    assert.equal(rows[1].overdue, false);
+  });
+
+  it("`overdue=true` filter drops non-overdue rows", async () => {
+    const oldReceived = new Date(Date.now() - 90 * 86400_000).toISOString();
+    const newReceived = new Date(Date.now() - 2 * 86400_000).toISOString();
+    const fixture = baseFixture(30);
+    fixture.professional_claims = [
+      {
+        ...fixture.professional_claims[0],
+        id: "claim-fresh",
+        claim_number: "C-FRESH",
+        submitted_at: newReceived,
+        created_at: newReceived,
+        updated_at: newReceived,
+      },
+      {
+        ...fixture.professional_claims[0],
+        id: "claim-overdue",
+        claim_number: "C-OVERDUE",
+        submitted_at: oldReceived,
+        created_at: oldReceived,
+        updated_at: oldReceived,
+      },
+    ];
+    const sb = fakeSupabase(fixture) as unknown as Parameters<
+      typeof loadPayerReceivedClaims
+    >[0]["supabase"];
+    const rows = await loadPayerReceivedClaims({
+      supabase: sb,
+      organizationId: ORG,
+      filters: { overdue: "true" },
+    });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, "claim-overdue");
+  });
+});

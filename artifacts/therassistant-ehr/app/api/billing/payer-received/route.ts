@@ -21,6 +21,7 @@ const FILTER_KEYS: Array<keyof PayerReceivedFilters> = [
   "assignedBiller",
   "carcRarc",
   "followUpDue",
+  "overdue",
 ];
 
 export async function GET(request: Request) {

@@ -177,6 +177,12 @@ export default function PayerReceivedClient() {
         kind: "select",
         options: [{ value: "urgent", label: "Urgent (30+ days)" }],
       },
+      {
+        id: "overdue",
+        label: "SLA",
+        kind: "select",
+        options: [{ value: "true", label: "Overdue only" }],
+      },
       { id: "followUpDue", label: "Follow-up due by", kind: "date" },
     ],
     [payerOptions, practiceOptions, clinicianOptions, statusOptions],
@@ -229,6 +235,15 @@ export default function PayerReceivedClient() {
       const cutoff = v.followUpDue + "T23:59:59";
       out = out.filter((r) => r.followUpDueAt != null && r.followUpDueAt <= cutoff);
     }
+    if (v.overdue === "true") out = out.filter((r) => r.overdue);
+    // Mirror server default sort: overdue first, then by days-in-process desc.
+    out = [...out].sort((a, b) => {
+      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+      if (a.overdue && b.overdue && a.daysOverdue !== b.daysOverdue) {
+        return b.daysOverdue - a.daysOverdue;
+      }
+      return b.daysInProcess - a.daysInProcess;
+    });
     return out;
   }, [rows, activeTab, filterValues]);
 
@@ -238,10 +253,12 @@ export default function PayerReceivedClient() {
     const dollars = filteredRows.reduce((s, r) => s + r.chargeAmount, 0);
     const oldest = filteredRows.reduce((m, r) => Math.max(m, r.daysInProcess), 0);
     const urgent = filteredRows.filter((r) => r.daysInProcess >= 30).length;
+    const overdueCount = filteredRows.filter((r) => r.overdue).length;
     return [
       { id: "count", label: "Items", value: total.toLocaleString() },
       { id: "dollars", label: "Total $", value: fmtCurrency(dollars), tone: dollars > 0 ? "amber" : "default" },
       { id: "oldest", label: "Oldest claim age (days)", value: oldest, tone: oldest > 60 ? "red" : oldest > 30 ? "amber" : "default" },
+      { id: "overdue", label: "Overdue (SLA breach)", value: overdueCount, tone: overdueCount > 0 ? "red" : "default" },
       { id: "urgent", label: "Urgent (30+ days)", value: urgent, tone: urgent > 0 ? "red" : "default" },
     ];
   }, [filteredRows]);
@@ -278,7 +295,31 @@ export default function PayerReceivedClient() {
         ),
       },
       { id: "charge", header: "Charge amount", align: "right", cell: (r) => fmtCurrency(r.chargeAmount) },
-      { id: "expected", header: "Expected adjudication date", cell: (r) => fmtDate(r.expectedAdjudicationAt) },
+      {
+        id: "expected",
+        header: "Expected adjudication date",
+        cell: (r) => (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: r.overdue ? "#B91C1C" : "#0F172A" }}>
+              {fmtDate(r.expectedAdjudicationAt)}
+            </span>
+            {r.overdue ? (
+              <span
+                aria-label={`Overdue by ${r.daysOverdue} day${r.daysOverdue === 1 ? "" : "s"}`}
+                title={`SLA breach — ${r.daysOverdue} day${r.daysOverdue === 1 ? "" : "s"} past expected adjudication`}
+                style={{
+                  background: "#FEE2E2", color: "#991B1B",
+                  padding: "1px 8px", borderRadius: 10,
+                  fontSize: 11, fontWeight: 600, letterSpacing: 0.2,
+                  textTransform: "uppercase",
+                }}
+              >
+                Overdue · {r.daysOverdue}d
+              </span>
+            ) : null}
+          </span>
+        ),
+      },
     ],
     [],
   );
@@ -534,6 +575,20 @@ export default function PayerReceivedClient() {
     return m;
   }, [rows]);
 
+  const overdueTotal = useMemo(
+    () => rows.filter((r) => r.overdue).length,
+    [rows],
+  );
+  const overdueOnly = filterValues.overdue === "true";
+  const toggleOverdueOnly = useCallback(() => {
+    setFilterValues((prev) => {
+      const next = { ...prev };
+      if (next.overdue === "true") delete next.overdue;
+      else next.overdue = "true";
+      return next;
+    });
+  }, []);
+
   return (
     <>
       <div
@@ -570,6 +625,29 @@ export default function PayerReceivedClient() {
             </button>
           );
         })}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", paddingBottom: 6 }}>
+          <button
+            type="button"
+            onClick={toggleOverdueOnly}
+            aria-pressed={overdueOnly}
+            title="Show only claims whose expected adjudication date has passed"
+            style={{
+              border: `1px solid ${overdueOnly ? "#B91C1C" : "#E5E7EB"}`,
+              background: overdueOnly ? "#FEF2F2" : "#fff",
+              color: overdueOnly ? "#991B1B" : "#0F172A",
+              padding: "6px 12px", borderRadius: 6, fontSize: 13,
+              fontWeight: 600, cursor: "pointer",
+              display: "inline-flex", alignItems: "center", gap: 8,
+            }}
+          >
+            Overdue only
+            <span style={{
+              background: overdueOnly ? "#B91C1C" : "#F1F5F9",
+              color: overdueOnly ? "#fff" : "#475569",
+              padding: "1px 8px", borderRadius: 10, fontSize: 12, fontWeight: 600,
+            }}>{overdueTotal}</span>
+          </button>
+        </div>
       </div>
 
       <WorkqueueShell<PayerReceivedRow>

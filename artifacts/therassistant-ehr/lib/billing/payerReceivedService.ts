@@ -40,6 +40,9 @@ export interface PayerReceivedRow {
   chargeAmount: number;
   expectedAdjudicationAt: string | null;
   submittedAt: string | null;
+  slaDays: number;
+  overdue: boolean;
+  daysOverdue: number;
   // Tab classification
   tab: PayerReceivedTab;
   // Detail panel
@@ -79,6 +82,7 @@ export interface PayerReceivedFilters {
   assignedBiller?: string;
   carcRarc?: string;
   followUpDue?: string;
+  overdue?: string;
 }
 
 type DbRow = Record<string, unknown>;
@@ -158,6 +162,9 @@ function applyFilters(rows: PayerReceivedRow[], f: PayerReceivedFilters | undefi
   if (f.followUpDue) {
     const cutoff = f.followUpDue + "T23:59:59";
     out = out.filter((r) => r.followUpDueAt != null && r.followUpDueAt <= cutoff);
+  }
+  if (f.overdue === "true" || f.overdue === "1") {
+    out = out.filter((r) => r.overdue);
   }
   return out;
 }
@@ -352,6 +359,11 @@ export async function loadPayerReceivedClaims({
     const slaRaw = profile ? Number(profile.adjudication_sla_days) : NaN;
     const slaDays = Number.isFinite(slaRaw) && slaRaw >= 1 ? Math.floor(slaRaw) : 30;
     const expectedAdjudicationAt = addDaysIso(payerReceivedAt ?? submittedAt, slaDays);
+    const expectedMs = expectedAdjudicationAt ? new Date(expectedAdjudicationAt).getTime() : NaN;
+    const overdue = Number.isFinite(expectedMs) && nowMs > expectedMs;
+    const daysOverdue = overdue
+      ? Math.floor((nowMs - expectedMs) / 86400_000)
+      : 0;
 
     // Status history (276/277): combine inquiries + status events.
     const statusHistory: StatusHistoryEntry[] = [];
@@ -398,11 +410,22 @@ export async function loadPayerReceivedClaims({
       statusTextLower.includes("additional info") ||
       inquiryStatus === "pending";
 
+    // Approaching-follow-up window is derived from the per-payer SLA so a
+    // Medicare 14-day SLA flags claims earlier than a Medicaid 60-day SLA.
+    // Use ~25% of the SLA window (floor of 2 days, cap of 14) so the cutoff
+    // mirrors the same SLA that drives the Overdue flag.
+    const approachingWindowDays = Math.min(14, Math.max(2, Math.ceil(slaDays * 0.25)));
+    const approachingWindowMs = approachingWindowDays * 86400_000;
+    const approachingByExpected =
+      Number.isFinite(expectedMs) &&
+      !overdue &&
+      expectedMs - nowMs <= approachingWindowMs;
+    const approachingByFollowUp =
+      followUpDueAt != null &&
+      new Date(followUpDueAt).getTime() - nowMs <= approachingWindowMs;
+
     let tab: PayerReceivedTab;
-    if (
-      followUpDueAt &&
-      new Date(followUpDueAt).getTime() - nowMs <= 7 * 86400_000
-    ) {
+    if (approachingByFollowUp || approachingByExpected) {
       tab = "approaching_follow_up";
     } else if (isPendingReview) {
       tab = "pending_review";
@@ -433,6 +456,9 @@ export async function loadPayerReceivedClaims({
       chargeAmount: money(c.total_charge),
       expectedAdjudicationAt,
       submittedAt,
+      slaDays,
+      overdue,
+      daysOverdue,
       tab,
       payerClaimNumber,
       statusHistory,
@@ -447,6 +473,16 @@ export async function loadPayerReceivedClaims({
       denialCode: carcRarcFromNotes(text(c.billing_notes) || null),
     });
   }
+
+  // Default sort: overdue rows first (most overdue at the top), then by
+  // days-in-process descending so the oldest non-overdue claims still surface.
+  rows.sort((a, b) => {
+    if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+    if (a.overdue && b.overdue && a.daysOverdue !== b.daysOverdue) {
+      return b.daysOverdue - a.daysOverdue;
+    }
+    return b.daysInProcess - a.daysInProcess;
+  });
 
   return applyFilters(rows, filters);
 }

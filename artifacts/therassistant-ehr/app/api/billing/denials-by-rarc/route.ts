@@ -82,6 +82,17 @@ interface RarcClaimRow {
   clinician: string;
 }
 
+interface MatchingPayerRule {
+  id: string;
+  payer: string | null;
+  rarcCode: string | null;
+  carcCode: string | null;
+  rule: string;
+  recommendedAction: string | null;
+  scope: "payer_specific" | "any_payer";
+  updatedAt: string | null;
+}
+
 interface RarcGroup {
   id: string;
   rarcCode: string;
@@ -92,13 +103,19 @@ interface RarcGroup {
   payer: string;
   payerBreakdown: Array<{ payer: string; count: number; amount: number }>;
   recommendedAction: string;
+  catalogRecommendedAction: string;
   payerExplanation: string;
   suggestedCorrection: string;
   priority: RarcCatalogEntry["priority"];
   oldestAgeDays: number;
   urgentCount: number;
   claims: RarcClaimRow[];
+  matchingRule: MatchingPayerRule | null;
+  workedClaimCount: number;
+  suggestRule: boolean;
 }
+
+const WORKED_RULE_THRESHOLD = 2;
 
 export async function GET(request: Request) {
   try {
@@ -164,6 +181,7 @@ export async function GET(request: Request) {
       { data: eraPayments },
       { data: workqueueItems },
       { data: encounters },
+      { data: payerRules },
     ] = await Promise.all([
       patientIds.length
         ? (supabase as any)
@@ -216,6 +234,13 @@ export async function GET(request: Request) {
             )
             .in("id", encounterIds)
         : Promise.resolve({ data: [] as DbRow[] }),
+      (supabase as any)
+        .from("payer_rules")
+        .select(
+          "id, payer_name, rarc_code, carc_code, rule, recommended_action, updated_at",
+        )
+        .eq("organization_id", organizationId)
+        .is("archived_at", null),
     ]);
 
     const patientById = new Map<string, DbRow>(
@@ -243,8 +268,18 @@ export async function GET(request: Request) {
 
     const statusByClaim = new Map<string, string>();
     const assigneeByClaim = new Map<string, string>();
+    const workedClaimIds = new Set<string>();
     for (const w of (workqueueItems as DbRow[]) ?? []) {
       const cid = text(w.claim_id);
+      const itemStatus = text(w.item_status).toLowerCase();
+      if (
+        itemStatus === "in_progress" ||
+        itemStatus === "resolved" ||
+        itemStatus === "snoozed" ||
+        text(w.assigned_to_user_id)
+      ) {
+        workedClaimIds.add(cid);
+      }
       const r = text(w.rarc_code).toUpperCase();
       const c = text(w.carc_code).toUpperCase();
       if (r) {
@@ -394,12 +429,19 @@ export async function GET(request: Request) {
               code === "UNSPECIFIED"
                 ? "Pull the raw 835/277 to identify the actual remark code."
                 : catalog.recommendedAction,
+            catalogRecommendedAction:
+              code === "UNSPECIFIED"
+                ? "Pull the raw 835/277 to identify the actual remark code."
+                : catalog.recommendedAction,
             payerExplanation: catalog.payerExplanation,
             suggestedCorrection: catalog.suggestedCorrection,
             priority: catalog.priority,
             oldestAgeDays: 0,
             urgentCount: 0,
             claims: [],
+            matchingRule: null,
+            workedClaimCount: 0,
+            suggestRule: false,
           };
           groupMap.set(code, group);
         }
@@ -440,6 +482,75 @@ export async function GET(request: Request) {
           : g.payerBreakdown.length > 1
             ? `${g.payerBreakdown[0].payer} +${g.payerBreakdown.length - 1}`
             : "—";
+    }
+
+    // Attach matching payer rule + count of "worked" claims per group so
+    // the UI can pre-fill correction templates and nudge billers to save
+    // a rule when they've worked the same payer/RARC repeatedly.
+    const rules = ((payerRules as DbRow[]) ?? []).map((r) => ({
+      id: text(r.id),
+      payerName: text(r.payer_name) || null,
+      payerNameLower: text(r.payer_name).toLowerCase() || null,
+      rarcCode: text(r.rarc_code).toUpperCase() || null,
+      carcCode: text(r.carc_code).toUpperCase() || null,
+      rule: text(r.rule),
+      recommendedAction: text(r.recommended_action) || null,
+      updatedAt: text(r.updated_at) || null,
+    }));
+
+    for (const g of groupMap.values()) {
+      // Count distinct worked claims tied to this group
+      const workedSet = new Set<string>();
+      for (const c of g.claims) {
+        if (workedClaimIds.has(c.claimId)) workedSet.add(c.claimId);
+      }
+      g.workedClaimCount = workedSet.size;
+
+      // Find the best-matching active rule. Priority:
+      //   1. payer-specific match on (payer + rarc) — most recently updated
+      //   2. any-payer match on rarc — most recently updated
+      const groupRarc = g.rarcCode === "UNSPECIFIED" ? null : g.rarcCode;
+      if (groupRarc) {
+        const payerNamesLower = g.payerBreakdown
+          .map((p) => p.payer.toLowerCase())
+          .filter(Boolean);
+        const rarcMatches = rules.filter((r) => r.rarcCode === groupRarc);
+        const sortByUpdated = (a: typeof rules[number], b: typeof rules[number]) =>
+          (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
+        const payerSpecific = rarcMatches
+          .filter(
+            (r) =>
+              r.payerNameLower !== null &&
+              payerNamesLower.includes(r.payerNameLower),
+          )
+          .sort(sortByUpdated);
+        const anyPayer = rarcMatches
+          .filter((r) => r.payerNameLower === null)
+          .sort(sortByUpdated);
+        const best = payerSpecific[0] ?? anyPayer[0] ?? null;
+        if (best) {
+          g.matchingRule = {
+            id: best.id,
+            payer: best.payerName,
+            rarcCode: best.rarcCode,
+            carcCode: best.carcCode,
+            rule: best.rule,
+            recommendedAction: best.recommendedAction,
+            scope: best.payerName ? "payer_specific" : "any_payer",
+            updatedAt: best.updatedAt,
+          };
+          // Pre-fill the surfaced recommended action with the saved rule's
+          // action when present (falls back to catalog otherwise).
+          if (best.recommendedAction) {
+            g.recommendedAction = best.recommendedAction;
+          }
+        }
+      }
+
+      // Nudge: no rule yet, but billers have worked >= N claims in this
+      // group. Encourage capturing the fix as reusable guidance.
+      g.suggestRule =
+        !g.matchingRule && g.workedClaimCount >= WORKED_RULE_THRESHOLD;
     }
 
     const groups = Array.from(groupMap.values()).sort(

@@ -32,6 +32,17 @@ type ClaimSummary = {
   clinician: string;
 };
 
+type MatchingRule = {
+  id: string;
+  payer: string | null;
+  rarcCode: string | null;
+  carcCode: string | null;
+  rule: string;
+  recommendedAction: string | null;
+  scope: "payer_specific" | "any_payer";
+  updatedAt: string | null;
+};
+
 type RarcGroup = {
   id: string;
   rarcCode: string;
@@ -42,12 +53,16 @@ type RarcGroup = {
   payer: string;
   payerBreakdown: Array<{ payer: string; count: number; amount: number }>;
   recommendedAction: string;
+  catalogRecommendedAction?: string;
   payerExplanation: string;
   suggestedCorrection: string;
   priority: "low" | "normal" | "high" | "urgent";
   oldestAgeDays: number;
   urgentCount: number;
   claims: ClaimSummary[];
+  matchingRule?: MatchingRule | null;
+  workedClaimCount?: number;
+  suggestRule?: boolean;
 };
 
 type Payload = {
@@ -167,10 +182,23 @@ function TemplateModal({
   const defaultName = kind === "correction"
     ? `Correction — ${group.rarcCode}`
     : `Appeal — ${group.rarcCode}`;
-  const defaultBody = kind === "correction"
-    ? `Correction template for RARC ${group.rarcCode} (${group.rarcMessage})
+  const ruleAction =
+    kind === "correction" && group.matchingRule?.recommendedAction
+      ? group.matchingRule.recommendedAction
+      : group.recommendedAction;
+  const rulePrefix =
+    kind === "correction" && group.matchingRule
+      ? `[Saved payer rule — ${
+          group.matchingRule.payer ?? "any payer"
+        } / ${group.matchingRule.rarcCode ?? group.rarcCode}]
+${group.matchingRule.rule}
 
-Recommended action: ${group.recommendedAction}
+`
+      : "";
+  const defaultBody = kind === "correction"
+    ? `${rulePrefix}Correction template for RARC ${group.rarcCode} (${group.rarcMessage})
+
+Recommended action: ${ruleAction}
 
 Steps:
 ${group.suggestedCorrection}
@@ -619,7 +647,42 @@ export default function DenialsByRarcClient() {
       { id: "payer", header: "Payer", cell: (g) => g.payer || "—" },
       {
         id: "recommendedAction", header: "Recommended action",
-        cell: (g) => <span style={{ color: "#0F172A" }}>{g.recommendedAction}</span>,
+        cell: (g) => (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              {g.matchingRule ? (
+                <span
+                  title={`Saved rule — ${g.matchingRule.payer ?? "any payer"} / ${g.matchingRule.rarcCode ?? g.rarcCode}\n${g.matchingRule.rule}`}
+                  style={{
+                    background: "#DBEAFE", color: "#1D4ED8",
+                    padding: "1px 6px", borderRadius: 999,
+                    fontSize: 10, fontWeight: 700,
+                    textTransform: "uppercase", letterSpacing: 0.3,
+                  }}
+                >
+                  {g.matchingRule.scope === "payer_specific" ? "Payer rule" : "Rule (any payer)"}
+                </span>
+              ) : null}
+              {g.suggestRule ? (
+                <button
+                  type="button"
+                  onClick={(ev) => { ev.stopPropagation(); setRuleModal(g); }}
+                  title={`${g.workedClaimCount ?? 0} claims worked — save reusable guidance`}
+                  style={{
+                    background: "#FEF3C7", color: "#92400E",
+                    padding: "1px 6px", borderRadius: 999,
+                    fontSize: 10, fontWeight: 700,
+                    textTransform: "uppercase", letterSpacing: 0.3,
+                    border: "1px solid #FDE68A", cursor: "pointer",
+                  }}
+                >
+                  Save as payer rule
+                </button>
+              ) : null}
+            </div>
+            <span style={{ color: "#0F172A" }}>{g.recommendedAction}</span>
+          </div>
+        ),
       },
       {
         id: "priority", header: "Priority", align: "center", width: 100,

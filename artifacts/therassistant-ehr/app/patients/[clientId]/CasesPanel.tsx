@@ -199,15 +199,45 @@ export default function CasesPanel({
       setError("Case name is required.");
       return;
     }
-    await callCase("POST", `/api/clients/${clientId}/cases`, {
-      name: newName.trim(),
-      caseType: newType,
-      notes: newNotes.trim() || null,
-    });
-    setShowCreate(false);
-    setNewName("");
-    setNewType("commercial");
-    setNewNotes("");
+    setBusy(`create-case`);
+    setError(null);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/cases`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          name: newName.trim(),
+          caseType: newType,
+          notes: newNotes.trim() || null,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        const msg =
+          json.error ??
+          (Array.isArray(json.errors)
+            ? json.errors.map((e: { message?: string }) => e.message).join("; ")
+            : "Failed to create case");
+        throw new Error(msg);
+      }
+      const newCaseId: string | undefined = json.case?.id;
+      await load();
+      onMutate?.();
+      setShowCreate(false);
+      setNewName("");
+      setNewType("commercial");
+      setNewNotes("");
+      // Reduce clicks: open the insurance form on the newly created case
+      // unless it's a self-pay / charity case where insurance doesn't apply.
+      if (newCaseId && newType !== "self_pay" && newType !== "charity") {
+        setAddingPolicyForCaseId(newCaseId);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create case");
+    } finally {
+      setBusy(null);
+    }
   }
 
   function startEdit(c: CaseRecord) {
@@ -499,7 +529,9 @@ export default function CasesPanel({
                             onClick={() => setAddingPolicyForCaseId(c.id)}
                             disabled={Boolean(busy)}
                           >
-                            + Add insurance
+                            {c.policies.length === 0
+                              ? "+ Add insurance"
+                              : `+ Add ${openPriorities[0]} insurance`}
                           </button>
                         </div>
                       )}

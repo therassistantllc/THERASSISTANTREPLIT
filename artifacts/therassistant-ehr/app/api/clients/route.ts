@@ -156,7 +156,7 @@ export async function POST(request: Request) {
       const errCode = (error as { code?: string }).code ?? "";
       const errMessage = String((error as { message?: string }).message ?? "");
       const missingEmergency =
-        errCode === "42703" &&
+        (errCode === "42703" || errCode === "PGRST204") &&
         /emergency_contact_(name|phone)/i.test(errMessage);
       if (missingEmergency) {
         console.warn(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_ORG_ID } from "@/lib/config";
 import WorkqueueShell, {
   type ColumnDef,
@@ -117,6 +117,15 @@ export default function MedicalReviewClient() {
 
   const [ctxByClaim, setCtxByClaim] = useState<Record<string, NonNullable<ContextPayload["context"]>>>({});
   const [ctxLoading, setCtxLoading] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingClaim, setUploadingClaim] = useState<string | null>(null);
+  const [chartPickerOpen, setChartPickerOpen] = useState(false);
+  const [chartDocs, setChartDocs] = useState<Array<{ id: string; title: string | null; fileName: string | null; type: string | null; claimId: string | null; createdAt: string | null }>>([]);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartError, setChartError] = useState<string | null>(null);
+  const [chartSelection, setChartSelection] = useState<Record<string, boolean>>({});
+  const [attaching, setAttaching] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -372,6 +381,96 @@ export default function MedicalReviewClient() {
     [organizationId, selectedRowId],
   );
 
+  const refreshContext = useCallback((claimId: string) => {
+    setCtxByClaim((prev) => {
+      const next = { ...prev };
+      delete next[claimId];
+      return next;
+    });
+  }, []);
+
+  const uploadFiles = useCallback(
+    async (row: MedicalReviewRow, files: FileList | File[]) => {
+      const list = Array.from(files);
+      if (list.length === 0) return;
+      setUploadingClaim(row.claimId);
+      try {
+        let uploaded = 0;
+        for (const f of list) {
+          const fd = new FormData();
+          fd.append("file", f);
+          fd.append("claimId", row.claimId);
+          fd.append("organizationId", organizationId);
+          fd.append("documentType", "medical_records");
+          const res = await fetch("/api/billing/medical-review/upload", { method: "POST", body: fd });
+          const json = await res.json();
+          if (!res.ok || json?.success === false) {
+            throw new Error(json?.error ?? `Upload failed for ${f.name}`);
+          }
+          uploaded += 1;
+        }
+        refreshContext(row.claimId);
+        setRows((prev) => prev.map((r) => r.claimId === row.claimId ? { ...r, lastActionAt: new Date().toISOString() } : r));
+        setToast(uploaded === 1 ? "Uploaded 1 document" : `Uploaded ${uploaded} documents`);
+      } catch (e) {
+        setToast(e instanceof Error ? e.message : "Upload failed");
+      } finally {
+        setUploadingClaim(null);
+      }
+    },
+    [organizationId, refreshContext],
+  );
+
+  const loadChartDocs = useCallback(
+    async (clientId: string) => {
+      setChartLoading(true);
+      setChartError(null);
+      setChartDocs([]);
+      setChartSelection({});
+      try {
+        const params = new URLSearchParams({ organizationId });
+        const res = await fetch(`/api/patients/${clientId}/documents?${params.toString()}`, { cache: "no-store" });
+        const json = await res.json();
+        if (!res.ok || json?.success === false) throw new Error(json?.error ?? "Failed to load chart");
+        type ChartDoc = { id: string; title: string | null; fileName: string | null; type: string | null; claimId: string | null; createdAt: string | null };
+        setChartDocs((json.documents as ChartDoc[]) ?? []);
+      } catch (e) {
+        setChartError(e instanceof Error ? e.message : "Failed to load chart");
+      } finally {
+        setChartLoading(false);
+      }
+    },
+    [organizationId],
+  );
+
+  const attachFromChart = useCallback(
+    async (row: MedicalReviewRow) => {
+      const ids = Object.entries(chartSelection).filter(([, v]) => v).map(([k]) => k);
+      if (ids.length === 0) return;
+      setAttaching(true);
+      try {
+        const res = await fetch("/api/billing/medical-review/attach", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ organizationId, claimId: row.claimId, documentIds: ids }),
+        });
+        const json = await res.json();
+        if (!res.ok || json?.success === false) throw new Error(json?.error ?? "Attach failed");
+        refreshContext(row.claimId);
+        setRows((prev) => prev.map((r) => r.claimId === row.claimId ? { ...r, lastActionAt: new Date().toISOString() } : r));
+        setChartPickerOpen(false);
+        setChartSelection({});
+        const n = Array.isArray(json.attached) ? json.attached.length : ids.length;
+        setToast(n === 1 ? "Attached 1 document" : `Attached ${n} documents`);
+      } catch (e) {
+        setToast(e instanceof Error ? e.message : "Attach failed");
+      } finally {
+        setAttaching(false);
+      }
+    },
+    [chartSelection, organizationId, refreshContext],
+  );
+
   const rowActions: RowAction<MedicalReviewRow>[] = useMemo(
     () => [
       { id: "attach", label: "Attach records", onClick: (r) => void performAction(r, "attach_records"), disabled: (r) => actingId === r.id },
@@ -469,21 +568,113 @@ export default function MedicalReviewClient() {
         id: "documents", label: "Uploaded documents",
         render: () => {
           if (!selectedRow) return null;
-          if (ctxIsLoading && !ctx) return <p style={{ color: "#64748B", fontSize: 13 }}>Loading…</p>;
+          const row = selectedRow;
           const docs = ctx?.documents ?? [];
-          if (docs.length === 0) return <p style={{ color: "#64748B", fontSize: 13 }}>No documents attached to this claim yet.</p>;
+          const isUploading = uploadingClaim === row.claimId;
+          const selectedChartCount = Object.values(chartSelection).filter(Boolean).length;
           return (
-            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-              {docs.map((d) => (
-                <li key={d.id} style={{ padding: "8px 0", borderBottom: "1px solid #F1F5F9" }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{d.title}</div>
-                  <div style={{ fontSize: 12, color: "#64748B" }}>
-                    {d.fileName}{d.documentType ? ` · ${d.documentType}` : ""} · uploaded {formatDateTime(d.uploadedAt)}
+            <div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "8px 0 12px", borderBottom: "1px solid #F1F5F9", marginBottom: 12 }}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files && files.length > 0) void uploadFiles(row, files);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  style={{ padding: "6px 12px", border: "1px solid #2563EB", background: "#2563EB", color: "#fff", borderRadius: 4, fontSize: 13, cursor: isUploading ? "wait" : "pointer" }}
+                >
+                  {isUploading ? "Uploading…" : "Upload files"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const opening = !chartPickerOpen;
+                    setChartPickerOpen(opening);
+                    if (opening && row.clientId) void loadChartDocs(row.clientId);
+                  }}
+                  disabled={!row.clientId}
+                  style={{ padding: "6px 12px", border: "1px solid #CBD5E1", background: "#fff", color: "#0F172A", borderRadius: 4, fontSize: 13, cursor: row.clientId ? "pointer" : "not-allowed" }}
+                  title={row.clientId ? "Pick from patient chart" : "No patient on this claim"}
+                >
+                  {chartPickerOpen ? "Hide chart picker" : "Attach from chart"}
+                </button>
+                <span style={{ fontSize: 12, color: "#64748B" }}>Files go to the claim and appear below.</span>
+              </div>
+
+              {chartPickerOpen ? (
+                <div style={{ border: "1px solid #E2E8F0", borderRadius: 6, padding: 10, marginBottom: 12, background: "#F8FAFC" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <strong style={{ fontSize: 13 }}>Patient chart documents</strong>
+                    <button
+                      type="button"
+                      onClick={() => void attachFromChart(row)}
+                      disabled={attaching || selectedChartCount === 0}
+                      style={{ padding: "4px 10px", border: "1px solid #16A34A", background: selectedChartCount === 0 ? "#94A3B8" : "#16A34A", color: "#fff", borderRadius: 4, fontSize: 12, cursor: selectedChartCount === 0 ? "not-allowed" : "pointer" }}
+                    >
+                      {attaching ? "Attaching…" : `Attach selected (${selectedChartCount})`}
+                    </button>
                   </div>
-                  {d.notes ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{d.notes}</div> : null}
-                </li>
-              ))}
-            </ul>
+                  {chartLoading ? (
+                    <p style={{ fontSize: 12, color: "#64748B", margin: 0 }}>Loading chart…</p>
+                  ) : chartError ? (
+                    <p style={{ fontSize: 12, color: "#B91C1C", margin: 0 }}>{chartError}</p>
+                  ) : chartDocs.length === 0 ? (
+                    <p style={{ fontSize: 12, color: "#64748B", margin: 0 }}>No chart documents found for this patient.</p>
+                  ) : (
+                    <ul style={{ listStyle: "none", padding: 0, margin: 0, maxHeight: 220, overflowY: "auto" }}>
+                      {chartDocs.map((d) => {
+                        const alreadyOnClaim = d.claimId === row.claimId;
+                        return (
+                          <li key={d.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "4px 0", borderBottom: "1px solid #E2E8F0" }}>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(chartSelection[d.id]) || alreadyOnClaim}
+                              disabled={alreadyOnClaim}
+                              onChange={(e) => setChartSelection((prev) => ({ ...prev, [d.id]: e.target.checked }))}
+                              style={{ marginTop: 3 }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{d.title || d.fileName || "Document"}</div>
+                              <div style={{ fontSize: 11, color: "#64748B" }}>
+                                {d.fileName ?? "—"}{d.type ? ` · ${d.type}` : ""}{d.createdAt ? ` · ${formatDate(d.createdAt)}` : ""}
+                                {alreadyOnClaim ? " · already attached" : ""}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+
+              {ctxIsLoading && !ctx ? (
+                <p style={{ color: "#64748B", fontSize: 13 }}>Loading…</p>
+              ) : docs.length === 0 ? (
+                <p style={{ color: "#64748B", fontSize: 13 }}>No documents attached to this claim yet.</p>
+              ) : (
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {docs.map((d) => (
+                    <li key={d.id} style={{ padding: "8px 0", borderBottom: "1px solid #F1F5F9" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{d.title}</div>
+                      <div style={{ fontSize: 12, color: "#64748B" }}>
+                        {d.fileName}{d.documentType ? ` · ${d.documentType}` : ""} · uploaded {formatDateTime(d.uploadedAt)}
+                      </div>
+                      {d.notes ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{d.notes}</div> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           );
         },
       },
@@ -508,7 +699,12 @@ export default function MedicalReviewClient() {
         },
       },
     ],
-    [selectedRow, ctx, ctxIsLoading],
+    [
+      selectedRow, ctx, ctxIsLoading,
+      uploadingClaim, uploadFiles,
+      chartPickerOpen, chartDocs, chartLoading, chartError, chartSelection,
+      loadChartDocs, attachFromChart, attaching,
+    ],
   );
 
   const detailActions: PrimaryAction[] = useMemo(() => {

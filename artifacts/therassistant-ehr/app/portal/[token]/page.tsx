@@ -73,27 +73,31 @@ function isExpired(expiresAt: string | null): boolean {
   return d.getTime() < Date.now();
 }
 
-const containerStyle: React.CSSProperties = {
-  maxWidth: 520,
-  margin: "64px auto",
-  padding: 24,
-  background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 8,
-};
-
-const buttonStyle: React.CSSProperties = {
-  display: "inline-block",
-  marginTop: 16,
-  padding: "10px 18px",
-  background: "#10243f",
-  color: "#ffffff",
-  borderRadius: 6,
-  border: "none",
-  fontSize: 14,
-  fontWeight: 600,
-  cursor: "pointer",
-};
+function NoticeShell({
+  practice,
+  title,
+  body,
+}: {
+  practice: string;
+  title: string;
+  body: React.ReactNode;
+}) {
+  return (
+    <main className="portal-shell-narrow">
+      <div className="portal-header">
+        <div>
+          <div className="eyebrow">{practice}</div>
+          <h1>{title}</h1>
+        </div>
+      </div>
+      <section className="panel">
+        <p className="muted" style={{ margin: 0 }}>
+          {body}
+        </p>
+      </section>
+    </main>
+  );
+}
 
 export default async function PatientPortalInvitePage({
   params,
@@ -105,33 +109,31 @@ export default async function PatientPortalInvitePage({
 
   if (error || !invite) {
     return (
-      <main style={containerStyle}>
-        <h1 style={{ marginTop: 0 }}>Portal link not found</h1>
-        <p>
-          This portal invite link is invalid. Please contact your care team to request a new
-          invitation.
-        </p>
-      </main>
+      <NoticeShell
+        practice="Patient portal"
+        title="Portal link not found"
+        body="This portal invite link is invalid. Please contact your care team to request a new invitation."
+      />
     );
   }
 
   if (invite.status === "revoked") {
     return (
-      <main style={containerStyle}>
-        <h1 style={{ marginTop: 0 }}>Invite revoked</h1>
-        <p>This portal invite has been revoked. Please contact {practice} for a new invite.</p>
-      </main>
+      <NoticeShell
+        practice={practice}
+        title="Invite revoked"
+        body={`This portal invite has been revoked. Please contact ${practice} for a new invite.`}
+      />
     );
   }
 
   if (isExpired(invite.expiresAt) || invite.status === "expired") {
     return (
-      <main style={containerStyle}>
-        <h1 style={{ marginTop: 0 }}>Invite expired</h1>
-        <p>
-          This portal invite has expired. Please contact {practice} to request a fresh invitation.
-        </p>
-      </main>
+      <NoticeShell
+        practice={practice}
+        title="Invite expired"
+        body={`This portal invite has expired. Please contact ${practice} to request a fresh invitation.`}
+      />
     );
   }
 
@@ -199,20 +201,27 @@ export default async function PatientPortalInvitePage({
   const alreadyAccepted = invite.status === "accepted";
 
   return (
-    <main style={containerStyle}>
-      <h1 style={{ marginTop: 0 }}>Welcome, {patientName}</h1>
-      <p>
-        {practice} has invited you to access your patient portal. Continue to view your upcoming
-        appointments, balance, and shared documents.
-      </p>
-      <form action={acceptInvite}>
-        <button type="submit" style={buttonStyle}>
-          {alreadyAccepted ? "Open portal" : "Continue to portal"}
-        </button>
-      </form>
-      <p style={{ fontSize: 13, color: "#4b5563", marginTop: 24 }}>
-        If you have questions, please contact {practice} directly.
-      </p>
+    <main className="portal-shell-narrow">
+      <div className="portal-header">
+        <div>
+          <div className="eyebrow">{practice}</div>
+          <h1>Welcome, {patientName}</h1>
+        </div>
+      </div>
+      <section className="panel">
+        <p style={{ marginTop: 0, color: "var(--text)" }}>
+          {practice} has invited you to access your patient portal. Continue to view your upcoming
+          appointments, balance, and shared documents.
+        </p>
+        <form action={acceptInvite}>
+          <button type="submit" className="button">
+            {alreadyAccepted ? "Open portal" : "Continue to portal"}
+          </button>
+        </form>
+        <p className="muted" style={{ fontSize: 13, marginTop: 20, marginBottom: 0 }}>
+          If you have questions, please contact {practice} directly.
+        </p>
+      </section>
     </main>
   );
 }

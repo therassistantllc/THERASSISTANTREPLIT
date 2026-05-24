@@ -1138,3 +1138,153 @@ textarea {
   color: var(--navy);
   border: 1px solid var(--line);
 }
+
+/* ── Patient portal ──────────────────────────────── */
+.portal-shell {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+
+.portal-shell-narrow {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 48px 20px 64px;
+}
+
+.portal-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0 16px;
+  border-bottom: 2px solid var(--line);
+  margin-bottom: 24px;
+}
+
+.portal-header h1 {
+  margin: 4px 0 0;
+  color: var(--navy);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.portal-section {
+  margin-bottom: 16px;
+}
+
+.portal-section + .portal-section {
+  margin-top: 16px;
+}
+
+.portal-section-title {
+  margin: 0 0 12px;
+  color: var(--navy);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.portal-item-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.portal-item-row:first-of-type {
+  border-top: none;
+  padding-top: 4px;
+}
+
+.portal-item-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.portal-balance-amount {
+  margin: 4px 0 6px;
+  color: var(--navy);
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.portal-balance-amount.has-balance {
+  color: var(--danger);
+}
+
+.portal-join-link {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--navy-soft);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--sage-mid);
+  text-underline-offset: 2px;
+}
+
+.portal-join-link:hover {
+  color: var(--navy);
+  text-decoration-color: var(--navy);
+}
+
+.portal-pay-picker {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--sage-soft);
+  border: 1px solid var(--sage-mid);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 240px;
+}
+
+.portal-pay-picker label {
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.portal-pay-amount-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.portal-pay-amount-row span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.portal-pay-amount-row input {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 10px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+}
+
+.portal-pay-amount-row input:focus {
+  outline: none;
+  border-color: var(--navy);
+}
+
+.portal-return-tone-success {
+  color: var(--success);
+}
+
+.portal-return-tone-error {
+  color: var(--danger);
+}
+
+.portal-return-tone-neutral {
+  color: var(--navy);
+}

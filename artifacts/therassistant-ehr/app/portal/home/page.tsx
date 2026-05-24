@@ -194,77 +194,6 @@ async function loadPortalData(
   };
 }
 
-const pageWrap: React.CSSProperties = {
-  maxWidth: 880,
-  margin: "0 auto",
-  padding: "24px 20px 64px",
-};
-
-const headerBar: React.CSSProperties = {
-  display: "flex",
-  alignItems: "baseline",
-  justifyContent: "space-between",
-  gap: 16,
-  marginBottom: 24,
-};
-
-const cardStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 10,
-  padding: 20,
-  marginBottom: 20,
-  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
-};
-
-const sectionTitle: React.CSSProperties = {
-  margin: "0 0 12px",
-  fontSize: 16,
-  fontWeight: 700,
-  color: "#10243f",
-};
-
-const mutedSmall: React.CSSProperties = { fontSize: 13, color: "#6b7280" };
-
-const itemRow: React.CSSProperties = {
-  padding: "12px 0",
-  borderTop: "1px solid #eef1f5",
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 16,
-  alignItems: "flex-start",
-};
-
-const signOutBtn: React.CSSProperties = {
-  background: "transparent",
-  color: "#4b5563",
-  border: "1px solid #d0d8e2",
-  borderRadius: 6,
-  padding: "6px 12px",
-  fontSize: 13,
-  cursor: "pointer",
-};
-
-const downloadBtnStyle: React.CSSProperties = {
-  background: "#1d4ed8",
-  color: "#ffffff",
-  border: "1px solid #1d4ed8",
-  borderRadius: 6,
-  padding: "6px 12px",
-  fontSize: 13,
-  fontWeight: 600,
-  textDecoration: "none",
-  whiteSpace: "nowrap",
-};
-
-const joinLinkStyle: React.CSSProperties = {
-  display: "inline-block",
-  marginTop: 6,
-  fontSize: 13,
-  color: "#1d4ed8",
-  textDecoration: "underline",
-};
-
 async function signOut() {
   "use server";
   await clearPortalSessionCookie();
@@ -307,51 +236,6 @@ async function payInvoiceAction(formData: FormData) {
   redirect(result.url);
 }
 
-const payBtn: React.CSSProperties = {
-  background: "#1d4ed8",
-  color: "#ffffff",
-  border: "none",
-  borderRadius: 6,
-  padding: "8px 14px",
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const payPickerSummary: React.CSSProperties = {
-  ...payBtn,
-  display: "inline-block",
-  listStyle: "none",
-  userSelect: "none",
-};
-
-const payPicker: React.CSSProperties = {
-  marginTop: 10,
-  padding: 12,
-  background: "#f8fafc",
-  border: "1px solid #e2e8f0",
-  borderRadius: 8,
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-  minWidth: 220,
-};
-
-const payAmountInput: React.CSSProperties = {
-  width: "100%",
-  padding: "6px 10px",
-  border: "1px solid #cbd5e1",
-  borderRadius: 6,
-  fontSize: 14,
-  boxSizing: "border-box",
-};
-
-const payPickerRow: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  alignItems: "center",
-};
-
 export default async function PatientPortalHomePage() {
   const session = await getPortalSession();
   if (!session) redirect("/portal/signed-out");
@@ -359,11 +243,18 @@ export default async function PatientPortalHomePage() {
   const data = await loadPortalData(session.clientId, session.organizationId);
   if (!data) {
     return (
-      <main style={pageWrap}>
-        <div style={cardStyle}>
-          <h1 style={{ marginTop: 0 }}>Portal unavailable</h1>
-          <p>We could not load your portal right now. Please try again later.</p>
+      <main className="portal-shell-narrow">
+        <div className="portal-header">
+          <div>
+            <div className="eyebrow">Patient portal</div>
+            <h1>Portal unavailable</h1>
+          </div>
         </div>
+        <section className="panel">
+          <p className="muted" style={{ margin: 0 }}>
+            We could not load your portal right now. Please try again later.
+          </p>
+        </section>
       </main>
     );
   }
@@ -371,55 +262,49 @@ export default async function PatientPortalHomePage() {
   const { patientName, practiceName, appointments, balance, documents } = data;
 
   return (
-    <main style={pageWrap}>
-      <div style={headerBar}>
+    <main className="portal-shell">
+      <header className="portal-header">
         <div>
-          <div style={{ fontSize: 12, letterSpacing: 0.08, textTransform: "uppercase", color: "#6b7280" }}>
-            {practiceName}
-          </div>
-          <h1 style={{ margin: "4px 0 0", fontSize: 24, color: "#10243f" }}>
-            Hi, {patientName}
-          </h1>
+          <div className="eyebrow">{practiceName}</div>
+          <h1>Hi, {patientName}</h1>
         </div>
         <form action={signOut}>
-          <button type="submit" style={signOutBtn}>Sign out</button>
+          <button type="submit" className="button button-secondary">
+            Sign out
+          </button>
         </form>
-      </div>
+      </header>
 
       {/* Upcoming appointments */}
-      <section style={cardStyle} aria-labelledby="appts-heading">
-        <h2 id="appts-heading" style={sectionTitle}>Upcoming appointments</h2>
+      <section className="panel portal-section" aria-labelledby="appts-heading">
+        <h2 id="appts-heading" className="portal-section-title">
+          Upcoming appointments
+        </h2>
         {appointments.length === 0 ? (
-          <p style={mutedSmall}>You have no upcoming appointments scheduled.</p>
+          <p className="muted" style={{ margin: 0 }}>
+            You have no upcoming appointments scheduled.
+          </p>
         ) : (
           <div>
             {appointments.map((appt) => (
-              <div key={appt.id} style={itemRow}>
+              <div key={appt.id} className="portal-item-row">
                 <div>
-                  <div style={{ fontWeight: 600 }}>{formatDateTime(appt.startsAt)}</div>
-                  <div style={mutedSmall}>
+                  <div className="portal-item-title">{formatDateTime(appt.startsAt)}</div>
+                  <div className="muted" style={{ fontSize: 13 }}>
                     {appt.type || "Appointment"} with {appt.providerName}
                   </div>
                   {appt.telehealthUrl ? (
-                    <a href={appt.telehealthUrl} style={joinLinkStyle} target="_blank" rel="noreferrer">
+                    <a
+                      href={appt.telehealthUrl}
+                      className="portal-join-link"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       Join telehealth visit
                     </a>
                   ) : null}
                 </div>
-                <span
-                  style={{
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.06,
-                    color: "#6b7280",
-                    background: "#f3f4f6",
-                    borderRadius: 999,
-                    padding: "2px 10px",
-                    height: "fit-content",
-                  }}
-                >
-                  {appt.status.replace(/_/g, " ")}
-                </span>
+                <span className="status">{appt.status.replace(/_/g, " ")}</span>
               </div>
             ))}
           </div>
@@ -427,39 +312,54 @@ export default async function PatientPortalHomePage() {
       </section>
 
       {/* Outstanding balance */}
-      <section style={cardStyle} aria-labelledby="balance-heading">
-        <h2 id="balance-heading" style={sectionTitle}>Outstanding balance</h2>
-        <div style={{ fontSize: 28, fontWeight: 700, color: balance.total > 0 ? "#b91c1c" : "#10243f" }}>
+      <section className="panel portal-section" aria-labelledby="balance-heading">
+        <h2 id="balance-heading" className="portal-section-title">
+          Outstanding balance
+        </h2>
+        <div
+          className={`portal-balance-amount${balance.total > 0 ? " has-balance" : ""}`}
+        >
           {formatMoney(balance.total)}
         </div>
-        <div style={{ ...mutedSmall, marginBottom: 8 }}>
+        <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
           {balance.invoices.length === 0
             ? "You have no open invoices."
             : `${balance.invoices.length} open invoice${balance.invoices.length === 1 ? "" : "s"}.`}
         </div>
         {balance.invoices.map((inv) => (
-          <div key={inv.id} style={itemRow}>
+          <div key={inv.id} className="portal-item-row">
             <div>
-              <div style={{ fontWeight: 600 }}>Invoice #{inv.number}</div>
-              <div style={mutedSmall}>
+              <div className="portal-item-title">Invoice #{inv.number}</div>
+              <div className="muted" style={{ fontSize: 13 }}>
                 {formatMoney(inv.amount)} billed · {formatMoney(inv.paid)} paid
               </div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-              <div style={{ fontWeight: 600 }}>{formatMoney(inv.balance)}</div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+                gap: 6,
+              }}
+            >
+              <div className="portal-item-title" style={{ fontVariantNumeric: "tabular-nums" }}>
+                {formatMoney(inv.balance)}
+              </div>
               {inv.balance > 0 ? (
                 <details>
-                  <summary style={payPickerSummary}>Pay</summary>
-                  <form action={payInvoiceAction} style={payPicker}>
+                  <summary
+                    className="button"
+                    style={{ listStyle: "none", userSelect: "none" }}
+                  >
+                    Pay
+                  </summary>
+                  <form action={payInvoiceAction} className="portal-pay-picker">
                     <input type="hidden" name="invoiceId" value={inv.id} />
-                    <label
-                      htmlFor={`pay-amount-${inv.id}`}
-                      style={{ fontSize: 12, fontWeight: 600, color: "#10243f" }}
-                    >
+                    <label htmlFor={`pay-amount-${inv.id}`}>
                       Amount to pay (max {formatMoney(inv.balance)})
                     </label>
-                    <div style={payPickerRow}>
-                      <span style={{ fontSize: 14, color: "#6b7280" }}>$</span>
+                    <div className="portal-pay-amount-row">
+                      <span>$</span>
                       <input
                         id={`pay-amount-${inv.id}`}
                         type="number"
@@ -469,10 +369,9 @@ export default async function PatientPortalHomePage() {
                         step="0.01"
                         defaultValue={inv.balance.toFixed(2)}
                         required
-                        style={payAmountInput}
                       />
                     </div>
-                    <button type="submit" style={payBtn}>
+                    <button type="submit" className="button">
                       Continue to checkout
                     </button>
                   </form>
@@ -484,29 +383,34 @@ export default async function PatientPortalHomePage() {
       </section>
 
       {/* Documents */}
-      <section style={cardStyle} aria-labelledby="docs-heading">
-        <h2 id="docs-heading" style={sectionTitle}>Documents</h2>
+      <section className="panel portal-section" aria-labelledby="docs-heading">
+        <h2 id="docs-heading" className="portal-section-title">
+          Documents
+        </h2>
         {documents.length === 0 ? (
-          <p style={mutedSmall}>No documents have been shared with you yet.</p>
+          <p className="muted" style={{ margin: 0 }}>
+            No documents have been shared with you yet.
+          </p>
         ) : (
           documents.map((doc) => (
-            <div key={doc.id} style={itemRow}>
+            <div key={doc.id} className="portal-item-row">
               <div>
-                <div style={{ fontWeight: 600 }}>{doc.title}</div>
-                <div style={mutedSmall}>
+                <div className="portal-item-title">{doc.title}</div>
+                <div className="muted" style={{ fontSize: 13 }}>
                   {doc.type.replace(/_/g, " ")}
                   {doc.createdAt ? ` · ${formatDate(doc.createdAt)}` : ""}
                   {doc.fileName ? ` · ${doc.fileName}` : ""}
                 </div>
               </div>
-              <a href={doc.downloadHref} style={downloadBtnStyle} download>
+              <a href={doc.downloadHref} className="button" download>
                 Download
               </a>
             </div>
           ))
         )}
-        <p style={{ ...mutedSmall, marginTop: 12 }}>
-          Only documents your care team has shared appear here. To request another document, please contact {practiceName}.
+        <p className="muted" style={{ fontSize: 13, marginTop: 12, marginBottom: 0 }}>
+          Only documents your care team has shared appear here. To request another document,
+          please contact {practiceName}.
         </p>
       </section>
     </main>

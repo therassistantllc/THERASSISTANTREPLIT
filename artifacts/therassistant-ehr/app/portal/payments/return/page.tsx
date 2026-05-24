@@ -1,27 +1,5 @@
 import Link from "next/link";
 
-const pageWrap: React.CSSProperties = {
-  maxWidth: 600,
-  margin: "0 auto",
-  padding: "48px 20px",
-};
-
-const cardStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 10,
-  padding: 28,
-  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
-};
-
-const homeLink: React.CSSProperties = {
-  display: "inline-block",
-  marginTop: 16,
-  color: "#1d4ed8",
-  textDecoration: "underline",
-  fontSize: 14,
-};
-
 const ERROR_MESSAGES: Record<string, string> = {
   stripe_not_configured: "Online payment is not set up for your practice yet.",
   db_unavailable: "We could not reach our records. Please try again in a moment.",
@@ -71,17 +49,24 @@ export default async function PortalPaymentReturnPage({
     tone = "error";
   }
 
-  const titleColor = tone === "success" ? "#047857" : tone === "error" ? "#b91c1c" : "#10243f";
+  const toneClass = `portal-return-tone-${tone}`;
 
   return (
-    <main style={pageWrap}>
-      <div style={cardStyle}>
-        <h1 style={{ margin: 0, fontSize: 22, color: titleColor }}>{title}</h1>
-        <p style={{ marginTop: 12, color: "#374151", lineHeight: 1.5 }}>{message}</p>
-        <Link href="/portal/home" style={homeLink}>
-          Back to portal
-        </Link>
+    <main className="portal-shell-narrow">
+      <div className="portal-header">
+        <div>
+          <div className="eyebrow">Patient portal</div>
+          <h1 className={toneClass}>{title}</h1>
+        </div>
       </div>
+      <section className="panel">
+        <p style={{ margin: 0, color: "var(--text)", lineHeight: 1.5 }}>{message}</p>
+        <div style={{ marginTop: 16 }}>
+          <Link href="/portal/home" className="button button-secondary">
+            Back to portal
+          </Link>
+        </div>
+      </section>
     </main>
   );
 }

@@ -6,15 +6,5 @@ export const metadata: Metadata = {
 };
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        minHeight: "100dvh",
-        background: "#f6f8fb",
-        color: "#1f2937",
-      }}
-    >
-      {children}
-    </div>
-  );
+  return <div style={{ minHeight: "100dvh", background: "var(--background)" }}>{children}</div>;
 }

@@ -38,7 +38,8 @@ interface ContextPayload {
     } | null;
     documents: Array<{
       id: string; title: string; fileName: string;
-      documentType: string | null; uploadedAt: string | null; notes: string | null;
+      documentType: string | null; mimeType: string | null;
+      uploadedAt: string | null; notes: string | null;
     }>;
     history: Array<{
       id: string; action: string; summary: string | null;
@@ -93,6 +94,17 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   );
 }
 
+function docTypeIcon(mimeType: string | null | undefined): string {
+  const m = (mimeType ?? "").toLowerCase();
+  if (m.startsWith("image/")) return "🖼️";
+  if (m === "application/pdf") return "📕";
+  if (m.includes("word") || m.includes("officedocument.wordprocessing")) return "📝";
+  if (m.includes("excel") || m.includes("spreadsheet") || m === "text/csv") return "📊";
+  if (m.startsWith("text/")) return "📃";
+  if (m) return "📄";
+  return "📎";
+}
+
 function DetailKV({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid #F1F5F9", fontSize: 13 }}>
@@ -132,11 +144,12 @@ export default function MedicalReviewClient() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingClaim, setUploadingClaim] = useState<string | null>(null);
   const [chartPickerOpen, setChartPickerOpen] = useState(false);
-  const [chartDocs, setChartDocs] = useState<Array<{ id: string; title: string | null; fileName: string | null; type: string | null; claimId: string | null; createdAt: string | null }>>([]);
+  const [chartDocs, setChartDocs] = useState<Array<{ id: string; title: string | null; fileName: string | null; type: string | null; mimeType: string | null; claimId: string | null; createdAt: string | null }>>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState<string | null>(null);
   const [chartSelection, setChartSelection] = useState<Record<string, boolean>>({});
   const [attaching, setAttaching] = useState(false);
+  const [removingDocId, setRemovingDocId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -464,6 +477,30 @@ export default function MedicalReviewClient() {
     [organizationId, refreshContext],
   );
 
+  const removeDocument = useCallback(
+    async (row: MedicalReviewRow, documentId: string, label: string) => {
+      if (typeof window !== "undefined" && !window.confirm(`Remove "${label}" from this claim?`)) return;
+      setRemovingDocId(documentId);
+      try {
+        const params = new URLSearchParams({ organizationId });
+        const res = await fetch(
+          `/api/billing/claims/${row.claimId}/documents/${documentId}?${params.toString()}`,
+          { method: "DELETE" },
+        );
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json?.success === false) throw new Error(json?.error ?? "Remove failed");
+        refreshContext(row.claimId);
+        setRows((prev) => prev.map((r) => r.claimId === row.claimId ? { ...r, lastActionAt: new Date().toISOString() } : r));
+        setToast("Document removed");
+      } catch (e) {
+        setToast(e instanceof Error ? e.message : "Remove failed");
+      } finally {
+        setRemovingDocId(null);
+      }
+    },
+    [organizationId, refreshContext],
+  );
+
   const loadChartDocs = useCallback(
     async (clientId: string) => {
       setChartLoading(true);
@@ -475,7 +512,7 @@ export default function MedicalReviewClient() {
         const res = await fetch(`/api/patients/${clientId}/documents?${params.toString()}`, { cache: "no-store" });
         const json = await res.json();
         if (!res.ok || json?.success === false) throw new Error(json?.error ?? "Failed to load chart");
-        type ChartDoc = { id: string; title: string | null; fileName: string | null; type: string | null; claimId: string | null; createdAt: string | null };
+        type ChartDoc = { id: string; title: string | null; fileName: string | null; type: string | null; mimeType: string | null; claimId: string | null; createdAt: string | null };
         setChartDocs((json.documents as ChartDoc[]) ?? []);
       } catch (e) {
         setChartError(e instanceof Error ? e.message : "Failed to load chart");
@@ -685,10 +722,13 @@ export default function MedicalReviewClient() {
                               onChange={(e) => setChartSelection((prev) => ({ ...prev, [d.id]: e.target.checked }))}
                               style={{ marginTop: 3 }}
                             />
+                            <span aria-hidden="true" title={d.mimeType ?? d.type ?? "document"} style={{ fontSize: 16, lineHeight: "16px", marginTop: 2 }}>
+                              {docTypeIcon(d.mimeType)}
+                            </span>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{d.title || d.fileName || "Document"}</div>
                               <div style={{ fontSize: 11, color: "#64748B" }}>
-                                {d.fileName ?? "—"}{d.type ? ` · ${d.type}` : ""}{d.createdAt ? ` · ${formatDate(d.createdAt)}` : ""}
+                                {d.fileName ?? "—"}{d.type ? ` · ${d.type}` : ""}{d.mimeType ? ` · ${d.mimeType}` : ""}{d.createdAt ? ` · ${formatDate(d.createdAt)}` : ""}
                                 {alreadyOnClaim ? " · already attached" : ""}
                               </div>
                             </div>
@@ -706,15 +746,43 @@ export default function MedicalReviewClient() {
                 <p style={{ color: "#64748B", fontSize: 13 }}>No documents attached to this claim yet.</p>
               ) : (
                 <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                  {docs.map((d) => (
-                    <li key={d.id} style={{ padding: "8px 0", borderBottom: "1px solid #F1F5F9" }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{d.title}</div>
-                      <div style={{ fontSize: 12, color: "#64748B" }}>
-                        {d.fileName}{d.documentType ? ` · ${d.documentType}` : ""} · uploaded {formatDateTime(d.uploadedAt)}
-                      </div>
-                      {d.notes ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{d.notes}</div> : null}
-                    </li>
-                  ))}
+                  {docs.map((d) => {
+                    const fileHref = `/api/billing/claims/${row.claimId}/documents/${d.id}/file?organizationId=${encodeURIComponent(organizationId)}`;
+                    const label = d.title || d.fileName || "Document";
+                    const isRemoving = removingDocId === d.id;
+                    return (
+                      <li key={d.id} style={{ padding: "8px 0", borderBottom: "1px solid #F1F5F9", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <span aria-hidden="true" title={d.mimeType ?? "document"} style={{ fontSize: 18, lineHeight: "18px", marginTop: 1 }}>
+                          {docTypeIcon(d.mimeType)}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{d.title}</div>
+                          <div style={{ fontSize: 12, color: "#64748B" }}>
+                            {d.fileName}{d.documentType ? ` · ${d.documentType}` : ""}{d.mimeType ? ` · ${d.mimeType}` : ""} · uploaded {formatDateTime(d.uploadedAt)}
+                          </div>
+                          {d.notes ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{d.notes}</div> : null}
+                        </div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <a
+                            href={fileHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: 12, padding: "4px 10px", border: "1px solid #2563EB", color: "#2563EB", borderRadius: 4, textDecoration: "none", background: "#fff" }}
+                          >
+                            Open
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => void removeDocument(row, d.id, label)}
+                            disabled={isRemoving}
+                            style={{ fontSize: 12, padding: "4px 10px", border: "1px solid #DC2626", color: isRemoving ? "#94A3B8" : "#DC2626", background: "#fff", borderRadius: 4, cursor: isRemoving ? "wait" : "pointer" }}
+                          >
+                            {isRemoving ? "Removing…" : "Remove"}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -747,6 +815,7 @@ export default function MedicalReviewClient() {
       uploadingClaim, uploadFiles,
       chartPickerOpen, chartDocs, chartLoading, chartError, chartSelection,
       loadChartDocs, attachFromChart, attaching,
+      organizationId, removingDocId, removeDocument,
     ],
   );
 

@@ -417,6 +417,7 @@ export interface MedicalReviewClaimContext {
     title: string;
     fileName: string;
     documentType: string | null;
+    mimeType: string | null;
     uploadedAt: string | null;
     notes: string | null;
   }>;
@@ -466,7 +467,7 @@ export async function loadMedicalReviewClaimContext(
           .maybeSingle()
       : { data: null },
     sb.from("documents")
-      .select("id, title, file_name, document_type, filed_at, created_at, notes")
+      .select("id, title, file_name, document_type, mime_type, filed_at, created_at, notes")
       .eq("organization_id", organizationId)
       .eq("claim_id", claimId)
       .is("archived_at", null)
@@ -513,6 +514,7 @@ export async function loadMedicalReviewClaimContext(
       title: text(d.title),
       fileName: text(d.file_name),
       documentType: text(d.document_type) || null,
+      mimeType: text(d.mime_type) || null,
       uploadedAt: text(d.filed_at) || text(d.created_at) || null,
       notes: text(d.notes) || null,
     })),

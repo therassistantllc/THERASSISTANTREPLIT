@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await supabase
     .from("payer_profiles")
     .select(
-      "id, payer_name, availity_payer_id, payer_type, is_active, notes, requires_authorization, billing_rules, fax_number, adjudication_sla_days, created_at, updated_at" as any,
+      "id, payer_name, availity_payer_id, payer_type, is_active, notes, requires_authorization, billing_rules, fax_number, claims_phone, claims_fax, provider_services_phone, adjudication_sla_days, created_at, updated_at" as any,
     )
     .eq("organization_id", organizationId)
     .order("payer_name", { ascending: true });
@@ -109,6 +109,11 @@ export async function POST(req: NextRequest) {
       notes: body.notes ? String(body.notes) : null,
       requires_authorization: Boolean(body.requires_authorization ?? false),
       fax_number: body.fax_number ? String(body.fax_number) : null,
+      claims_phone: body.claims_phone ? String(body.claims_phone) : null,
+      claims_fax: body.claims_fax ? String(body.claims_fax) : null,
+      provider_services_phone: body.provider_services_phone
+        ? String(body.provider_services_phone)
+        : null,
       billing_rules: sanitizeBillingRules(body.billing_rules),
       ...(slaParsed != null ? { adjudication_sla_days: slaParsed } : {}),
       created_at: now,
@@ -157,6 +162,9 @@ export async function PATCH(req: NextRequest) {
     "notes",
     "requires_authorization",
     "fax_number",
+    "claims_phone",
+    "claims_fax",
+    "provider_services_phone",
   ] as const;
   const updates: Record<string, unknown> = {};
   for (const field of allowedFields) {

@@ -142,7 +142,7 @@ export async function GET(request: Request) {
       payerProfileIds.length
         ? (supabase as any)
             .from("payer_profiles")
-            .select("id, payer_name, office_ally_payer_id, notes")
+            .select("id, payer_name, office_ally_payer_id, notes, claims_phone, claims_fax, fax_number, provider_services_phone")
             .in("id", payerProfileIds)
         : Promise.resolve({ data: [] as DbRow[] }),
       claimIds.length
@@ -269,6 +269,9 @@ export async function GET(request: Request) {
       payer_name: string | null;
       payer_id_external: string | null;
       payer_notes: string | null;
+      payer_claims_phone: string | null;
+      payer_claims_fax: string | null;
+      payer_provider_services_phone: string | null;
       service_date_from: string | null;
       service_date_to: string | null;
       submitted_at: string | null;
@@ -358,6 +361,13 @@ export async function GET(request: Request) {
         payer_name: payer ? text(payer.payer_name) || null : null,
         payer_id_external: payer ? text(payer.office_ally_payer_id) || null : null,
         payer_notes: payer ? text(payer.notes) || null : null,
+        payer_claims_phone: payer ? text(payer.claims_phone) || null : null,
+        payer_claims_fax: payer
+          ? text(payer.claims_fax) || text(payer.fax_number) || null
+          : null,
+        payer_provider_services_phone: payer
+          ? text(payer.provider_services_phone) || null
+          : null,
         service_date_from: dates.from,
         service_date_to: dates.to,
         submitted_at: submittedAt,

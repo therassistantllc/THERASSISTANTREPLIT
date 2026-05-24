@@ -24,6 +24,9 @@ type Payer = {
   requires_authorization: boolean | null;
   billing_rules: BillingRules | null;
   fax_number: string | null;
+  claims_phone: string | null;
+  claims_fax: string | null;
+  provider_services_phone: string | null;
   adjudication_sla_days: number | null;
   updated_at: string;
 };
@@ -36,6 +39,9 @@ type FormState = {
   notes: string;
   requires_authorization: boolean;
   fax_number: string;
+  claims_phone: string;
+  claims_fax: string;
+  provider_services_phone: string;
   adjudication_sla_days_text: string;
   // Billing-rules edit fields. Lists are entered as comma-separated text
   // and split server-side so the UI stays simple.
@@ -56,6 +62,9 @@ const EMPTY_FORM: FormState = {
   notes: "",
   requires_authorization: false,
   fax_number: "",
+  claims_phone: "",
+  claims_fax: "",
+  provider_services_phone: "",
   adjudication_sla_days_text: "",
   requires_telehealth_modifier: false,
   allowed_pos_codes_text: "",
@@ -116,6 +125,9 @@ export default function PayerProfilesClient() {
       notes: p.notes ?? "",
       requires_authorization: p.requires_authorization === true,
       fax_number: p.fax_number ?? "",
+      claims_phone: p.claims_phone ?? "",
+      claims_fax: p.claims_fax ?? "",
+      provider_services_phone: p.provider_services_phone ?? "",
       adjudication_sla_days_text:
         typeof p.adjudication_sla_days === "number" && p.adjudication_sla_days > 0
           ? String(p.adjudication_sla_days)
@@ -193,6 +205,9 @@ export default function PayerProfilesClient() {
           notes: form.notes || null,
           requires_authorization: form.requires_authorization,
           fax_number: form.fax_number.trim() || null,
+          claims_phone: form.claims_phone.trim() || null,
+          claims_fax: form.claims_fax.trim() || null,
+          provider_services_phone: form.provider_services_phone.trim() || null,
           adjudication_sla_days:
             parsedSla != null && Number.isFinite(parsedSla) ? Math.floor(parsedSla) : null,
           billing_rules,
@@ -308,12 +323,39 @@ export default function PayerProfilesClient() {
                 />
               </label>
               <label className="field-label">
-                Fax number
+                Fax number (legacy / general)
                 <input
                   type="text"
                   value={form.fax_number}
                   onChange={(e) => setForm((p) => ({ ...p, fax_number: e.target.value }))}
                   placeholder="e.g. 555-123-4567"
+                />
+              </label>
+              <label className="field-label">
+                Claims phone
+                <input
+                  type="text"
+                  value={form.claims_phone}
+                  onChange={(e) => setForm((p) => ({ ...p, claims_phone: e.target.value }))}
+                  placeholder="e.g. 800-555-0100"
+                />
+              </label>
+              <label className="field-label">
+                Claims fax
+                <input
+                  type="text"
+                  value={form.claims_fax}
+                  onChange={(e) => setForm((p) => ({ ...p, claims_fax: e.target.value }))}
+                  placeholder="e.g. 800-555-0101"
+                />
+              </label>
+              <label className="field-label">
+                Provider services phone
+                <input
+                  type="text"
+                  value={form.provider_services_phone}
+                  onChange={(e) => setForm((p) => ({ ...p, provider_services_phone: e.target.value }))}
+                  placeholder="e.g. 800-555-0102"
                 />
               </label>
               <label className="field-label">

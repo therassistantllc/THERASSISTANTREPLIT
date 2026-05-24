@@ -30,6 +30,9 @@ type Row = {
   payer_name: string | null;
   payer_id_external: string | null;
   payer_notes: string | null;
+  payer_claims_phone: string | null;
+  payer_claims_fax: string | null;
+  payer_provider_services_phone: string | null;
   service_date_from: string | null;
   service_date_to: string | null;
   submitted_at: string | null;
@@ -344,7 +347,20 @@ function FollowUpNoteModal({
   );
 }
 
+function telHref(value: string): string {
+  return `tel:${value.replace(/[^\d+]/g, "")}`;
+}
+
+function faxHref(value: string): string {
+  return `fax:${value.replace(/[^\d+]/g, "")}`;
+}
+
 function CallPayerModal({ row, onClose }: { row: Row; onClose: () => void }) {
+  const claimsPhone = row.payer_claims_phone;
+  const claimsFax = row.payer_claims_fax;
+  const providerPhone = row.payer_provider_services_phone;
+  const hasAnyContact = Boolean(claimsPhone || claimsFax || providerPhone);
+
   return (
     <ModalShell title={`Call payer — ${row.payer_name ?? "—"}`} onClose={onClose}>
       <div style={{ fontSize: 13, lineHeight: 1.6 }}>
@@ -367,13 +383,45 @@ function CallPayerModal({ row, onClose }: { row: Row; onClose: () => void }) {
           <span style={{ fontFamily: "ui-monospace, monospace" }}>
             {row.clearinghouse_trace_number ?? "—"}
           </span>
-          <strong>Notes</strong>
-          <span style={{ whiteSpace: "pre-wrap" }}>{row.payer_notes ?? "No payer contact info on file."}</span>
+          <strong>Claims phone</strong>
+          <span>
+            {claimsPhone ? (
+              <a href={telHref(claimsPhone)}>{claimsPhone}</a>
+            ) : (
+              <span style={{ color: "#94A3B8" }}>—</span>
+            )}
+          </span>
+          <strong>Claims fax</strong>
+          <span>
+            {claimsFax ? (
+              <a href={faxHref(claimsFax)}>{claimsFax}</a>
+            ) : (
+              <span style={{ color: "#94A3B8" }}>—</span>
+            )}
+          </span>
+          <strong>Provider services</strong>
+          <span>
+            {providerPhone ? (
+              <a href={telHref(providerPhone)}>{providerPhone}</a>
+            ) : (
+              <span style={{ color: "#94A3B8" }}>—</span>
+            )}
+          </span>
+          {!hasAnyContact ? (
+            <>
+              <strong>Notes</strong>
+              <span style={{ whiteSpace: "pre-wrap" }}>
+                {row.payer_notes ?? "No payer contact info on file."}
+              </span>
+            </>
+          ) : null}
         </div>
-        <p style={{ color: "#94A3B8", fontSize: 12, marginTop: 16 }}>
-          Tip: maintain payer phone/fax in Settings → Payers so reps can dial
-          directly from this panel.
-        </p>
+        {!hasAnyContact ? (
+          <p style={{ color: "#94A3B8", fontSize: 12, marginTop: 16 }}>
+            Tip: maintain payer phone/fax in Settings → Payers so reps can dial
+            directly from this panel.
+          </p>
+        ) : null}
       </div>
       <div style={buttonRow}>
         <button type="button" className="button" onClick={onClose}>

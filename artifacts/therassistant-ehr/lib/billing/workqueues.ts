@@ -351,6 +351,14 @@ export const WORKQUEUES: WorkqueueDef[] = [
     status: "live",
   },
   {
+    id: "paper_checks",
+    title: "Paper Checks",
+    description: "Physical / paper checks received from payers — track receipt, deposit, posting, and unmatched items.",
+    href: "/billing/paper-checks",
+    stage: "payments_era",
+    status: "live",
+  },
+  {
     id: "unposted_payments",
     title: "Unposted Payments",
     description: "Payments received but not yet matched to a claim.",

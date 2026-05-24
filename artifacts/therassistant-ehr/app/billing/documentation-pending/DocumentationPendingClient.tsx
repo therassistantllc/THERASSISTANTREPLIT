@@ -121,6 +121,12 @@ function riskBadge(risk: Row["billing_risk"]): ReactNode {
   );
 }
 
+type ProviderOption = {
+  id: string;
+  provider_name: string;
+  credential_display: string | null;
+};
+
 export default function DocumentationPendingClient() {
   const organizationId = useMemo(() => getOrganizationId(), []);
 
@@ -134,6 +140,49 @@ export default function DocumentationPendingClient() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [busyRow, setBusyRow] = useState<string | null>(null);
+  const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const [providersLoading, setProvidersLoading] = useState(false);
+  const [providersError, setProvidersError] = useState<string | null>(null);
+  const [routePickerRow, setRoutePickerRow] = useState<Row | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadProviders() {
+      setProvidersLoading(true);
+      setProvidersError(null);
+      try {
+        const res = await fetch(
+          `/api/providers?organizationId=${encodeURIComponent(organizationId)}`,
+          { cache: "no-store" },
+        );
+        const json = (await res.json().catch(() => ({}))) as {
+          success?: boolean;
+          providers?: ProviderOption[];
+          error?: string;
+        };
+        if (!res.ok || !json.success) {
+          throw new Error(json.error ?? "Failed to load clinicians");
+        }
+        if (!cancelled) setProviders(json.providers ?? []);
+      } catch (e) {
+        if (!cancelled) {
+          setProvidersError(e instanceof Error ? e.message : "Failed to load clinicians");
+        }
+      } finally {
+        if (!cancelled) setProvidersLoading(false);
+      }
+    }
+    void loadProviders();
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId]);
+
+  const providerNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of providers) m.set(p.id, p.provider_name);
+    return m;
+  }, [providers]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -256,7 +305,27 @@ export default function DocumentationPendingClient() {
   const columns: ColumnDef<Row>[] = useMemo(
     () => [
       { id: "client", header: "Client", cell: (r) => r.client_name },
-      { id: "clinician", header: "Clinician", cell: (r) => r.clinician_name },
+      {
+        id: "clinician",
+        header: "Clinician",
+        cell: (r) => {
+          const routedName = r.routed_to_clinician_id
+            ? providerNameById.get(r.routed_to_clinician_id) ?? null
+            : null;
+          const showRouted =
+            routedName && r.routed_to_clinician_id !== r.clinician_id;
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <span>{r.clinician_name}</span>
+              {showRouted ? (
+                <span style={{ fontSize: 11, color: "#0369a1" }}>
+                  Routed to {routedName}
+                </span>
+              ) : null}
+            </div>
+          );
+        },
+      },
       {
         id: "dos",
         header: "Date of service",
@@ -310,7 +379,7 @@ export default function DocumentationPendingClient() {
           ),
       },
     ],
-    [],
+    [providerNameById],
   );
 
   const runAction = useCallback(
@@ -361,14 +430,7 @@ export default function DocumentationPendingClient() {
       {
         id: "route_to_clinician",
         label: "Route",
-        onClick: (r) => {
-          const target = window.prompt(
-            "Route to clinician — enter provider id (leave blank for original clinician):",
-            r.clinician_id ?? "",
-          );
-          if (target === null) return;
-          void runAction(r.id, "route_to_clinician", { target_provider_id: target || undefined });
-        },
+        onClick: (r) => setRoutePickerRow(r),
         disabled: (r) => busyRow === r.id,
       },
       {
@@ -561,16 +623,7 @@ export default function DocumentationPendingClient() {
       {
         id: "route_to_clinician",
         label: "Route to clinician",
-        onClick: () => {
-          const target = window.prompt(
-            "Route to clinician — enter provider id (leave blank for original clinician):",
-            row.clinician_id ?? "",
-          );
-          if (target === null) return;
-          void runAction(row.id, "route_to_clinician", {
-            target_provider_id: target || undefined,
-          });
-        },
+        onClick: () => setRoutePickerRow(row),
       },
       {
         id: "hold",
@@ -667,7 +720,212 @@ export default function DocumentationPendingClient() {
       detailTabs={detailTabs}
       detailActions={detailActions}
       message={message}
+      overlay={
+        routePickerRow ? (
+          <RouteToClinicianModal
+            row={routePickerRow}
+            providers={providers}
+            loading={providersLoading}
+            error={providersError}
+            busy={busyRow === routePickerRow.id}
+            onClose={() => setRoutePickerRow(null)}
+            onSelect={async (providerId) => {
+              const target = routePickerRow;
+              setRoutePickerRow(null);
+              await runAction(target.id, "route_to_clinician", {
+                target_provider_id: providerId,
+              });
+            }}
+          />
+        ) : null
+      }
     />
+  );
+}
+
+function RouteToClinicianModal({
+  row,
+  providers,
+  loading,
+  error,
+  busy,
+  onClose,
+  onSelect,
+}: {
+  row: Row;
+  providers: ProviderOption[];
+  loading: boolean;
+  error: string | null;
+  busy: boolean;
+  onClose: () => void;
+  onSelect: (providerId: string) => void | Promise<void>;
+}) {
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<string>(
+    row.routed_to_clinician_id ?? row.clinician_id ?? "",
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return providers;
+    return providers.filter((p) =>
+      p.provider_name.toLowerCase().includes(q) ||
+      (p.credential_display ?? "").toLowerCase().includes(q),
+    );
+  }, [providers, search]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Route to clinician"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "white",
+          borderRadius: 8,
+          padding: 20,
+          width: "min(480px, 92vw)",
+          maxHeight: "80vh",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+        }}
+      >
+        <div>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
+            Route to clinician
+          </h2>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: "#64748b" }}>
+            Appointment for {row.client_name} on {formatDate(row.date_of_service)}.
+            Originally assigned to {row.clinician_name}.
+          </p>
+        </div>
+        <input
+          autoFocus
+          type="text"
+          placeholder="Search clinicians by name…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{
+            padding: "8px 10px",
+            border: "1px solid #cbd5e1",
+            borderRadius: 6,
+            fontSize: 13,
+          }}
+        />
+        <div
+          style={{
+            border: "1px solid #e2e8f0",
+            borderRadius: 6,
+            overflow: "auto",
+            flex: 1,
+            minHeight: 120,
+            maxHeight: "45vh",
+          }}
+        >
+          {loading ? (
+            <p style={{ padding: 12, fontSize: 13, color: "#64748b" }}>
+              Loading clinicians…
+            </p>
+          ) : error ? (
+            <p style={{ padding: 12, fontSize: 13, color: "#991b1b" }}>{error}</p>
+          ) : filtered.length === 0 ? (
+            <p style={{ padding: 12, fontSize: 13, color: "#64748b" }}>
+              No matching active clinicians.
+            </p>
+          ) : (
+            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              {filtered.map((p) => {
+                const isSelected = p.id === selected;
+                return (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected(p.id)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "8px 12px",
+                        border: "none",
+                        background: isSelected ? "#e0f2fe" : "transparent",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 2,
+                      }}
+                    >
+                      <span style={{ fontWeight: isSelected ? 600 : 500 }}>
+                        {p.provider_name}
+                        {p.id === row.clinician_id ? (
+                          <span style={{ marginLeft: 6, fontSize: 11, color: "#64748b" }}>
+                            (original)
+                          </span>
+                        ) : null}
+                      </span>
+                      {p.credential_display ? (
+                        <span style={{ fontSize: 11, color: "#64748b" }}>
+                          {p.credential_display}
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 6,
+              border: "1px solid #cbd5e1",
+              background: "white",
+              cursor: busy ? "not-allowed" : "pointer",
+              fontSize: 13,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!selected || busy}
+            onClick={() => {
+              if (selected) void onSelect(selected);
+            }}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 6,
+              border: "none",
+              background: !selected || busy ? "#94a3b8" : "#0284c7",
+              color: "white",
+              cursor: !selected || busy ? "not-allowed" : "pointer",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {busy ? "Routing…" : "Route"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

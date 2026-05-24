@@ -425,6 +425,14 @@ export const WORKQUEUES: WorkqueueDef[] = [
     status: "live",
   },
   {
+    id: "patient_billing",
+    title: "Patient Billing",
+    description: "Self-pay balances after insurance processing — statements, payments, plans, and collections review.",
+    href: "/billing/patient-billing",
+    stage: "patient_oversight",
+    status: "live",
+  },
+  {
     id: "patient_statements",
     title: "Patient Statements",
     description: "Statements queued for delivery — paper and electronic.",

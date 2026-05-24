@@ -131,6 +131,57 @@ function rowActionClass(variant?: RowAction<unknown>["variant"]): string {
 }
 
 /**
+ * Read this shell's slice of namespaced filter values out of a URL
+ * search params object. Keys are stripped of the `${namespace}_` prefix.
+ * Pure (no React) so it's easy to unit-test.
+ */
+export function readFiltersFromUrl(
+  namespace: string,
+  search: URLSearchParams | null | undefined,
+): Record<string, string> {
+  const prefix = `${namespace}_`;
+  const out: Record<string, string> = {};
+  for (const [k, v] of (search?.entries() ?? [])) {
+    if (k.startsWith(prefix)) out[k.slice(prefix.length)] = v;
+  }
+  return out;
+}
+
+/**
+ * Produce the next URLSearchParams reflecting `values` under the given
+ * namespace, preserving any keys outside the namespace. Empty/missing
+ * values are dropped from the URL. Pure (no React).
+ */
+export function writeFiltersToParams(
+  namespace: string,
+  values: Record<string, string> | undefined,
+  current: URLSearchParams | null | undefined,
+): URLSearchParams {
+  const next = new URLSearchParams(current?.toString() ?? "");
+  const prefix = `${namespace}_`;
+  for (const key of Array.from(next.keys())) {
+    if (key.startsWith(prefix)) next.delete(key);
+  }
+  for (const [k, v] of Object.entries(values ?? {})) {
+    if (v && v.length > 0) next.set(`${prefix}${k}`, v);
+  }
+  return next;
+}
+
+/** True when our slice of the URL already matches `values`. */
+export function urlMatchesFilters(
+  namespace: string,
+  values: Record<string, string> | undefined,
+  search: URLSearchParams | null | undefined,
+): boolean {
+  const fromUrl = readFiltersFromUrl(namespace, search);
+  const v = values ?? {};
+  const keys = Object.keys(v);
+  if (Object.keys(fromUrl).length !== keys.length) return false;
+  return keys.every((k) => fromUrl[k] === v[k]);
+}
+
+/**
  * Sync a record of filter values to URL query params under an optional
  * namespace. Re-reads on back/forward navigation. Skips empty strings.
  */
@@ -146,25 +197,9 @@ function useUrlFilterSync(
   // Push current values to URL (debounced via microtask coalescing).
   useEffect(() => {
     if (!namespace || !values) return;
-    const next = new URLSearchParams(search?.toString() ?? "");
-    const prefix = `${namespace}_`;
-    // Drop our keys
-    for (const key of Array.from(next.keys())) {
-      if (key.startsWith(prefix)) next.delete(key);
-    }
-    for (const [k, v] of Object.entries(values)) {
-      if (v && v.length > 0) next.set(`${prefix}${k}`, v);
-    }
+    if (urlMatchesFilters(namespace, values, search)) return;
+    const next = writeFiltersToParams(namespace, values, search);
     const nextStr = next.toString();
-    const currentOurs = new URLSearchParams();
-    for (const [k, v] of (search?.entries() ?? [])) {
-      if (k.startsWith(prefix)) currentOurs.set(k, v);
-    }
-    const expectedOurs = new URLSearchParams();
-    for (const [k, v] of Object.entries(values)) {
-      if (v && v.length > 0) expectedOurs.set(`${prefix}${k}`, v);
-    }
-    if (currentOurs.toString() === expectedOurs.toString()) return;
     router.replace(`${pathname}${nextStr ? `?${nextStr}` : ""}`, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [namespace, JSON.stringify(values ?? {})]);
@@ -173,15 +208,8 @@ function useUrlFilterSync(
   // back/forward). Only fires when our slice differs from `values`.
   useEffect(() => {
     if (!namespace || !onChange) return;
-    const prefix = `${namespace}_`;
-    const fromUrl: Record<string, string> = {};
-    for (const [k, v] of (search?.entries() ?? [])) {
-      if (k.startsWith(prefix)) fromUrl[k.slice(prefix.length)] = v;
-    }
-    const same =
-      Object.keys(fromUrl).length === Object.keys(values ?? {}).length &&
-      Object.entries(fromUrl).every(([k, v]) => (values ?? {})[k] === v);
-    if (!same) onChange(fromUrl);
+    if (urlMatchesFilters(namespace, values, search)) return;
+    onChange(readFiltersFromUrl(namespace, search));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [namespace, search?.toString()]);
 }

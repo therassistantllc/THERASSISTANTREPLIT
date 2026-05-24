@@ -704,7 +704,7 @@ export default function PaymentsClient() {
         </span>
         <span className="text-[11px] text-slate-400">Posting workspace</span>
         <a
-          href="/billing/payments/era"
+          href="/billing/era-import"
           className="inline-flex h-7 items-center gap-1.5 rounded border border-teal-300 bg-teal-50 px-2.5 text-[11px] font-semibold text-teal-800 hover:bg-teal-100"
         >
           Open ERA queue →

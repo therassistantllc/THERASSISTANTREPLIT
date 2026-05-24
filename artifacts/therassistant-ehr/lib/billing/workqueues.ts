@@ -303,12 +303,12 @@ export const WORKQUEUES: WorkqueueDef[] = [
 
   // ── Payments & ERA ──────────────────────────────────────────────────────
   {
-    id: "era_posting",
-    title: "ERA Posting",
-    description: "Incoming 835 remittances awaiting auto-post or manual review.",
-    href: "/billing/era-posting",
+    id: "era_import",
+    title: "ERA Import",
+    description: "Incoming 835 remittances — review, match, and post the resulting payments.",
+    href: "/billing/era-import",
     stage: "payments_era",
-    status: "coming_soon",
+    status: "live",
   },
   {
     id: "manual_payments",

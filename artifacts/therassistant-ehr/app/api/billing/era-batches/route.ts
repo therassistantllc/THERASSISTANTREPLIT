@@ -43,7 +43,39 @@ type ChildRow = {
   posting_status: string;
   clp02_claim_status_code: string | null;
   clp04_payment_amount: number | string;
+  professional_claim_id: string | null;
+  client_id: string | null;
 };
+
+type ClaimRow = {
+  id: string;
+  place_of_service: string | null;
+  date_of_service_from: string | null;
+  date_of_service_to: string | null;
+};
+
+type PartySnapshotRow = {
+  claim_id: string;
+  rendering_provider_last_name_or_org: string | null;
+  rendering_provider_first_name: string | null;
+};
+
+type ClientRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+};
+
+function minDate(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a < b ? a : b;
+}
+function maxDate(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
+}
 
 function asNumber(v: unknown): number {
   const n = Number(v ?? 0);
@@ -105,16 +137,26 @@ export async function GET(request: Request) {
         totalApplied: number;
       }
     >();
+    // Per-batch enrichment maps for the universal filter rail (patient,
+    // clinician, practice/POS, DOS-from, DOS-to). Populated below alongside
+    // the child rollup so the list payload contains everything the UI needs.
+    const patientsByBatch = new Map<string, Set<string>>();
+    const cliniciansByBatch = new Map<string, Set<string>>();
+    const practicesByBatch = new Map<string, Set<string>>();
+    const dosFromByBatch = new Map<string, string | null>();
+    const dosToByBatch = new Map<string, string | null>();
+    const childRows: ChildRow[] = [];
     if (batchIds.length > 0) {
       const { data: children } = await supabase
         .from("era_claim_payments")
         .select(
-          "era_import_batch_id, claim_match_status, posting_status, clp02_claim_status_code, clp04_payment_amount",
+          "era_import_batch_id, claim_match_status, posting_status, clp02_claim_status_code, clp04_payment_amount, professional_claim_id, client_id",
         )
         .eq("organization_id", organizationId)
         .in("era_import_batch_id", batchIds)
         .is("archived_at", null);
-      for (const child of (children ?? []) as ChildRow[]) {
+      childRows.push(...((children ?? []) as ChildRow[]));
+      for (const child of childRows) {
         const bucket = childMap.get(child.era_import_batch_id) ?? {
           total: 0,
           matched: 0,
@@ -136,6 +178,80 @@ export async function GET(request: Request) {
         if (child.clp02_claim_status_code === "4") bucket.denied += 1;
         if (asNumber(child.clp04_payment_amount) < 0) bucket.recoupment += 1;
         childMap.set(child.era_import_batch_id, bucket);
+      }
+
+      const claimIds = Array.from(
+        new Set(childRows.map((c) => c.professional_claim_id).filter((id): id is string => !!id)),
+      );
+      const clientIds = Array.from(
+        new Set(childRows.map((c) => c.client_id).filter((id): id is string => !!id)),
+      );
+
+      const [claimsRes, partiesRes, clientsRes] = await Promise.all([
+        claimIds.length
+          ? supabase
+              .from("professional_claims")
+              .select("id, place_of_service, date_of_service_from, date_of_service_to")
+              .in("id", claimIds)
+              .eq("organization_id", organizationId)
+          : Promise.resolve({ data: [] as ClaimRow[], error: null }),
+        claimIds.length
+          ? supabase
+              .from("claim_parties_snapshot")
+              .select("claim_id, rendering_provider_last_name_or_org, rendering_provider_first_name")
+              .in("claim_id", claimIds)
+          : Promise.resolve({ data: [] as PartySnapshotRow[], error: null }),
+        clientIds.length
+          ? supabase
+              .from("clients")
+              .select("id, first_name, last_name")
+              .in("id", clientIds)
+              .eq("organization_id", organizationId)
+          : Promise.resolve({ data: [] as ClientRow[], error: null }),
+      ]);
+
+      const claimsById = new Map<string, ClaimRow>(
+        ((claimsRes.data ?? []) as ClaimRow[]).map((r) => [r.id, r]),
+      );
+      const partiesByClaim = new Map<string, PartySnapshotRow>(
+        ((partiesRes.data ?? []) as PartySnapshotRow[]).map((r) => [r.claim_id, r]),
+      );
+      const clientsById = new Map<string, ClientRow>(
+        ((clientsRes.data ?? []) as ClientRow[]).map((r) => [r.id, r]),
+      );
+
+      for (const child of childRows) {
+        const batchKey = child.era_import_batch_id;
+        const client = child.client_id ? clientsById.get(child.client_id) ?? null : null;
+        if (client) {
+          const name = [client.first_name, client.last_name].filter(Boolean).join(" ").trim();
+          if (name) {
+            if (!patientsByBatch.has(batchKey)) patientsByBatch.set(batchKey, new Set());
+            patientsByBatch.get(batchKey)!.add(name);
+          }
+        }
+        if (child.professional_claim_id) {
+          const claim = claimsById.get(child.professional_claim_id);
+          if (claim) {
+            if (claim.place_of_service) {
+              if (!practicesByBatch.has(batchKey)) practicesByBatch.set(batchKey, new Set());
+              practicesByBatch.get(batchKey)!.add(claim.place_of_service);
+            }
+            dosFromByBatch.set(batchKey, minDate(dosFromByBatch.get(batchKey) ?? null, claim.date_of_service_from));
+            dosToByBatch.set(batchKey, maxDate(dosToByBatch.get(batchKey) ?? null, claim.date_of_service_to));
+          }
+          const party = partiesByClaim.get(child.professional_claim_id);
+          if (party) {
+            const name = [party.rendering_provider_first_name, party.rendering_provider_last_name_or_org]
+              .filter(Boolean)
+              .join(" ")
+              .trim();
+            if (name) {
+              if (!cliniciansByBatch.has(batchKey)) cliniciansByBatch.set(batchKey, new Set());
+              cliniciansByBatch.get(batchKey)!.add(name);
+            }
+          }
+        }
       }
     }
 
@@ -189,6 +305,11 @@ export async function GET(request: Request) {
         deferred,
         markedDuplicateOf,
         assignedBiller,
+        patients: Array.from(patientsByBatch.get(row.id) ?? []),
+        clinicians: Array.from(cliniciansByBatch.get(row.id) ?? []),
+        practices: Array.from(practicesByBatch.get(row.id) ?? []),
+        dosFrom: dosFromByBatch.get(row.id) ?? null,
+        dosTo: dosToByBatch.get(row.id) ?? null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       };

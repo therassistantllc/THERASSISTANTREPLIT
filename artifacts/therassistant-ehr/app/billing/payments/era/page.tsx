@@ -1,7 +1,7 @@
-import EraQueueClient from "./EraQueueClient";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default function EraQueuePage() {
-  return <EraQueueClient />;
+export default function EraQueueLegacyRedirect() {
+  redirect("/billing/era-import");
 }

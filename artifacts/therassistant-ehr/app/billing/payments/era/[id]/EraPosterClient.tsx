@@ -501,7 +501,7 @@ export default function EraPosterClient({ batchId }: { batchId: string }) {
         <div className={styles.emptyState}>
           {error ?? "Batch not found."}
           <div style={{ marginTop: 12 }}>
-            <Link href="/billing/payments/era" className={styles.btn}>← Back to ERA queue</Link>
+            <Link href="/billing/era-import" className={styles.btn}>← Back to ERA Import</Link>
           </div>
         </div>
       </div>
@@ -511,8 +511,8 @@ export default function EraPosterClient({ batchId }: { batchId: string }) {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <Link href="/billing/payments/era" className={styles.btnGhost}>
-          <ChevronLeft size={14} /> ERA queue
+        <Link href="/billing/era-import" className={styles.btnGhost}>
+          <ChevronLeft size={14} /> ERA Import
         </Link>
         <div className={styles.title}>{batch.payer.name}</div>
         <span className={styles.crumb}>

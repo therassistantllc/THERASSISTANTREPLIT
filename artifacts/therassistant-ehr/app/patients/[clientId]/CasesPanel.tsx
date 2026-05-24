@@ -219,18 +219,24 @@ export default function CasesPanel({
   }
 
   function stageDraftPolicy(fields: NewPolicyFields, priority: Priority) {
-    setCaseDraft((d) =>
-      d
-        ? {
-            ...d,
-            policies: [
-              ...d.policies.filter((p) => p.priority !== priority),
-              { priority, fields },
-            ],
-            addingPriority: null,
-          }
-        : d,
-    );
+    const payerName =
+      payers.find((p) => p.id === fields.payerId)?.payer_name?.trim() ?? "";
+    setCaseDraft((d) => {
+      if (!d) return d;
+      // Default the case name to the primary payer's name on first stage so
+      // the user isn't blocked by an empty name on Save case.
+      const autoName =
+        priority === "primary" && !d.name.trim() && payerName ? payerName : d.name;
+      return {
+        ...d,
+        name: autoName,
+        policies: [
+          ...d.policies.filter((p) => p.priority !== priority),
+          { priority, fields },
+        ],
+        addingPriority: null,
+      };
+    });
   }
 
   function removeDraftPolicy(priority: Priority) {
@@ -611,6 +617,26 @@ export default function CasesPanel({
                 ))}
               </select>
             </label>
+            {(() => {
+              const missing: string[] = [];
+              if (caseDraft.policies.length === 0)
+                missing.push(
+                  caseDraft.addingPriority
+                    ? `save the ${caseDraft.addingPriority} insurance above`
+                    : "add at least one insurance",
+                );
+              if (!caseDraft.name.trim()) missing.push("enter a case name");
+              return missing.length > 0 ? (
+                <div
+                  style={{
+                    fontSize: "0.8rem",
+                    color: "var(--muted-color, #6b7280)",
+                  }}
+                >
+                  To save: {missing.join(" and ")}.
+                </div>
+              ) : null;
+            })()}
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button
                 type="button"

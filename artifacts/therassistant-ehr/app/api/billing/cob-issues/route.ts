@@ -70,6 +70,7 @@ export type CobState =
   | "open"
   | "awaiting_eob"
   | "client_update_needed"
+  | "billing_in_progress"
   | "resolved";
 
 export interface CobPolicySummary {
@@ -143,9 +144,23 @@ function stateLabel(s: CobState): string {
     case "open": return "Open";
     case "awaiting_eob": return "Awaiting EOB";
     case "client_update_needed": return "Client update needed";
+    case "billing_in_progress": return "Billing in progress";
     case "resolved": return "Resolved";
   }
 }
+
+// Claim statuses that count as "transmitted" — used to auto-resolve a
+// COB row once the (re-pointed primary or cloned secondary) claim has
+// actually left the building.
+const TRANSMITTED_CLAIM_STATUSES = new Set([
+  "submitted",
+  "accepted_oa",
+  "accepted_payer",
+  "rejected_oa",
+  "rejected_payer",
+  "paid",
+  "denied",
+]);
 
 export async function GET(request: Request) {
   try {
@@ -364,6 +379,13 @@ export async function GET(request: Request) {
       last_action_at: string | null;
       ordered_policy_ids: string[];
       cob_flagged: boolean;
+      // After a successful bill_primary/bill_secondary the action route
+      // stamps the resulting child claim id (secondary) or just marks
+      // the original re-pointed (primary). The reducer holds the row
+      // in `billing_in_progress` and flips to `resolved` only once the
+      // relevant claim transmits.
+      billed_role: "primary" | "secondary" | null;
+      child_claim_id: string | null;
     };
     const auditByClaim = new Map<string, AuditAgg>();
     for (const a of ((audit ?? []) as DbRow[])) {
@@ -377,6 +399,8 @@ export async function GET(request: Request) {
         last_action_at: null as string | null,
         ordered_policy_ids: [] as string[],
         cob_flagged: false,
+        billed_role: null as "primary" | "secondary" | null,
+        child_claim_id: null as string | null,
       };
       const ev = text(a.event_type);
       const md = (a.event_metadata as Record<string, unknown> | null) ?? {};
@@ -392,8 +416,13 @@ export async function GET(request: Request) {
           break;
         }
         case `${ACTION_EVENT_PREFIX}bill_primary`:
+          cur.state = "billing_in_progress";
+          cur.billed_role = "primary";
+          break;
         case `${ACTION_EVENT_PREFIX}bill_secondary`:
-          cur.state = "resolved";
+          cur.state = "billing_in_progress";
+          cur.billed_role = "secondary";
+          cur.child_claim_id = text(md.child_claim_id) || cur.child_claim_id;
           break;
         case `${ACTION_EVENT_PREFIX}request_eob`:
           cur.state = "awaiting_eob";
@@ -422,6 +451,43 @@ export async function GET(request: Request) {
           break;
       }
       auditByClaim.set(k, cur);
+    }
+
+    // ── 2b. Resolve "billing_in_progress" rows whose downstream claim
+    //         has transmitted. For bill_secondary we check the cloned
+    //         child claim's status; for bill_primary we re-check the
+    //         original claim's status (already in `claims`).
+    const childClaimIds: string[] = [];
+    for (const agg of auditByClaim.values()) {
+      if (agg.billed_role === "secondary" && agg.child_claim_id) {
+        childClaimIds.push(agg.child_claim_id);
+      }
+    }
+    const childStatusById = new Map<string, string>();
+    if (childClaimIds.length) {
+      const { data: childRows } = await (supabase as any)
+        .from("professional_claims")
+        .select("id, claim_status")
+        .eq("organization_id", organizationId)
+        .in("id", childClaimIds);
+      for (const r of ((childRows ?? []) as DbRow[])) {
+        childStatusById.set(text(r.id), text(r.claim_status));
+      }
+    }
+    const claimStatusById = new Map<string, string>(
+      claims.map((c) => [text(c.id), text(c.claim_status)]),
+    );
+    for (const [claimId, agg] of auditByClaim.entries()) {
+      if (agg.state !== "billing_in_progress") continue;
+      let downstreamStatus: string | null = null;
+      if (agg.billed_role === "secondary" && agg.child_claim_id) {
+        downstreamStatus = childStatusById.get(agg.child_claim_id) ?? null;
+      } else if (agg.billed_role === "primary") {
+        downstreamStatus = claimStatusById.get(claimId) ?? null;
+      }
+      if (downstreamStatus && TRANSMITTED_CLAIM_STATUSES.has(downstreamStatus)) {
+        agg.state = "resolved";
+      }
     }
 
     // ── 3. Classify each claim ───────────────────────────────────────

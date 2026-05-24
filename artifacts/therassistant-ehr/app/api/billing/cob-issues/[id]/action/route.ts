@@ -31,6 +31,7 @@ import { randomBytes } from "node:crypto";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
 import { sendCobUpdateEmail } from "@/lib/email/resend";
+import { billPrimary, billSecondary } from "@/lib/billing/cobBilling";
 
 const ALLOWED = [
   "update_insurance_order",
@@ -137,10 +138,51 @@ export async function POST(
 
     const metadata: Record<string, unknown> = {};
     if (body.note) metadata.note = String(body.note).slice(0, 2000);
-    if (action === "update_insurance_order" && Array.isArray(body.ordered_policy_ids)) {
-      metadata.ordered_policy_ids = body.ordered_policy_ids
-        .map((x) => String(x))
-        .filter(Boolean);
+    const orderedPolicyIds = Array.isArray(body.ordered_policy_ids)
+      ? body.ordered_policy_ids.map((x) => String(x)).filter(Boolean)
+      : [];
+    if (action === "update_insurance_order" && orderedPolicyIds.length) {
+      metadata.ordered_policy_ids = orderedPolicyIds;
+    }
+
+    // ── Bill primary / Bill secondary: do the real work ───────────────
+    // These actions don't just flip status — they actually clone the
+    // claim against the chosen payer (secondary) or re-point the
+    // existing claim (primary). The audit row is written *after* the
+    // mutation so a failed clone never leaves an orphan "resolved" row.
+    if (action === "bill_secondary") {
+      const result = await billSecondary({
+        supabase,
+        organizationId,
+        claimId: id,
+        orderedPolicyIds,
+      });
+      if (!result.ok) {
+        return NextResponse.json(
+          { success: false, error: result.error },
+          { status: result.status },
+        );
+      }
+      if (result.childClaimId) metadata.child_claim_id = result.childClaimId;
+      if (result.childClaimNumber)
+        metadata.child_claim_number = result.childClaimNumber;
+      if (result.appliedPriorities?.length)
+        metadata.applied_priorities = result.appliedPriorities;
+    } else if (action === "bill_primary") {
+      const result = await billPrimary({
+        supabase,
+        organizationId,
+        claimId: id,
+        orderedPolicyIds,
+      });
+      if (!result.ok) {
+        return NextResponse.json(
+          { success: false, error: result.error },
+          { status: result.status },
+        );
+      }
+      if (result.appliedPriorities?.length)
+        metadata.applied_priorities = result.appliedPriorities;
     }
 
     // ── route_to_client_admin: mint a one-time link + (optional) email ──
@@ -338,26 +380,19 @@ export async function POST(
     });
     if (auditErr) throw auditErr;
 
-    // Status nudges: a "bill primary/secondary" action flips the claim
-    // back to draft so it picks up the new payer in the next batch run.
-    if (action === "bill_primary" || action === "bill_secondary") {
-      await (supabase as any)
-        .from("professional_claims")
-        .update({
-          claim_status: "draft",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id)
-        .eq("organization_id", organizationId);
-    }
-
     return NextResponse.json({
       success: true,
       organizationId,
       claimId: id,
       action,
       summary,
+<<<<<<< HEAD
       clientUpdate,
+=======
+      ...(metadata.child_claim_id
+        ? { childClaimId: metadata.child_claim_id }
+        : {}),
+>>>>>>> 3291d0b (COB Issues: wire "Bill secondary" / "Bill primary" actions to real claim mutations)
     });
   } catch (error) {
     console.error("COB Issues action error:", error);

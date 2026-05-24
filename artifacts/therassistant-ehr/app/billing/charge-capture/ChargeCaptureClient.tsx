@@ -5,6 +5,12 @@ import { DEFAULT_ORG_ID } from "@/lib/config";
 import styles from "./charge-capture.module.css";
 import CodeCombobox, { describeCodeForSaveError, fetchChildCodes, validateCode } from "./CodeCombobox";
 import type { CodeOption, CodeValidation } from "./CodeCombobox";
+import WorkqueueShell, {
+  type ColumnDef,
+  type SummaryMetric,
+  type FilterDef,
+} from "@/components/billing/WorkqueueShell";
+import { getWorkqueue } from "@/lib/billing/workqueues";
 
 type ChargeStatus = "ready" | "unsigned" | "missing_dx" | "hold" | "released";
 
@@ -161,6 +167,13 @@ function ageFromDob(dob?: string | null): string {
   return String(Math.floor(ms / (365.25 * 24 * 3600 * 1000)));
 }
 
+function ageFromDos(dos?: string | null): number | null {
+  if (!dos) return null;
+  const d = new Date(dos);
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.floor((Date.now() - d.getTime()) / (24 * 3600 * 1000));
+}
+
 const POS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "11", label: "11 - Office" },
   { value: "02", label: "02 - Telehealth (other)" },
@@ -204,9 +217,7 @@ function HeaderChildSuggestions({
       setChildren(items);
       setLoading(false);
     });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [parent]);
 
   if (loading) {
@@ -219,35 +230,18 @@ function HeaderChildSuggestions({
   if (children.length === 0) return null;
 
   return (
-    <div
-      style={{
-        marginTop: 4,
-        display: "flex",
-        flexWrap: "wrap",
-        gap: 4,
-        alignItems: "center",
-      }}
-    >
+    <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
       <span style={{ fontSize: 10.5, color: "#64748B" }}>Try:</span>
       {children.map((c) => (
         <button
           key={c.code}
           type="button"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            onPick(c.code.toUpperCase());
-          }}
+          onMouseDown={(e) => { e.preventDefault(); onPick(c.code.toUpperCase()); }}
           title={c.description}
           style={{
-            fontFamily: "ui-monospace, monospace",
-            fontSize: 10.5,
-            padding: "1px 6px",
-            borderRadius: 10,
-            border: "1px solid #CBD5E1",
-            background: "#F8FAFC",
-            color: "#0F172A",
-            cursor: "pointer",
-            lineHeight: 1.5,
+            fontFamily: "ui-monospace, monospace", fontSize: 10.5, padding: "1px 6px",
+            borderRadius: 10, border: "1px solid #CBD5E1", background: "#F8FAFC",
+            color: "#0F172A", cursor: "pointer", lineHeight: 1.5,
           }}
         >
           {c.code}
@@ -257,11 +251,12 @@ function HeaderChildSuggestions({
   );
 }
 
+const queueDef = getWorkqueue("charge_capture");
+
 export default function ChargeCaptureClient() {
   const organizationId = useMemo(() => getOrganizationId(), []);
   const [items, setItems] = useState<ChargeRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ChargeDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -272,7 +267,8 @@ export default function ChargeCaptureClient() {
   const [invalidDx, setInvalidDx] = useState<Map<string, CodeValidation>>(new Map());
   const [invalidProc, setInvalidProc] = useState<Map<string, CodeValidation>>(new Map());
 
-  // Load workqueue list
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+
   useEffect(() => {
     if (!organizationId) { setLoading(false); return; }
     setLoading(true);
@@ -290,7 +286,6 @@ export default function ChargeCaptureClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationId, reloadKey]);
 
-  // Load detail when selection changes
   useEffect(() => {
     if (!selectedId) { setDetail(null); return; }
     setDetailLoading(true);
@@ -304,10 +299,47 @@ export default function ChargeCaptureClient() {
       .finally(() => setDetailLoading(false));
   }, [selectedId, organizationId, reloadKey]);
 
+  const insuranceOptions = useMemo(() => {
+    const set = new Map<string, string>();
+    for (const r of items) if (r.insurance && r.insurance !== "—") set.set(r.insurance, r.insurance);
+    return Array.from(set.entries()).map(([value, label]) => ({ value, label }));
+  }, [items]);
+
+  const providerOptions = useMemo(() => {
+    const set = new Map<string, string>();
+    for (const r of items) if (r.provider && r.provider !== "—") set.set(r.provider, r.provider);
+    return Array.from(set.entries()).map(([value, label]) => ({ value, label }));
+  }, [items]);
+
+  const filters: FilterDef[] = useMemo(
+    () => [
+      { id: "client", label: "Client", kind: "text", placeholder: "Patient or CPT…" },
+      { id: "clinician", label: "Clinician", kind: "select", options: providerOptions },
+      { id: "payer", label: "Payer", kind: "select", options: insuranceOptions },
+      {
+        id: "status",
+        label: "Status",
+        kind: "select",
+        options: [
+          { value: "ready", label: "Ready" },
+          { value: "unsigned", label: "Unsigned" },
+          { value: "missing_dx", label: "Missing DX" },
+          { value: "hold", label: "Hold" },
+          { value: "released", label: "Released" },
+        ],
+      },
+      { id: "dosFrom", label: "DOS from", kind: "date" },
+      { id: "dosTo", label: "DOS to", kind: "date" },
+      { id: "minAmount", label: "Min $", kind: "number", placeholder: "0" },
+    ],
+    [insuranceOptions, providerOptions],
+  );
+
   const filtered = useMemo(() => {
     let list = items;
-    if (search.trim()) {
-      const q = search.toLowerCase();
+    const v = filterValues;
+    if (v.client) {
+      const q = v.client.toLowerCase();
       list = list.filter((c) =>
         c.patient.toLowerCase().includes(q) ||
         c.cpt.toLowerCase().includes(q) ||
@@ -315,9 +347,75 @@ export default function ChargeCaptureClient() {
         c.insurance.toLowerCase().includes(q),
       );
     }
+    if (v.clinician) list = list.filter((c) => c.provider === v.clinician);
+    if (v.payer) list = list.filter((c) => c.insurance === v.payer);
+    if (v.status) list = list.filter((c) => c.status === v.status);
+    if (v.dosFrom) list = list.filter((c) => {
+      // dos is a localized string — try to parse
+      const t = Date.parse(c.dos);
+      const from = Date.parse(v.dosFrom);
+      return !Number.isNaN(t) && !Number.isNaN(from) && t >= from;
+    });
+    if (v.dosTo) list = list.filter((c) => {
+      const t = Date.parse(c.dos);
+      const to = Date.parse(v.dosTo);
+      return !Number.isNaN(t) && !Number.isNaN(to) && t <= to;
+    });
+    if (v.minAmount) {
+      const min = Number(v.minAmount);
+      if (!Number.isNaN(min)) list = list.filter((c) => c.charge >= min);
+    }
     return list;
-  }, [items, search]);
+  }, [items, filterValues]);
 
+  const summary: SummaryMetric[] = useMemo(() => {
+    const dollars = filtered.reduce((s, r) => s + (r.charge || 0), 0);
+    const ages = filtered.map((r) => ageFromDos(r.dos)).filter((n): n is number => n != null);
+    const oldest = ages.length > 0 ? Math.max(...ages) : 0;
+    const urgent = filtered.filter((r) => r.status === "hold" || r.status === "missing_dx").length;
+    return [
+      { id: "count", label: "Open charges", value: filtered.length.toLocaleString() },
+      { id: "dollars", label: "Total charges", value: money(dollars) },
+      { id: "oldest", label: "Oldest (days)", value: oldest, tone: oldest > 14 ? "red" : oldest > 7 ? "amber" : "default" },
+      { id: "urgent", label: "Urgent", value: urgent, tone: urgent > 0 ? "amber" : "default" },
+    ];
+  }, [filtered]);
+
+  const columns: ColumnDef<ChargeRow>[] = useMemo(
+    () => [
+      {
+        id: "patient",
+        header: "Patient",
+        cell: (r) => (
+          <>
+            <span style={{ fontWeight: 600, color: "#0F172A", display: "block" }}>{r.patient}</span>
+            <span style={{ fontSize: 11.5, color: "#94A3B8" }}>{r.dos}</span>
+          </>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        cell: (r) => (
+          <span className={`${styles.status} ${STATUS_CLASS[r.status]}`}>{STATUS_LABELS[r.status]}</span>
+        ),
+      },
+      {
+        id: "cpt",
+        header: "CPT",
+        cell: (r) => <span style={{ fontFamily: "ui-monospace, monospace" }}>{r.cpt}</span>,
+      },
+      {
+        id: "charge",
+        header: "Charge",
+        align: "right",
+        cell: (r) => <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{money(r.charge)}</span>,
+      },
+    ],
+    [],
+  );
+
+  // ── Editor helpers (preserved) ──────────────────────────────────────────
   const updateLine = useCallback((idx: number, patch: Partial<ServiceLine>) => {
     setDetail((prev) => {
       if (!prev) return prev;
@@ -361,7 +459,6 @@ export default function ChargeCaptureClient() {
     });
   }, []);
 
-  // Validate every non-empty DX and CPT code against reference tables before saving.
   const validateAllCodes = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
     if (!detail) return { ok: true };
     const dxCodes = detail.diagnoses.map((d) => d.trim().toUpperCase()).filter(Boolean);
@@ -389,7 +486,7 @@ export default function ChargeCaptureClient() {
     return { ok: false, reason: parts.join(" · ") };
   }, [detail]);
 
-  async function saveCharge() {
+  const saveCharge = useCallback(async () => {
     if (!detail || saving) return;
     setSaving(true);
     setMessage(null);
@@ -433,9 +530,9 @@ export default function ChargeCaptureClient() {
     } finally {
       setSaving(false);
     }
-  }
+  }, [detail, saving, validateAllCodes, organizationId]);
 
-  async function releaseCharge() {
+  const releaseCharge = useCallback(async () => {
     if (!detail || releasing) return;
     setReleasing(true);
     setMessage(null);
@@ -459,424 +556,352 @@ export default function ChargeCaptureClient() {
     } finally {
       setReleasing(false);
     }
-  }
+  }, [detail, releasing, organizationId]);
 
-  // Ensure 12 diagnosis slots for display
   const dxSlots = useMemo(() => {
     const arr = [...(detail?.diagnoses ?? [])];
     while (arr.length < 12) arr.push("");
     return arr.slice(0, 12);
   }, [detail?.diagnoses]);
 
-  return (
-    <div className={styles.page}>
-      {/* Header */}
-      <header className={styles.header}>
-        <span className={styles.headerTitle}>Charges</span>
-        {loading ? <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 8 }}>Loading…</span> : null}
-        <div className={styles.headerSpacer} />
-      </header>
-
-      {message ? (
-        <div
-          role="status"
-          style={{
-            margin: "8px 16px 0", padding: "8px 12px", borderRadius: 6, fontSize: 13,
-            background: message.tone === "success" ? "#ecfdf5" : "#fef2f2",
-            color: message.tone === "success" ? "#065f46" : "#991b1b",
-            border: `1px solid ${message.tone === "success" ? "#a7f3d0" : "#fecaca"}`,
-          }}
-        >
-          {message.text}
+  const renderSuperbill = useCallback(() => {
+    if (detailLoading && !detail) {
+      return <div className={styles.emptyState} style={{ padding: 40 }}>Loading charge…</div>;
+    }
+    if (!detail) {
+      return <div className={styles.emptyState} style={{ padding: 40 }}>Select a charge to view and edit.</div>;
+    }
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* Patient bar */}
+        <div className={styles.patientBar}>
+          <div className={styles.field}>
+            <label>Patient</label>
+            <input readOnly value={detail.patient ? `${detail.patient.lastName}, ${detail.patient.firstName}` : ""} />
+          </div>
+          <div className={styles.field}>
+            <label>DOB</label>
+            <input readOnly value={detail.patient?.dateOfBirth ?? ""} />
+          </div>
+          <div className={styles.field} style={{ maxWidth: 70 }}>
+            <label>Age</label>
+            <input readOnly value={ageFromDob(detail.patient?.dateOfBirth)} />
+          </div>
+          <div className={styles.field} style={{ maxWidth: 140 }}>
+            <label>Acct #</label>
+            <input readOnly value={detail.patient?.accountNumber ?? ""} />
+          </div>
+          <div className={styles.field}>
+            <label>Service Date</label>
+            <input
+              type="date"
+              value={detail.serviceDate ?? ""}
+              onChange={(e) => setDetail((p) => p ? { ...p, serviceDate: e.target.value || null } : p)}
+            />
+          </div>
+          <div className={styles.field} style={{ maxWidth: 180 }}>
+            <label>Status</label>
+            <input readOnly value={detail.status.replace(/_/g, " ")} />
+          </div>
         </div>
-      ) : null}
 
-      <div className={styles.splitBody}>
-        {/* LEFT: workqueue */}
-        <aside className={styles.leftPanel}>
-          <div className={styles.leftToolbar}>
-            <div className={styles.searchWrap} style={{ flex: 1 }}>
-              <span className={styles.searchIcon}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-              </span>
-              <input
-                className={styles.searchInput}
-                style={{ width: "100%" }}
-                placeholder="Search patient, CPT…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+        {/* Case + payer */}
+        <div className={styles.sectionCard}>
+          <div className={styles.sectionTitle}>Case Information</div>
+          <div className={styles.row}>
+            <div className={styles.field} style={{ flex: 2 }}>
+              <label>Primary Payer</label>
+              <input readOnly value={detail.payer?.name ?? ""} />
+            </div>
+            <div className={styles.field}>
+              <label>Plan</label>
+              <input readOnly value={detail.policy?.planName ?? ""} />
+            </div>
+            <div className={styles.field}>
+              <label>Member ID</label>
+              <input readOnly value={detail.policy?.subscriberId ?? detail.policy?.policyNumber ?? ""} />
+            </div>
+            <div className={styles.field} style={{ maxWidth: 130 }}>
+              <label>Type</label>
+              <input readOnly value={detail.payer?.payerType ?? ""} />
             </div>
           </div>
+        </div>
 
-          <div className={styles.leftList}>
-            {filtered.length === 0 ? (
-              <div className={styles.emptyState}>No charges match.</div>
-            ) : null}
-            {filtered.map((row) => (
-              <button
-                key={row.id}
-                type="button"
-                onClick={() => setSelectedId(row.id)}
-                className={`${styles.leftItem} ${selectedId === row.id ? styles.leftItemActive : ""}`}
-              >
-                <div className={styles.leftItemTop}>
-                  <span className={styles.patientName}>{row.patient}</span>
-                  <span className={styles.chargeAmt}>{money(row.charge)}</span>
-                </div>
-                <div className={styles.leftItemMid}>
-                  <span className={`${styles.status} ${STATUS_CLASS[row.status]}`}>{STATUS_LABELS[row.status]}</span>
-                  <span style={{ fontSize: 11.5, color: "#64748B" }}>{row.dos}</span>
-                </div>
-                <div className={styles.leftItemBot}>
-                  <span className={styles.cptCode}>{row.cpt}</span>
-                  <span style={{ fontSize: 11.5, color: "#94A3B8", marginLeft: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {row.insurance}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        {/* RIGHT: superbill form */}
-        <section className={styles.rightPanel}>
-          {!detail ? (
-            <div className={styles.emptyState} style={{ padding: 60 }}>
-              {detailLoading ? "Loading charge…" : "Select a charge on the left to view and edit."}
-            </div>
-          ) : (
-            <>
-              {/* Patient bar */}
-              <div className={styles.patientBar}>
-                <div className={styles.field}>
-                  <label>Patient</label>
-                  <input readOnly value={detail.patient ? `${detail.patient.lastName}, ${detail.patient.firstName}` : ""} />
-                </div>
-                <div className={styles.field}>
-                  <label>DOB</label>
-                  <input readOnly value={detail.patient?.dateOfBirth ?? ""} />
-                </div>
-                <div className={styles.field} style={{ maxWidth: 70 }}>
-                  <label>Age</label>
-                  <input readOnly value={ageFromDob(detail.patient?.dateOfBirth)} />
-                </div>
-                <div className={styles.field} style={{ maxWidth: 140 }}>
-                  <label>Acct #</label>
-                  <input readOnly value={detail.patient?.accountNumber ?? ""} />
-                </div>
-                <div className={styles.field}>
-                  <label>Service Date</label>
-                  <input
-                    type="date"
-                    value={detail.serviceDate ?? ""}
-                    onChange={(e) => setDetail((p) => p ? { ...p, serviceDate: e.target.value || null } : p)}
+        {/* Diagnoses */}
+        <div className={styles.sectionCard}>
+          <div className={styles.sectionTitle}>Diagnosis (ICD-10)</div>
+          <div className={styles.dxGrid}>
+            {dxSlots.map((code, idx) => {
+              const upper = code.trim().toUpperCase();
+              const badEntry = upper.length > 0 ? invalidDx.get(upper) : undefined;
+              const bad = Boolean(badEntry);
+              const badTitle = badEntry && badEntry.status !== "active"
+                ? badEntry.reason
+                : "Code not found in ICD-10 reference";
+              const pickChild = (childCode: string) => {
+                updateDiagnosis(idx, childCode);
+                setInvalidDx((prev) => {
+                  if (!prev.has(upper)) return prev;
+                  const n = new Map(prev);
+                  n.delete(upper);
+                  return n;
+                });
+              };
+              return (
+                <div className={styles.dxCell} key={idx}>
+                  <label>{`D${idx + 1}${idx === 0 ? "*" : ""}`}</label>
+                  <CodeCombobox
+                    kind="diagnosis"
+                    value={code}
+                    onChange={(next) => {
+                      updateDiagnosis(idx, next);
+                      if (invalidDx.size) {
+                        setInvalidDx((prev) => {
+                          const n = new Map(prev);
+                          n.delete(upper);
+                          return n;
+                        });
+                      }
+                    }}
+                    placeholder={idx === 0 ? "F41.1" : ""}
+                    ariaLabel={`Diagnosis ${idx + 1}`}
+                    invalid={bad}
+                    invalidTitle={badTitle}
                   />
+                  {badEntry && badEntry.status === "header" ? (
+                    <HeaderChildSuggestions parent={upper} onPick={pickChild} />
+                  ) : null}
                 </div>
-                <div className={styles.field} style={{ maxWidth: 180 }}>
-                  <label>Status</label>
-                  <input readOnly value={detail.status.replace(/_/g, " ")} />
-                </div>
-              </div>
+              );
+            })}
+          </div>
+        </div>
 
-              {/* Case + payer */}
-              <div className={styles.sectionCard}>
-                <div className={styles.sectionTitle}>Case Information</div>
-                <div className={styles.row}>
-                  <div className={styles.field} style={{ flex: 2 }}>
-                    <label>Primary Payer</label>
-                    <input readOnly value={detail.payer?.name ?? ""} />
-                  </div>
-                  <div className={styles.field}>
-                    <label>Plan</label>
-                    <input readOnly value={detail.policy?.planName ?? ""} />
-                  </div>
-                  <div className={styles.field}>
-                    <label>Member ID</label>
-                    <input readOnly value={detail.policy?.subscriberId ?? detail.policy?.policyNumber ?? ""} />
-                  </div>
-                  <div className={styles.field} style={{ maxWidth: 130 }}>
-                    <label>Type</label>
-                    <input readOnly value={detail.payer?.payerType ?? ""} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Diagnoses */}
-              <div className={styles.sectionCard}>
-                <div className={styles.sectionTitle}>Diagnosis (ICD-10)</div>
-                <div className={styles.dxGrid}>
-                  {dxSlots.map((code, idx) => {
-                    const upper = code.trim().toUpperCase();
-                    const badEntry = upper.length > 0 ? invalidDx.get(upper) : undefined;
-                    const bad = Boolean(badEntry);
-                    const badTitle = badEntry && badEntry.status !== "active"
-                      ? badEntry.reason
-                      : "Code not found in ICD-10 reference";
-                    const pickChild = (childCode: string) => {
-                      updateDiagnosis(idx, childCode);
-                      setInvalidDx((prev) => {
-                        if (!prev.has(upper)) return prev;
-                        const n = new Map(prev);
-                        n.delete(upper);
-                        return n;
-                      });
-                    };
-                    return (
-                      <div className={styles.dxCell} key={idx}>
-                        <label>{`D${idx + 1}${idx === 0 ? "*" : ""}`}</label>
+        {/* Service lines */}
+        <div className={styles.sectionCard}>
+          <div className={styles.sectionTitleRow}>
+            <span className={styles.sectionTitle}>Procedure Lines</span>
+            <button type="button" className={styles.smallBtn} onClick={addLine}>+ Add line</button>
+          </div>
+          <div className={styles.linesTableWrap}>
+            <table className={styles.linesTable}>
+              <thead>
+                <tr>
+                  <th>Proc</th><th>DOS From</th><th>DOS To</th><th>DX Ptr</th>
+                  <th>M1</th><th>M2</th><th>M3</th><th>M4</th>
+                  <th>Units</th><th>UOM</th><th>Charge</th><th>Total</th>
+                  <th>POS</th><th>Auth #</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {detail.serviceLines.length === 0 ? (
+                  <tr><td colSpan={15} style={{ textAlign: "center", color: "#94A3B8", padding: 24 }}>No procedure lines. Click &ldquo;Add line&rdquo;.</td></tr>
+                ) : null}
+                {detail.serviceLines.map((line, idx) => {
+                  const lineTotal = (line.chargeAmount || 0) * (line.units || 0);
+                  const mods = [0, 1, 2, 3].map((i) => line.modifiers[i] ?? "");
+                  const procUpper = line.procedureCode.trim().toUpperCase();
+                  const procBadEntry = procUpper.length > 0 ? invalidProc.get(procUpper) : undefined;
+                  const procBadTitle = procBadEntry && procBadEntry.status !== "active"
+                    ? procBadEntry.reason
+                    : "Code not found in CPT/HCPCS reference";
+                  return (
+                    <tr key={idx}>
+                      <td style={{ minWidth: 90 }}>
                         <CodeCombobox
-                          kind="diagnosis"
-                          value={code}
+                          kind="procedure"
+                          value={line.procedureCode}
                           onChange={(next) => {
-                            updateDiagnosis(idx, next);
-                            if (invalidDx.size) {
-                              setInvalidDx((prev) => {
+                            updateLine(idx, { procedureCode: next });
+                            if (invalidProc.size) {
+                              setInvalidProc((prev) => {
                                 const n = new Map(prev);
-                                n.delete(upper);
+                                n.delete(procUpper);
                                 return n;
                               });
                             }
                           }}
-                          placeholder={idx === 0 ? "F41.1" : ""}
-                          ariaLabel={`Diagnosis ${idx + 1}`}
-                          invalid={bad}
-                          invalidTitle={badTitle}
+                          className={styles.cellInput}
+                          placeholder="90837"
+                          ariaLabel={`Procedure code line ${idx + 1}`}
+                          invalid={Boolean(procBadEntry)}
+                          invalidTitle={procBadTitle}
                         />
-                        {badEntry && badEntry.status === "header" ? (
-                          <HeaderChildSuggestions parent={upper} onPick={pickChild} />
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
+                      </td>
+                      <td><input className={styles.cellInput} type="date" value={line.serviceDateFrom ?? ""} onChange={(e) => updateLine(idx, { serviceDateFrom: e.target.value || null })} /></td>
+                      <td><input className={styles.cellInput} type="date" value={line.serviceDateTo ?? ""} onChange={(e) => updateLine(idx, { serviceDateTo: e.target.value || null })} /></td>
+                      <td>
+                        <input
+                          className={styles.cellInput}
+                          style={{ width: 50 }}
+                          value={line.diagnosisPointers.join(",")}
+                          onChange={(e) => updateLine(idx, { diagnosisPointers: e.target.value.split(/[ ,]+/).map((s) => s.trim()).filter(Boolean) })}
+                          placeholder="1"
+                        />
+                      </td>
+                      {mods.map((m, mi) => (
+                        <td key={mi}>
+                          <input
+                            className={styles.cellInput}
+                            style={{ width: 50 }}
+                            value={m}
+                            maxLength={2}
+                            onChange={(e) => {
+                              const next = [...line.modifiers];
+                              while (next.length <= mi) next.push("");
+                              next[mi] = e.target.value.toUpperCase();
+                              while (next.length > 0 && !next[next.length - 1]) next.pop();
+                              updateLine(idx, { modifiers: next });
+                            }}
+                          />
+                        </td>
+                      ))}
+                      <td>
+                        <input className={styles.cellInput} style={{ width: 50 }} type="number" min={1} value={line.units}
+                          onChange={(e) => updateLine(idx, { units: Number(e.target.value) || 1 })} />
+                      </td>
+                      <td>
+                        <select className={styles.cellInput} style={{ width: 60 }} value={line.unitOfMeasure}
+                          onChange={(e) => updateLine(idx, { unitOfMeasure: e.target.value })}>
+                          <option value="UN">UN</option>
+                          <option value="MJ">MJ</option>
+                          <option value="ML">ML</option>
+                        </select>
+                      </td>
+                      <td>
+                        <input className={styles.cellInput} style={{ width: 78, textAlign: "right" }} type="number" step="0.01" min={0}
+                          value={line.chargeAmount}
+                          onChange={(e) => updateLine(idx, { chargeAmount: Number(e.target.value) || 0 })} />
+                      </td>
+                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{money(lineTotal)}</td>
+                      <td>
+                        <select className={styles.cellInput} style={{ width: 70 }} value={line.placeOfService ?? ""}
+                          onChange={(e) => updateLine(idx, { placeOfService: e.target.value || null })}>
+                          <option value="">—</option>
+                          {POS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
+                        </select>
+                      </td>
+                      <td>
+                        <input className={styles.cellInput} style={{ width: 110 }} value={line.authorizationNumber ?? ""}
+                          onChange={(e) => updateLine(idx, { authorizationNumber: e.target.value || null })} />
+                      </td>
+                      <td>
+                        <button type="button" className={styles.iconBtn} onClick={() => removeLine(idx)} title="Remove line">×</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={11} style={{ textAlign: "right", fontWeight: 600, padding: "8px 12px" }}>Total</td>
+                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700, padding: "8px 12px" }}>{money(detail.totalCharge)}</td>
+                  <td colSpan={3}></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        {/* Additional info + payments */}
+        <div className={styles.twoCol}>
+          <div className={styles.sectionCard} style={{ flex: 2 }}>
+            <div className={styles.sectionTitle}>Additional Information</div>
+            <div className={styles.row}>
+              <div className={styles.field}>
+                <label>Rendering Provider</label>
+                <input readOnly value={detail.provider ? `${detail.provider.displayName}${detail.provider.credential ? `, ${detail.provider.credential}` : ""}` : ""} />
               </div>
-
-              {/* Service lines */}
-              <div className={styles.sectionCard}>
-                <div className={styles.sectionTitleRow}>
-                  <span className={styles.sectionTitle}>Procedure Lines</span>
-                  <button type="button" className={styles.smallBtn} onClick={addLine}>+ Add line</button>
-                </div>
-                <div className={styles.linesTableWrap}>
-                  <table className={styles.linesTable}>
-                    <thead>
-                      <tr>
-                        <th>Proc</th>
-                        <th>DOS From</th>
-                        <th>DOS To</th>
-                        <th>DX Ptr</th>
-                        <th>M1</th>
-                        <th>M2</th>
-                        <th>M3</th>
-                        <th>M4</th>
-                        <th>Units</th>
-                        <th>UOM</th>
-                        <th>Charge</th>
-                        <th>Total</th>
-                        <th>POS</th>
-                        <th>Auth #</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detail.serviceLines.length === 0 ? (
-                        <tr><td colSpan={15} style={{ textAlign: "center", color: "#94A3B8", padding: 24 }}>No procedure lines. Click &ldquo;Add line&rdquo;.</td></tr>
-                      ) : null}
-                      {detail.serviceLines.map((line, idx) => {
-                        const lineTotal = (line.chargeAmount || 0) * (line.units || 0);
-                        const mods = [0, 1, 2, 3].map((i) => line.modifiers[i] ?? "");
-                        const procUpper = line.procedureCode.trim().toUpperCase();
-                        const procBadEntry = procUpper.length > 0 ? invalidProc.get(procUpper) : undefined;
-                        const procBadTitle = procBadEntry && procBadEntry.status !== "active"
-                          ? procBadEntry.reason
-                          : "Code not found in CPT/HCPCS reference";
-                        return (
-                          <tr key={idx}>
-                            <td style={{ minWidth: 90 }}>
-                              <CodeCombobox
-                                kind="procedure"
-                                value={line.procedureCode}
-                                onChange={(next) => {
-                                  updateLine(idx, { procedureCode: next });
-                                  if (invalidProc.size) {
-                                    setInvalidProc((prev) => {
-                                      const n = new Map(prev);
-                                      n.delete(procUpper);
-                                      return n;
-                                    });
-                                  }
-                                }}
-                                className={styles.cellInput}
-                                placeholder="90837"
-                                ariaLabel={`Procedure code line ${idx + 1}`}
-                                invalid={Boolean(procBadEntry)}
-                                invalidTitle={procBadTitle}
-                              />
-                            </td>
-                            <td><input className={styles.cellInput} type="date" value={line.serviceDateFrom ?? ""} onChange={(e) => updateLine(idx, { serviceDateFrom: e.target.value || null })} /></td>
-                            <td><input className={styles.cellInput} type="date" value={line.serviceDateTo ?? ""} onChange={(e) => updateLine(idx, { serviceDateTo: e.target.value || null })} /></td>
-                            <td>
-                              <input
-                                className={styles.cellInput}
-                                style={{ width: 50 }}
-                                value={line.diagnosisPointers.join(",")}
-                                onChange={(e) => updateLine(idx, { diagnosisPointers: e.target.value.split(/[ ,]+/).map((s) => s.trim()).filter(Boolean) })}
-                                placeholder="1"
-                              />
-                            </td>
-                            {mods.map((m, mi) => (
-                              <td key={mi}>
-                                <input
-                                  className={styles.cellInput}
-                                  style={{ width: 50 }}
-                                  value={m}
-                                  maxLength={2}
-                                  onChange={(e) => {
-                                    const next = [...line.modifiers];
-                                    while (next.length <= mi) next.push("");
-                                    next[mi] = e.target.value.toUpperCase();
-                                    while (next.length > 0 && !next[next.length - 1]) next.pop();
-                                    updateLine(idx, { modifiers: next });
-                                  }}
-                                />
-                              </td>
-                            ))}
-                            <td>
-                              <input className={styles.cellInput} style={{ width: 50 }} type="number" min={1} value={line.units}
-                                onChange={(e) => updateLine(idx, { units: Number(e.target.value) || 1 })} />
-                            </td>
-                            <td>
-                              <select className={styles.cellInput} style={{ width: 60 }} value={line.unitOfMeasure}
-                                onChange={(e) => updateLine(idx, { unitOfMeasure: e.target.value })}>
-                                <option value="UN">UN</option>
-                                <option value="MJ">MJ</option>
-                                <option value="ML">ML</option>
-                              </select>
-                            </td>
-                            <td>
-                              <input className={styles.cellInput} style={{ width: 78, textAlign: "right" }} type="number" step="0.01" min={0}
-                                value={line.chargeAmount}
-                                onChange={(e) => updateLine(idx, { chargeAmount: Number(e.target.value) || 0 })} />
-                            </td>
-                            <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{money(lineTotal)}</td>
-                            <td>
-                              <select className={styles.cellInput} style={{ width: 70 }} value={line.placeOfService ?? ""}
-                                onChange={(e) => updateLine(idx, { placeOfService: e.target.value || null })}>
-                                <option value="">—</option>
-                                {POS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
-                              </select>
-                            </td>
-                            <td>
-                              <input className={styles.cellInput} style={{ width: 110 }} value={line.authorizationNumber ?? ""}
-                                onChange={(e) => updateLine(idx, { authorizationNumber: e.target.value || null })} />
-                            </td>
-                            <td>
-                              <button type="button" className={styles.iconBtn} onClick={() => removeLine(idx)} title="Remove line">×</button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <td colSpan={11} style={{ textAlign: "right", fontWeight: 600, padding: "8px 12px" }}>Total</td>
-                        <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700, padding: "8px 12px" }}>{money(detail.totalCharge)}</td>
-                        <td colSpan={3}></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+              <div className={styles.field} style={{ maxWidth: 150 }}>
+                <label>NPI</label>
+                <input readOnly value={detail.provider?.npi ?? ""} />
               </div>
-
-              {/* Additional info + payments */}
-              <div className={styles.twoCol}>
-                <div className={styles.sectionCard} style={{ flex: 2 }}>
-                  <div className={styles.sectionTitle}>Additional Information</div>
-                  <div className={styles.row}>
-                    <div className={styles.field}>
-                      <label>Rendering Provider</label>
-                      <input readOnly value={detail.provider ? `${detail.provider.displayName}${detail.provider.credential ? `, ${detail.provider.credential}` : ""}` : ""} />
-                    </div>
-                    <div className={styles.field} style={{ maxWidth: 150 }}>
-                      <label>NPI</label>
-                      <input readOnly value={detail.provider?.npi ?? ""} />
-                    </div>
-                  </div>
-                  <div className={styles.row}>
-                    <div className={styles.field}>
-                      <label>Place of Service (default)</label>
-                      <select
-                        value={detail.placeOfService ?? ""}
-                        onChange={(e) => setDetail((p) => p ? { ...p, placeOfService: e.target.value || null } : p)}
-                      >
-                        <option value="">—</option>
-                        {POS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className={styles.sectionCard} style={{ flex: 1, minWidth: 260 }}>
-                  <div className={styles.sectionTitle}>Patient Payments</div>
-                  <div className={styles.row}>
-                    <div className={styles.field}>
-                      <label>Co-Pay</label>
-                      <input readOnly value={detail.policy ? money(detail.policy.copay) : "$0.00"} />
-                    </div>
-                    <div className={styles.field}>
-                      <label>Deductible</label>
-                      <input readOnly value={detail.policy ? money(detail.policy.deductible) : "$0.00"} />
-                    </div>
-                    <div className={styles.field}>
-                      <label>Co-Ins %</label>
-                      <input readOnly value={detail.policy ? `${detail.policy.coinsurancePercent}%` : "0%"} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {detail.blockerReasons.length > 0 ? (
-                <div className={styles.sectionCard} style={{ borderColor: "#fecaca", background: "#fef2f2" }}>
-                  <div className={styles.sectionTitle} style={{ color: "#991b1b" }}>Blockers</div>
-                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "#991b1b" }}>
-                    {detail.blockerReasons.map((b, i) => <li key={i}>{typeof b === "string" ? b : JSON.stringify(b)}</li>)}
-                  </ul>
-                </div>
-              ) : null}
-
-              {/* Action bar */}
-              <div className={styles.actionBar}>
-                <span style={{ fontSize: 12, color: "#64748B" }}>* required field</span>
-                <div style={{ flex: 1 }} />
-                <button type="button" className={styles.secondaryBtn} onClick={() => setReloadKey((k) => k + 1)} disabled={detailLoading}>
-                  Refresh
-                </button>
-                <button type="button" className={styles.secondaryBtn} disabled>
-                  Print Superbill
-                </button>
-                <button
-                  type="button"
-                  className={styles.primaryBtn}
-                  onClick={saveCharge}
-                  disabled={saving}
+            </div>
+            <div className={styles.row}>
+              <div className={styles.field}>
+                <label>Place of Service (default)</label>
+                <select
+                  value={detail.placeOfService ?? ""}
+                  onChange={(e) => setDetail((p) => p ? { ...p, placeOfService: e.target.value || null } : p)}
                 >
-                  {saving ? "Saving…" : "Save"}
-                </button>
-                <button
-                  type="button"
-                  className={styles.releaseBtn}
-                  onClick={releaseCharge}
-                  disabled={releasing || detail.status !== "ready_for_claim"}
-                  title={detail.status !== "ready_for_claim" ? "Charge must be Ready before release" : ""}
-                >
-                  {releasing ? "Releasing…" : "Release to Billing"}
-                </button>
+                  <option value="">—</option>
+                  {POS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
               </div>
-            </>
-          )}
-        </section>
+            </div>
+          </div>
+
+          <div className={styles.sectionCard} style={{ flex: 1, minWidth: 260 }}>
+            <div className={styles.sectionTitle}>Patient Payments</div>
+            <div className={styles.row}>
+              <div className={styles.field}>
+                <label>Co-Pay</label>
+                <input readOnly value={detail.policy ? money(detail.policy.copay) : "$0.00"} />
+              </div>
+              <div className={styles.field}>
+                <label>Deductible</label>
+                <input readOnly value={detail.policy ? money(detail.policy.deductible) : "$0.00"} />
+              </div>
+              <div className={styles.field}>
+                <label>Co-Ins %</label>
+                <input readOnly value={detail.policy ? `${detail.policy.coinsurancePercent}%` : "0%"} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {detail.blockerReasons.length > 0 ? (
+          <div className={styles.sectionCard} style={{ borderColor: "#fecaca", background: "#fef2f2" }}>
+            <div className={styles.sectionTitle} style={{ color: "#991b1b" }}>Blockers</div>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "#991b1b" }}>
+              {detail.blockerReasons.map((b, i) => <li key={i}>{typeof b === "string" ? b : JSON.stringify(b)}</li>)}
+            </ul>
+          </div>
+        ) : null}
       </div>
-    </div>
+    );
+  }, [detail, detailLoading, dxSlots, invalidDx, invalidProc, updateDiagnosis, updateLine, addLine, removeLine]);
+
+  const detailActions = detail
+    ? [
+        { id: "refresh", label: "Refresh", onClick: () => setReloadKey((k) => k + 1), disabled: detailLoading },
+        { id: "print", label: "Print Superbill", onClick: () => {}, disabled: true },
+        { id: "save", label: saving ? "Saving…" : "Save", variant: "success" as const, onClick: () => void saveCharge(), disabled: saving },
+        {
+          id: "release",
+          label: releasing ? "Releasing…" : "Release to Billing",
+          variant: "primary" as const,
+          onClick: () => void releaseCharge(),
+          disabled: releasing || detail.status !== "ready_for_claim",
+        },
+      ]
+    : [];
+
+  return (
+    <WorkqueueShell<ChargeRow>
+      title={queueDef?.title ?? "Charge Capture"}
+      description={queueDef?.description}
+      headerActions={[
+        { id: "refresh", label: loading ? "Loading…" : "Refresh", onClick: () => setReloadKey((k) => k + 1), disabled: loading },
+      ]}
+      summary={summary}
+      filters={filters}
+      filterValues={filterValues}
+      onFilterChange={setFilterValues}
+      filterUrlNamespace="cc"
+      rows={filtered}
+      columns={columns}
+      rowId={(r) => r.id}
+      loading={loading}
+      emptyMessage="No charges match the current filters."
+      selectedRowId={selectedId}
+      onSelectRow={setSelectedId}
+      renderDetail={() => renderSuperbill()}
+      detailActions={detailActions}
+      tablePaneWidth="340px"
+      detailPaneWidth="auto"
+      message={message}
+    />
   );
 }

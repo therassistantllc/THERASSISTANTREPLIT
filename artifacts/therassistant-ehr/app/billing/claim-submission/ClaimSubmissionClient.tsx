@@ -2,6 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DEFAULT_ORG_ID } from "@/lib/config";
+import WorkqueueShell, {
+  type ColumnDef,
+  type RowAction,
+  type SummaryMetric,
+  type FilterDef,
+  type DetailTab,
+} from "@/components/billing/WorkqueueShell";
+import { getWorkqueue } from "@/lib/billing/workqueues";
 
 type DenialRow = {
   id: string;
@@ -64,16 +72,26 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value || 0);
 }
 
+function dosLabel(row: DenialRow): string {
+  if (!row.serviceDateFrom) return "—";
+  if (row.serviceDateTo && row.serviceDateTo !== row.serviceDateFrom) {
+    return `${formatDate(row.serviceDateFrom)} – ${formatDate(row.serviceDateTo)}`;
+  }
+  return formatDate(row.serviceDateFrom);
+}
+
+function ageDays(value: string | null): number | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.floor((Date.now() - d.getTime()) / (24 * 3600 * 1000));
+}
+
 function applyPlaceholders(body: string, row: DenialRow) {
-  const dos = row.serviceDateFrom
-    ? row.serviceDateTo && row.serviceDateTo !== row.serviceDateFrom
-      ? `${formatDate(row.serviceDateFrom)} - ${formatDate(row.serviceDateTo)}`
-      : formatDate(row.serviceDateFrom)
-    : "";
   return body
     .replaceAll("[Patient Name]", row.patientName || "")
     .replaceAll("[Claim Number]", row.claimNumber || "")
-    .replaceAll("[DOS]", dos)
+    .replaceAll("[DOS]", dosLabel(row))
     .replaceAll("[Member ID]", row.memberId || "")
     .replaceAll("[Payer Name]", row.payerName || "");
 }
@@ -87,13 +105,9 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   return (
     <div
       style={{
-        position: "fixed",
-        bottom: 24,
-        right: 24,
-        background: "#111827",
-        color: "#fff",
-        padding: "10px 16px",
-        borderRadius: 6,
+        position: "fixed", bottom: 24, right: 24,
+        background: "#111827", color: "#fff",
+        padding: "10px 16px", borderRadius: 6,
         boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
         zIndex: 1100,
       }}
@@ -105,51 +119,34 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 
 // ─── Modal shell ───────────────────────────────────────────────────────────────
 function ModalShell({
-  title,
-  onClose,
-  children,
-  width = 560,
+  title, onClose, children, width = 560,
 }: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-  width?: number;
+  title: string; onClose: () => void; children: React.ReactNode; width?: number;
 }) {
   return (
     <div
       onClick={onClose}
       style={{
-        position: "fixed",
-        inset: 0,
+        position: "fixed", inset: 0,
         background: "rgba(15, 23, 42, 0.55)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        display: "flex", alignItems: "center", justifyContent: "center",
         zIndex: 1000,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#fff",
-          width,
-          maxWidth: "92vw",
-          maxHeight: "88vh",
-          overflow: "auto",
-          borderRadius: 8,
-          padding: 24,
+          background: "#fff", width, maxWidth: "92vw", maxHeight: "88vh",
+          overflow: "auto", borderRadius: 8, padding: 24,
           boxShadow: "0 12px 32px rgba(0,0,0,0.22)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>{title}</h2>
           <button
-            type="button"
-            onClick={onClose}
+            type="button" onClick={onClose}
             style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer", color: "#6B7280" }}
-          >
-            ×
-          </button>
+          >×</button>
         </div>
         {children}
       </div>
@@ -157,17 +154,10 @@ function ModalShell({
   );
 }
 
-// ─── Note Modal ────────────────────────────────────────────────────────────────
 function NoteModal({
-  row,
-  organizationId,
-  onClose,
-  onSaved,
+  row, organizationId, onClose, onSaved,
 }: {
-  row: DenialRow;
-  organizationId: string;
-  onClose: () => void;
-  onSaved: (claimId: string) => void;
+  row: DenialRow; organizationId: string; onClose: () => void; onSaved: (claimId: string) => void;
 }) {
   const [body, setBody] = useState("");
   const [deferUntil, setDeferUntil] = useState("");
@@ -175,31 +165,20 @@ function NoteModal({
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
-    if (!body.trim()) {
-      setError("Note body is required");
-      return;
-    }
-    setSaving(true);
-    setError(null);
+    if (!body.trim()) { setError("Note body is required"); return; }
+    setSaving(true); setError(null);
     try {
       const res = await fetch(`/api/billing/claims/${row.id}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organizationId,
-          body: body.trim(),
-          deferUntil: deferUntil || null,
-        }),
+        body: JSON.stringify({ organizationId, body: body.trim(), deferUntil: deferUntil || null }),
       });
       const json = await res.json();
       if (!res.ok || json?.success === false) throw new Error(json?.error ?? "Failed to save note");
-      onSaved(row.id);
-      onClose();
+      onSaved(row.id); onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save note");
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
   return (
@@ -209,25 +188,19 @@ function NoteModal({
       </p>
       <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Note</label>
       <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        rows={6}
+        value={body} onChange={(e) => setBody(e.target.value)} rows={6}
         style={{ width: "100%", padding: 8, border: "1px solid #D1D5DB", borderRadius: 4, fontFamily: "inherit" }}
       />
       <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 4 }}>
         Defer until (optional)
       </label>
       <input
-        type="date"
-        value={deferUntil}
-        onChange={(e) => setDeferUntil(e.target.value)}
+        type="date" value={deferUntil} onChange={(e) => setDeferUntil(e.target.value)}
         style={{ padding: 8, border: "1px solid #D1D5DB", borderRadius: 4 }}
       />
       {error ? <div style={{ color: "#B91C1C", marginTop: 8, fontSize: 13 }}>{error}</div> : null}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
-        <button type="button" className="button button-secondary" onClick={onClose} disabled={saving}>
-          Cancel
-        </button>
+        <button type="button" className="button button-secondary" onClick={onClose} disabled={saving}>Cancel</button>
         <button type="button" className="button" onClick={save} disabled={saving}>
           {saving ? "Saving…" : "Save note"}
         </button>
@@ -236,21 +209,11 @@ function NoteModal({
   );
 }
 
-// ─── Appeal Modal ──────────────────────────────────────────────────────────────
 function AppealModal({
-  row,
-  organizationId,
-  templates,
-  onClose,
-  onSaved,
-  onToast,
+  row, organizationId, templates, onClose, onSaved, onToast,
 }: {
-  row: DenialRow;
-  organizationId: string;
-  templates: AppealTemplate[];
-  onClose: () => void;
-  onSaved: (claimId: string) => void;
-  onToast: (msg: string) => void;
+  row: DenialRow; organizationId: string; templates: AppealTemplate[];
+  onClose: () => void; onSaved: (claimId: string) => void; onToast: (msg: string) => void;
 }) {
   const [templateId, setTemplateId] = useState<string>("");
   const [letter, setLetter] = useState("");
@@ -264,63 +227,42 @@ function AppealModal({
   }
 
   async function saveAsNote() {
-    if (!letter.trim()) {
-      setError("Letter is empty");
-      return;
-    }
-    setBusy(true);
-    setError(null);
+    if (!letter.trim()) { setError("Letter is empty"); return; }
+    setBusy(true); setError(null);
     try {
       const res = await fetch(`/api/billing/claims/${row.id}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organizationId,
-          body: `APPEAL DRAFT:\n\n${letter}`,
-        }),
+        body: JSON.stringify({ organizationId, body: `APPEAL DRAFT:\n\n${letter}` }),
       });
       const json = await res.json();
       if (!res.ok || json?.success === false) throw new Error(json?.error ?? "Failed to save appeal note");
-      onSaved(row.id);
-      onToast("Appeal draft saved as note");
-      onClose();
+      onSaved(row.id); onToast("Appeal draft saved as note"); onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save appeal note");
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
   async function faxToPayer() {
     if (!row.payerFaxNumber) return;
-    if (!letter.trim()) {
-      setError("Letter is empty");
-      return;
-    }
-    setBusy(true);
-    setError(null);
+    if (!letter.trim()) { setError("Letter is empty"); return; }
+    setBusy(true); setError(null);
     try {
       const res = await fetch("/api/billing/fax-queue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          organizationId,
-          claimId: row.id,
-          payerId: row.payerId,
+          organizationId, claimId: row.id, payerId: row.payerId,
           toFaxNumber: row.payerFaxNumber,
-          subject: `Appeal: Claim ${row.claimNumber || row.id}`,
-          body: letter,
+          subject: `Appeal: Claim ${row.claimNumber || row.id}`, body: letter,
         }),
       });
       const json = await res.json();
       if (!res.ok || json?.success === false) throw new Error(json?.error ?? "Failed to queue fax");
-      onToast(`Fax queued — ${json.pendingCount ?? 0} pending faxes`);
-      onClose();
+      onToast(`Fax queued — ${json.pendingCount ?? 0} pending faxes`); onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to queue fax");
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
   return (
@@ -331,32 +273,22 @@ function AppealModal({
       </p>
       <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Template</label>
       <select
-        value={templateId}
-        onChange={(e) => pickTemplate(e.target.value)}
+        value={templateId} onChange={(e) => pickTemplate(e.target.value)}
         style={{ width: "100%", padding: 8, border: "1px solid #D1D5DB", borderRadius: 4 }}
       >
         <option value="">— Choose a template —</option>
         {templates.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.name}
-            {t.isSystem ? " (system)" : ""}
-          </option>
+          <option key={t.id} value={t.id}>{t.name}{t.isSystem ? " (system)" : ""}</option>
         ))}
       </select>
-      <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 4 }}>
-        Appeal letter
-      </label>
+      <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 4 }}>Appeal letter</label>
       <textarea
-        value={letter}
-        onChange={(e) => setLetter(e.target.value)}
-        rows={14}
+        value={letter} onChange={(e) => setLetter(e.target.value)} rows={14}
         style={{ width: "100%", padding: 8, border: "1px solid #D1D5DB", borderRadius: 4, fontFamily: "inherit" }}
       />
       {error ? <div style={{ color: "#B91C1C", marginTop: 8, fontSize: 13 }}>{error}</div> : null}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16, flexWrap: "wrap" }}>
-        <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>
-          Cancel
-        </button>
+        <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
         <button type="button" className="button" onClick={saveAsNote} disabled={busy}>
           {busy ? "Saving…" : "Save as appeal note"}
         </button>
@@ -370,17 +302,10 @@ function AppealModal({
   );
 }
 
-// ─── Write-off Modal ───────────────────────────────────────────────────────────
 function WriteOffModal({
-  row,
-  organizationId,
-  onClose,
-  onSaved,
+  row, organizationId, onClose, onSaved,
 }: {
-  row: DenialRow;
-  organizationId: string;
-  onClose: () => void;
-  onSaved: (claimId: string) => void;
+  row: DenialRow; organizationId: string; onClose: () => void; onSaved: (claimId: string) => void;
 }) {
   const [reason, setReason] = useState<string>("small_balance");
   const [amount, setAmount] = useState<string>(String(row.totalChargeAmount.toFixed(2)));
@@ -389,28 +314,21 @@ function WriteOffModal({
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
-    setBusy(true);
-    setError(null);
+    setBusy(true); setError(null);
     try {
       const res = await fetch(`/api/billing/claims/${row.id}/write-off`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          organizationId,
-          reason,
-          amount: Number(amount),
-          comment: comment.trim() || null,
+          organizationId, reason, amount: Number(amount), comment: comment.trim() || null,
         }),
       });
       const json = await res.json();
       if (!res.ok || json?.success === false) throw new Error(json?.error ?? "Failed to write off claim");
-      onSaved(row.id);
-      onClose();
+      onSaved(row.id); onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to write off claim");
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
   return (
@@ -420,39 +338,24 @@ function WriteOffModal({
       </p>
       <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Reason</label>
       <select
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
+        value={reason} onChange={(e) => setReason(e.target.value)}
         style={{ width: "100%", padding: 8, border: "1px solid #D1D5DB", borderRadius: 4 }}
       >
-        {WRITE_OFF_REASONS.map((r) => (
-          <option key={r.value} value={r.value}>
-            {r.label}
-          </option>
-        ))}
+        {WRITE_OFF_REASONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
       </select>
       <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 4 }}>Amount</label>
       <input
-        type="number"
-        min="0"
-        step="0.01"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
+        type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
         style={{ width: 160, padding: 8, border: "1px solid #D1D5DB", borderRadius: 4 }}
       />
-      <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 4 }}>
-        Comment (optional)
-      </label>
+      <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 4 }}>Comment (optional)</label>
       <textarea
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        rows={4}
+        value={comment} onChange={(e) => setComment(e.target.value)} rows={4}
         style={{ width: "100%", padding: 8, border: "1px solid #D1D5DB", borderRadius: 4, fontFamily: "inherit" }}
       />
       {error ? <div style={{ color: "#B91C1C", marginTop: 8, fontSize: 13 }}>{error}</div> : null}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
-        <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>
-          Cancel
-        </button>
+        <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
         <button type="button" className="button" onClick={save} disabled={busy}>
           {busy ? "Saving…" : "Write off"}
         </button>
@@ -461,6 +364,10 @@ function WriteOffModal({
   );
 }
 
+// ─── Page ──────────────────────────────────────────────────────────────────────
+
+const queueDef = getWorkqueue("denials");
+
 export default function ClaimSubmissionClient() {
   const organizationId = useMemo(() => getOrganizationId(), []);
   const [rows, setRows] = useState<DenialRow[]>([]);
@@ -468,6 +375,9 @@ export default function ClaimSubmissionClient() {
   const [loading, setLoading] = useState(Boolean(organizationId));
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
 
   const [noteRow, setNoteRow] = useState<DenialRow | null>(null);
   const [appealRow, setAppealRow] = useState<DenialRow | null>(null);
@@ -494,18 +404,15 @@ export default function ClaimSubmissionClient() {
     }
   }, [organizationId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   function removeRow(claimId: string) {
     setRows((prev) => prev.filter((r) => r.id !== claimId));
+    if (selectedRowId === claimId) setSelectedRowId(null);
   }
 
   function bumpNoteCount(claimId: string) {
-    setRows((prev) =>
-      prev.map((r) => (r.id === claimId ? { ...r, noteCount: r.noteCount + 1 } : r)),
-    );
+    setRows((prev) => prev.map((r) => (r.id === claimId ? { ...r, noteCount: r.noteCount + 1 } : r)));
   }
 
   async function billToPatient(row: DenialRow) {
@@ -527,147 +434,271 @@ export default function ClaimSubmissionClient() {
     }
   }
 
-  const missingOrgMessage =
-    "Missing organizationId. Add ?organizationId=... to the URL or configure NEXT_PUBLIC_ORGANIZATION_ID.";
+  // ── Universal filter wiring ─────────────────────────────────────────────
+  const payerOptions = useMemo(() => {
+    const set = new Map<string, string>();
+    for (const r of rows) if (r.payerName) set.set(r.payerName, r.payerName);
+    return Array.from(set.entries()).map(([value, label]) => ({ value, label }));
+  }, [rows]);
+
+  const filters: FilterDef[] = useMemo(
+    () => [
+      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "payer", label: "Payer", kind: "select", options: payerOptions },
+      { id: "dosFrom", label: "DOS from", kind: "date" },
+      { id: "dosTo", label: "DOS to", kind: "date" },
+      { id: "minAmount", label: "Min $", kind: "number", placeholder: "0" },
+      {
+        id: "agingBucket",
+        label: "Aging",
+        kind: "select",
+        options: [
+          { value: "0-30", label: "0-30 days" },
+          { value: "31-60", label: "31-60 days" },
+          { value: "61-90", label: "61-90 days" },
+          { value: "90+", label: "90+ days" },
+        ],
+      },
+      { id: "carcRarc", label: "CARC/RARC", kind: "text", placeholder: "e.g. 197" },
+    ],
+    [payerOptions],
+  );
+
+  const filteredRows = useMemo(() => {
+    let out = rows;
+    const v = filterValues;
+    if (v.client) {
+      const q = v.client.toLowerCase();
+      out = out.filter((r) => r.patientName.toLowerCase().includes(q));
+    }
+    if (v.payer) out = out.filter((r) => r.payerName === v.payer);
+    if (v.dosFrom) out = out.filter((r) => (r.serviceDateFrom ?? "") >= v.dosFrom);
+    if (v.dosTo) out = out.filter((r) => (r.serviceDateFrom ?? "") <= v.dosTo);
+    if (v.minAmount) {
+      const min = Number(v.minAmount);
+      if (!Number.isNaN(min)) out = out.filter((r) => r.outstandingBalance >= min);
+    }
+    if (v.agingBucket) {
+      out = out.filter((r) => {
+        const a = ageDays(r.updatedAt);
+        if (a == null) return false;
+        switch (v.agingBucket) {
+          case "0-30": return a <= 30;
+          case "31-60": return a > 30 && a <= 60;
+          case "61-90": return a > 60 && a <= 90;
+          case "90+": return a > 90;
+          default: return true;
+        }
+      });
+    }
+    if (v.carcRarc) {
+      const q = v.carcRarc.toLowerCase();
+      out = out.filter((r) => (r.denialReason ?? "").toLowerCase().includes(q));
+    }
+    return out;
+  }, [rows, filterValues]);
+
+  const summary: SummaryMetric[] = useMemo(() => {
+    const total = filteredRows.length;
+    const dollars = filteredRows.reduce((s, r) => s + (r.outstandingBalance || 0), 0);
+    const ages = filteredRows
+      .map((r) => ageDays(r.updatedAt))
+      .filter((n): n is number => n != null);
+    const oldest = ages.length > 0 ? Math.max(...ages) : 0;
+    const urgent = filteredRows.filter((r) => {
+      const a = ageDays(r.updatedAt);
+      return a != null && a > 60;
+    }).length;
+    return [
+      { id: "count", label: "Open denials", value: total.toLocaleString() },
+      { id: "dollars", label: "Total outstanding", value: formatCurrency(dollars), tone: dollars > 0 ? "amber" : "default" },
+      { id: "oldest", label: "Oldest (days)", value: oldest, tone: oldest > 60 ? "red" : oldest > 30 ? "amber" : "default" },
+      { id: "urgent", label: "Urgent (>60d)", value: urgent, tone: urgent > 0 ? "red" : "default" },
+    ];
+  }, [filteredRows]);
+
+  const columns: ColumnDef<DenialRow>[] = useMemo(
+    () => [
+      {
+        id: "claim",
+        header: "Claim #",
+        cell: (r) => (
+          <span style={{ fontFamily: "ui-monospace, monospace" }}>
+            {r.claimNumber || r.id.slice(0, 8)}
+          </span>
+        ),
+      },
+      { id: "patient", header: "Patient", cell: (r) => r.patientName },
+      {
+        id: "payer",
+        header: "Payer",
+        cell: (r) => (
+          <>
+            {r.payerName || "—"}
+            {r.payerFaxNumber ? (
+              <div style={{ fontSize: 11, color: "#6B7280" }}>Fax: {r.payerFaxNumber}</div>
+            ) : null}
+          </>
+        ),
+      },
+      { id: "dos", header: "DOS", cell: (r) => dosLabel(r) },
+      {
+        id: "charge", header: "Charge", align: "right",
+        cell: (r) => <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(r.totalChargeAmount)}</span>,
+      },
+      {
+        id: "outstanding", header: "Outstanding", align: "right",
+        cell: (r) => <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{formatCurrency(r.outstandingBalance)}</span>,
+      },
+      {
+        id: "reason", header: "Denial reason",
+        cell: (r) => (
+          <span style={{ color: r.denialReason ? "#111827" : "#9CA3AF" }}>{r.denialReason || "—"}</span>
+        ),
+      },
+      { id: "notes", header: "Notes", align: "center", cell: (r) => r.noteCount },
+    ],
+    [],
+  );
+
+  const rowActions: RowAction<DenialRow>[] = useMemo(
+    () => [
+      { id: "note", label: "Note", onClick: (r) => setNoteRow(r) },
+      { id: "appeal", label: "Appeal", variant: "primary", onClick: (r) => setAppealRow(r) },
+      { id: "writeoff", label: "Write-off", onClick: (r) => setWriteOffRow(r) },
+      {
+        id: "bill",
+        label: "Bill to Patient",
+        onClick: (r) => void billToPatient(r),
+        disabled: (r) => billingRowId === r.id,
+      },
+    ],
+    [billingRowId],
+  );
+
+  const selectedRow = useMemo(
+    () => filteredRows.find((r) => r.id === selectedRowId) ?? null,
+    [filteredRows, selectedRowId],
+  );
+
+  const detailTabs: DetailTab[] = useMemo(
+    () => [
+      {
+        id: "client",
+        label: "Client",
+        render: () =>
+          selectedRow ? (
+            <div>
+              <h3 style={{ margin: "0 0 4px", fontSize: 15 }}>{selectedRow.patientName}</h3>
+              <div style={{ fontSize: 12, color: "#64748B", marginBottom: 12 }}>
+                Member ID: {selectedRow.memberId || "—"}
+              </div>
+              <DetailKV label="Payer" value={selectedRow.payerName || "—"} />
+              <DetailKV label="Payer fax" value={selectedRow.payerFaxNumber || "—"} />
+              <DetailKV label="Service date" value={dosLabel(selectedRow)} />
+              <DetailKV label="Total charge" value={formatCurrency(selectedRow.totalChargeAmount)} />
+              <DetailKV label="Outstanding" value={formatCurrency(selectedRow.outstandingBalance)} />
+            </div>
+          ) : null,
+      },
+      {
+        id: "claim",
+        label: "Claim",
+        render: () =>
+          selectedRow ? (
+            <div>
+              <DetailKV label="Claim #" value={selectedRow.claimNumber || selectedRow.id.slice(0, 8)} />
+              <DetailKV label="Denial reason" value={selectedRow.denialReason || "—"} />
+              <DetailKV label="Notes" value={String(selectedRow.noteCount)} />
+              <DetailKV label="Defer until" value={selectedRow.deferUntil || "—"} />
+              <DetailKV label="Deferred reason" value={selectedRow.deferredReason || "—"} />
+              <DetailKV label="Last updated" value={selectedRow.updatedAt ? formatDate(selectedRow.updatedAt) : "—"} />
+            </div>
+          ) : null,
+      },
+      {
+        id: "timeline",
+        label: "Timeline",
+        render: () => (
+          <div style={{ color: "#94A3B8", fontSize: 13 }}>
+            Timeline view coming soon. Use the Note button to log activity.
+          </div>
+        ),
+      },
+    ],
+    [selectedRow],
+  );
+
+  const detailActions = selectedRow
+    ? [
+        { id: "note", label: "Add note", onClick: () => setNoteRow(selectedRow) },
+        { id: "appeal", label: "File appeal", variant: "primary" as const, onClick: () => setAppealRow(selectedRow) },
+        { id: "writeoff", label: "Write-off", onClick: () => setWriteOffRow(selectedRow) },
+        {
+          id: "bill",
+          label: billingRowId === selectedRow.id ? "Billing…" : "Bill to Patient",
+          onClick: () => void billToPatient(selectedRow),
+          disabled: billingRowId === selectedRow.id,
+        },
+      ]
+    : [];
+
+  const message = !organizationId
+    ? { tone: "error" as const, text: "Missing organizationId. Add ?organizationId=… to the URL or configure NEXT_PUBLIC_ORGANIZATION_ID." }
+    : error
+    ? { tone: "error" as const, text: error }
+    : null;
 
   return (
-    <main className="app-shell">
-      <section className="hero-panel">
-        <div>
-          <p className="eyebrow">Billing</p>
-          <h1>Denials</h1>
-          <p className="hero-copy">
-            Worklist of denied claims. Add notes, file appeals, write off uncollectible balances, or bill the patient.
-          </p>
-        </div>
-        <div className="hero-actions">
-          <button type="button" className="button button-secondary" onClick={() => void load()} disabled={loading}>
-            {loading ? "Loading…" : "Refresh"}
-          </button>
-        </div>
-      </section>
-
-      {!organizationId ? <div className="alert-panel">{missingOrgMessage}</div> : null}
-      {error ? <div className="alert-panel">{error}</div> : null}
-
-      <section className="panel" style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "2px solid #E5E7EB" }}>
-              <th style={{ padding: 8 }}>Claim #</th>
-              <th style={{ padding: 8 }}>Patient</th>
-              <th style={{ padding: 8 }}>Payer</th>
-              <th style={{ padding: 8 }}>DOS</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Charge</th>
-              <th style={{ padding: 8, textAlign: "right" }}>Outstanding</th>
-              <th style={{ padding: 8 }}>Denial reason</th>
-              <th style={{ padding: 8, textAlign: "center" }}>Notes</th>
-              <th style={{ padding: 8 }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={9} style={{ padding: 16, color: "#6B7280" }}>
-                  Loading…
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={9} style={{ padding: 16, color: "#6B7280" }}>
-                  No denied claims.
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => {
-                const dos = row.serviceDateFrom
-                  ? row.serviceDateTo && row.serviceDateTo !== row.serviceDateFrom
-                    ? `${formatDate(row.serviceDateFrom)} – ${formatDate(row.serviceDateTo)}`
-                    : formatDate(row.serviceDateFrom)
-                  : "—";
-                return (
-                  <tr key={row.id} style={{ borderBottom: "1px solid #E5E7EB" }}>
-                    <td style={{ padding: 8, fontFamily: "monospace" }}>
-                      {row.claimNumber || row.id.slice(0, 8)}
-                    </td>
-                    <td style={{ padding: 8 }}>{row.patientName}</td>
-                    <td style={{ padding: 8 }}>
-                      {row.payerName || "—"}
-                      {row.payerFaxNumber ? (
-                        <div style={{ fontSize: 12, color: "#6B7280" }}>Fax: {row.payerFaxNumber}</div>
-                      ) : null}
-                    </td>
-                    <td style={{ padding: 8 }}>{dos}</td>
-                    <td style={{ padding: 8, textAlign: "right" }}>{formatCurrency(row.totalChargeAmount)}</td>
-                    <td style={{ padding: 8, textAlign: "right" }}>{formatCurrency(row.outstandingBalance)}</td>
-                    <td style={{ padding: 8, color: row.denialReason ? "#111827" : "#9CA3AF" }}>
-                      {row.denialReason || "—"}
-                    </td>
-                    <td style={{ padding: 8, textAlign: "center" }}>{row.noteCount}</td>
-                    <td style={{ padding: 8 }}>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          className="button button-secondary"
-                          onClick={() => setNoteRow(row)}
-                        >
-                          Note
-                        </button>
-                        <button type="button" className="button" onClick={() => setAppealRow(row)}>
-                          File an Appeal
-                        </button>
-                        <button
-                          type="button"
-                          className="button button-secondary"
-                          onClick={() => setWriteOffRow(row)}
-                        >
-                          Write-off
-                        </button>
-                        <button
-                          type="button"
-                          className="button button-secondary"
-                          onClick={() => void billToPatient(row)}
-                          disabled={billingRowId === row.id}
-                        >
-                          {billingRowId === row.id ? "Billing…" : "Bill to Patient"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </section>
+    <>
+      <WorkqueueShell<DenialRow>
+        title={queueDef?.title ?? "Denials"}
+        description={queueDef?.description}
+        headerActions={[
+          { id: "refresh", label: loading ? "Loading…" : "Refresh", onClick: () => void load(), disabled: loading },
+        ]}
+        summary={summary}
+        filters={filters}
+        filterValues={filterValues}
+        onFilterChange={setFilterValues}
+        filterUrlNamespace="denials"
+        rows={filteredRows}
+        columns={columns}
+        rowId={(r) => r.id}
+        rowActions={rowActions}
+        loading={loading}
+        emptyMessage="No denied claims."
+        selectedRowId={selectedRowId}
+        onSelectRow={setSelectedRowId}
+        detailTabs={detailTabs}
+        detailActions={detailActions}
+        message={message}
+      />
 
       {noteRow ? (
-        <NoteModal
-          row={noteRow}
-          organizationId={organizationId}
-          onClose={() => setNoteRow(null)}
-          onSaved={(id) => bumpNoteCount(id)}
-        />
+        <NoteModal row={noteRow} organizationId={organizationId} onClose={() => setNoteRow(null)} onSaved={(id) => bumpNoteCount(id)} />
       ) : null}
       {appealRow ? (
-        <AppealModal
-          row={appealRow}
-          organizationId={organizationId}
-          templates={templates}
-          onClose={() => setAppealRow(null)}
-          onSaved={(id) => bumpNoteCount(id)}
-          onToast={(msg) => setToast(msg)}
-        />
+        <AppealModal row={appealRow} organizationId={organizationId} templates={templates}
+          onClose={() => setAppealRow(null)} onSaved={(id) => bumpNoteCount(id)} onToast={(msg) => setToast(msg)} />
       ) : null}
       {writeOffRow ? (
-        <WriteOffModal
-          row={writeOffRow}
-          organizationId={organizationId}
-          onClose={() => setWriteOffRow(null)}
-          onSaved={(id) => removeRow(id)}
-        />
+        <WriteOffModal row={writeOffRow} organizationId={organizationId}
+          onClose={() => setWriteOffRow(null)} onSaved={(id) => removeRow(id)} />
       ) : null}
       {toast ? <Toast message={toast} onClose={() => setToast(null)} /> : null}
-    </main>
+    </>
+  );
+}
+
+function DetailKV({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{
+      display: "flex", justifyContent: "space-between", gap: 12,
+      fontSize: 13, padding: "5px 0", borderBottom: "1px solid #F1F5F9",
+    }}>
+      <span style={{ color: "#64748B", fontWeight: 500 }}>{label}</span>
+      <span style={{ color: "#0F172A", textAlign: "right", maxWidth: "60%" }}>{value}</span>
+    </div>
   );
 }

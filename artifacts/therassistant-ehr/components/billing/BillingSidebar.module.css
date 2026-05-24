@@ -1,0 +1,86 @@
+.sidebar {
+  width: 232px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-right: 1px solid #E2E8F0;
+  overflow-y: auto;
+  height: calc(100dvh - 44px);
+  position: sticky;
+  top: 44px;
+  scrollbar-width: thin;
+}
+
+.inner {
+  padding: 14px 0 24px;
+}
+
+.stage {
+  margin-bottom: 14px;
+}
+
+.stageLabel {
+  padding: 4px 16px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94A3B8;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 16px;
+  font-size: 12.5px;
+  color: #334155;
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  background: transparent;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  line-height: 1.3;
+}
+
+.item:hover {
+  background: #F1F5F9;
+  color: #0F172A;
+}
+
+.itemActive {
+  background: #EFF6FF;
+  color: #1D4ED8;
+  border-left-color: #3B82F6;
+  font-weight: 600;
+}
+
+.itemSoon {
+  color: #94A3B8;
+  cursor: default;
+}
+
+.itemSoon:hover {
+  background: transparent;
+  color: #94A3B8;
+}
+
+.soonBadge {
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94A3B8;
+  background: #F1F5F9;
+  padding: 1px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+}

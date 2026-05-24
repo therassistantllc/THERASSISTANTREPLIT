@@ -169,76 +169,43 @@ export async function POST(
         );
       }
 
-      const { data: batch, error: batchError } = await (supabase as any)
-        .from("claim_837p_batches")
-        .insert({
-          organization_id: organizationId,
-          batch_number: batchNumber(),
-          batch_status: "ready_to_generate",
-          claim_count: 1,
-          total_charge_amount: Number(claim.total_charge ?? 0),
-          created_at: now,
-          updated_at: now,
-        })
-        .select("id, batch_number")
-        .single();
-      if (batchError || !batch) {
+      // Single source of truth for the composite write: the Postgres
+      // function runs all three writes (batch insert, link insert,
+      // status flip) inside one transaction so a mid-process kill can
+      // never leave the claim half-batched.
+      const generatedBatchNumber = batchNumber();
+      const { data: rpcData, error: rpcError } = await (supabase as any).rpc(
+        "create_837p_batch_atomic",
+        {
+          p_organization_id: organizationId,
+          p_claim_ids: [claimId],
+          p_batch_number: generatedBatchNumber,
+          p_payer_profile_id: null,
+        },
+      );
+      if (rpcError) {
+        const msg = rpcError.message ?? "Failed to create batch";
+        const status = rpcError.code === "P0002" ? 404 : rpcError.code === "22023" ? 422 : 500;
+        return NextResponse.json({ success: false, error: msg }, { status });
+      }
+      const result = (rpcData ?? {}) as { batch_id?: string; batch_number?: string };
+      if (!result.batch_id) {
         return NextResponse.json(
-          { success: false, error: batchError?.message ?? "Failed to create batch" },
-          { status: 422 },
+          { success: false, error: "Batch creation returned no batch id" },
+          { status: 500 },
         );
-      }
-
-      // We don't have a server-side RPC for this composite write, so do a
-      // manual best-effort rollback: if the link insert or the status flip
-      // fails, delete the orphaned batch row so the user doesn't end up
-      // with an empty 837P batch lingering in the system.
-      const { error: linkError } = await (supabase as any)
-        .from("claim_837p_batch_claims")
-        .insert({
-          organization_id: organizationId,
-          batch_id: batch.id,
-          professional_claim_id: claimId,
-          created_at: now,
-        });
-      if (linkError) {
-        await (supabase as any)
-          .from("claim_837p_batches")
-          .delete()
-          .eq("organization_id", organizationId)
-          .eq("id", batch.id);
-        throw linkError;
-      }
-
-      const { error: updateError } = await (supabase as any)
-        .from("professional_claims")
-        .update({ claim_status: "batched", updated_at: now })
-        .eq("organization_id", organizationId)
-        .eq("id", claimId);
-      if (updateError) {
-        await (supabase as any)
-          .from("claim_837p_batch_claims")
-          .delete()
-          .eq("organization_id", organizationId)
-          .eq("batch_id", batch.id);
-        await (supabase as any)
-          .from("claim_837p_batches")
-          .delete()
-          .eq("organization_id", organizationId)
-          .eq("id", batch.id);
-        throw updateError;
       }
 
       await recordEvent(supabase, organizationId, claimId, "ready_to_generate", {
         action,
-        batch_id: batch.id,
-        batch_number: batch.batch_number,
+        batch_id: result.batch_id,
+        batch_number: result.batch_number,
       });
 
       return NextResponse.json({
         success: true,
-        batchId: batch.id,
-        batchNumber: batch.batch_number,
+        batchId: result.batch_id,
+        batchNumber: result.batch_number,
         claim: { id: claimId, claim_status: "batched" },
       });
     }

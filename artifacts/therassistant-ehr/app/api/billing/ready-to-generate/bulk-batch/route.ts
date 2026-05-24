@@ -23,11 +23,15 @@
  *      group. Claims missing a payer profile cannot be batched and force
  *      a 422 before any writes happen.
  *
- * Each batch (whether 1 or N) is created with its own claim_837p_batches
- * row, claim_837p_batch_claims links, and claim_status flip to 'batched'.
- * If any write fails mid-flight, best-effort rollback removes orphaned
- * rows and flips already-batched claims back to ready_for_batch so the
- * user does not end up with a half-built set of batches.
+ * Each per-payer batch (the insert / link / status-flip sequence) is
+ * delegated to the `create_837p_batch_atomic` Postgres function so that
+ * the three writes for a single batch commit or roll back as one
+ * transaction — a mid-process kill can never leave one of the per-payer
+ * batches half-built. When the request fans out into N batches and a
+ * later batch fails, the prior successfully-committed batches are undone
+ * best-effort in JS (the cross-batch rollback can't be wrapped in a
+ * single Postgres transaction here without piping the whole fan-out into
+ * the RPC).
  */
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
@@ -100,6 +104,10 @@ export async function POST(request: Request) {
       );
     }
 
+    // Pre-flight fetch so we can validate the selection (presence, status,
+    // payer grouping) and reject a multi-payer mix before any writes. The
+    // atomic RPC re-validates every claim it touches, so this is a UX
+    // niceness for the payer-split breakdown, not an authoritative check.
     const { data: claims, error: fetchError } = await (supabase as any)
       .from("professional_claims")
       .select("id, claim_status, total_charge, held_at, archived_at, payer_profile_id")
@@ -200,12 +208,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const now = new Date().toISOString();
     const created: CreatedBatch[] = [];
 
     // Cleanup helper: undo every batch+links+status-flip created so far so
-    // an N-of-M failure doesn't leave the org with half a fan-out.
-    async function rollback(reason: unknown) {
+    // an N-of-M failure doesn't leave the org with half a fan-out. Each
+    // individual batch was committed atomically by the RPC, but the
+    // cross-batch fan-out is not itself a single transaction.
+    async function rollback(reason: unknown): Promise<never> {
       for (const b of created) {
         try {
           await (supabase as any)
@@ -247,68 +256,39 @@ export async function POST(request: Request) {
       const payerProfileId = payerKey === UNASSIGNED_PAYER_KEY ? null : payerKey;
       const totalChargeAmount = rows.reduce((s, r) => s + Number(r.total_charge ?? 0), 0);
       const number = orderedGroups.length === 1 ? batchNumber() : batchNumber(i + 1);
-
-      const { data: batch, error: batchError } = await (supabase as any)
-        .from("claim_837p_batches")
-        .insert({
-          organization_id: organizationId,
-          batch_number: number,
-          batch_status: "ready_to_generate",
-          claim_count: rows.length,
-          total_charge_amount: totalChargeAmount,
-          created_at: now,
-          updated_at: now,
-        })
-        .select("id, batch_number")
-        .single();
-      if (batchError || !batch) {
-        await rollback(batchError ?? new Error("Failed to create batch"));
-      }
-
-      const linkRows = rows.map((c) => ({
-        organization_id: organizationId,
-        batch_id: batch!.id,
-        professional_claim_id: c.id,
-        created_at: now,
-      }));
-      const { error: linkError } = await (supabase as any)
-        .from("claim_837p_batch_claims")
-        .insert(linkRows);
-      if (linkError) {
-        // Best-effort cleanup of this batch row before rolling back prior ones.
-        await (supabase as any)
-          .from("claim_837p_batches")
-          .delete()
-          .eq("organization_id", organizationId)
-          .eq("id", batch!.id);
-        await rollback(linkError);
-      }
-
       const ids = rows.map((c) => c.id);
-      const { error: updateError } = await (supabase as any)
-        .from("professional_claims")
-        .update({ claim_status: "batched", updated_at: now })
-        .eq("organization_id", organizationId)
-        .in("id", ids);
-      if (updateError) {
-        await (supabase as any)
-          .from("claim_837p_batch_claims")
-          .delete()
-          .eq("organization_id", organizationId)
-          .eq("batch_id", batch!.id);
-        await (supabase as any)
-          .from("claim_837p_batches")
-          .delete()
-          .eq("organization_id", organizationId)
-          .eq("id", batch!.id);
-        await rollback(updateError);
+
+      // Atomic per-batch write: insert batch row + link rows + flip
+      // claim_status all in a single Postgres transaction. If the RPC
+      // raises, fall through to the JS-side cross-batch rollback so any
+      // earlier per-payer batches in this same request get undone.
+      const { data: rpcData, error: rpcError } = await (supabase as any).rpc(
+        "create_837p_batch_atomic",
+        {
+          p_organization_id: organizationId,
+          p_claim_ids: ids,
+          p_batch_number: number,
+          p_payer_profile_id: payerProfileId,
+        },
+      );
+      if (rpcError) {
+        await rollback(rpcError);
+      }
+      const result = (rpcData ?? {}) as {
+        batch_id?: string;
+        batch_number?: string;
+        claim_count?: number;
+        total_charge_amount?: number | string;
+      };
+      if (!result.batch_id) {
+        await rollback(new Error("Batch creation returned no batch id"));
       }
 
       created.push({
         payerProfileId,
-        batchId: batch!.id,
-        batchNumber: batch!.batch_number,
-        claimCount: rows.length,
+        batchId: result.batch_id!,
+        batchNumber: result.batch_number ?? number,
+        claimCount: result.claim_count ?? rows.length,
         totalChargeAmount,
         claimIds: ids,
       });
@@ -364,6 +344,14 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Ready-to-Generate bulk-batch error:", error);
+    // Map RPC validation errors to friendly status codes when possible.
+    const err = error as { code?: string; message?: string };
+    if (err?.code === "P0002") {
+      return NextResponse.json({ success: false, error: err.message ?? "Not found" }, { status: 404 });
+    }
+    if (err?.code === "22023") {
+      return NextResponse.json({ success: false, error: err.message ?? "Validation failed" }, { status: 422 });
+    }
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Bulk batch failed" },
       { status: 500 },

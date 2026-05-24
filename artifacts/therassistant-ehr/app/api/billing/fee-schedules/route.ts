@@ -192,6 +192,19 @@ export async function GET(request: Request) {
   }
 }
 
+interface BulkRowInput {
+  procedureCode?: string;
+  modifiers?: string[] | string;
+  placeOfService?: string | null;
+  allowedAmount?: number | string;
+  billedRate?: number | string | null;
+  effectiveDate?: string | null;
+  expirationDate?: string | null;
+  scheduleName?: string;
+  notes?: string | null;
+  payerContractId?: string | null;
+}
+
 interface PostBody {
   organizationId?: string;
   payerContractId?: string | null;
@@ -204,9 +217,15 @@ interface PostBody {
   effectiveDate?: string | null;
   expirationDate?: string | null;
   notes?: string | null;
-  // bulk
+  // bulk (CSV form)
   csv?: string;
   defaultContractId?: string | null;
+  // bulk (structured form — used after PDF/XLSX extraction preview)
+  rows?: BulkRowInput[];
+  defaultScheduleName?: string;
+  defaultEffectiveDate?: string | null;
+  defaultExpirationDate?: string | null;
+  source?: string;
 }
 
 function parseModifiers(input: unknown): string[] {
@@ -267,6 +286,93 @@ export async function POST(request: Request) {
         { success: false, error: "Database not available" },
         { status: 500 },
       );
+    }
+
+    // ── Bulk structured rows (PDF/XLSX extraction preview) ───────────
+    if (Array.isArray(body.rows) && body.rows.length > 0) {
+      const defaultContractId = text(body.defaultContractId) || null;
+      const defaultSchedule =
+        text(body.defaultScheduleName) ||
+        `Imported ${new Date().toISOString().slice(0, 10)}`;
+      const defaultEff = text(body.defaultEffectiveDate) || null;
+      const defaultExp = text(body.defaultExpirationDate) || null;
+      const inserts: Array<Record<string, unknown>> = [];
+      const errors: Array<{ line: number; error: string }> = [];
+
+      body.rows.forEach((r, idx) => {
+        const cpt = text(r.procedureCode).toUpperCase();
+        if (!cpt) {
+          errors.push({ line: idx + 1, error: "missing procedureCode" });
+          return;
+        }
+        const allowed = money(r.allowedAmount);
+        if (allowed == null || allowed < 0) {
+          errors.push({ line: idx + 1, error: "invalid allowedAmount" });
+          return;
+        }
+        inserts.push({
+          organization_id: organizationId,
+          payer_contract_id:
+            text(r.payerContractId) || defaultContractId,
+          schedule_name: text(r.scheduleName) || defaultSchedule,
+          procedure_code: cpt,
+          modifiers: parseModifiers(r.modifiers),
+          place_of_service: text(r.placeOfService) || null,
+          allowed_amount: allowed,
+          billed_rate: money(r.billedRate ?? null),
+          effective_date: text(r.effectiveDate) || defaultEff,
+          expiration_date: text(r.expirationDate) || defaultExp,
+          notes: text(r.notes) || null,
+        });
+      });
+
+      if (inserts.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "No valid rows", errors },
+          { status: 400 },
+        );
+      }
+
+      const { data: inserted, error: insErr } = await (supabase as any)
+        .from("fee_schedules")
+        .insert(inserts)
+        .select("id");
+      if (insErr) {
+        return NextResponse.json(
+          { success: false, error: insErr.message, errors },
+          { status: 422 },
+        );
+      }
+
+      await (supabase as any)
+        .from("audit_logs")
+        .insert({
+          organization_id: organizationId,
+          user_id: guard.userId,
+          event_type: "fee_schedule.bulk_import",
+          event_summary: `Bulk-imported ${inserts.length} fee schedule rows${
+            body.source ? ` from ${body.source}` : ""
+          }`,
+          event_metadata: {
+            source: body.source ?? "rows",
+            inserted: ((inserted as any[]) ?? []).length,
+            skipped: errors.length,
+            defaultContractId,
+            defaultSchedule,
+            errors: errors.slice(0, 20),
+          },
+          action: "create",
+          object_type: "fee_schedule",
+          object_id: null,
+        })
+        .then(() => undefined, () => undefined);
+
+      return NextResponse.json({
+        success: true,
+        inserted: ((inserted as any[]) ?? []).length,
+        skipped: errors.length,
+        errors,
+      });
     }
 
     // ── Bulk CSV ─────────────────────────────────────────────────────

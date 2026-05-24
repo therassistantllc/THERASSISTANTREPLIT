@@ -43,6 +43,15 @@ interface Payload {
   contracts?: ContractOption[];
 }
 
+interface ExtractedDraftRow {
+  procedureCode: string;
+  modifiers: string;
+  placeOfService: string;
+  allowedAmount: string;
+  billedRate: string;
+  notes: string;
+}
+
 interface Draft {
   payerContractId: string;
   scheduleName: string;
@@ -153,7 +162,15 @@ export default function FeeSchedulesClient() {
   const [showBulk, setShowBulk] = useState(false);
   const [csv, setCsv] = useState("");
   const [bulkContract, setBulkContract] = useState("");
+  const [bulkScheduleName, setBulkScheduleName] = useState("");
+  const [bulkEffective, setBulkEffective] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [extractBusy, setExtractBusy] = useState(false);
+  const [extractedRows, setExtractedRows] = useState<ExtractedDraftRow[]>([]);
+  const [extractMeta, setExtractMeta] = useState<{
+    filename: string;
+    kind: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -269,6 +286,145 @@ export default function FeeSchedulesClient() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to archive");
+    }
+  }
+
+  async function handleExtractFile(file: File) {
+    setExtractBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(
+        `/api/billing/fee-schedules/extract?organizationId=${encodeURIComponent(organizationId)}`,
+        { method: "POST", body: fd },
+      );
+      const json = (await res.json().catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+        kind?: string;
+        filename?: string;
+        rows?: Array<{
+          procedureCode: string;
+          modifiers: string[];
+          placeOfService: string | null;
+          allowedAmount: number;
+          billedRate: number | null;
+          notes: string | null;
+        }>;
+      } | null;
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error ?? `Extract failed (${res.status})`);
+      }
+      const drafts: ExtractedDraftRow[] = (json.rows ?? []).map((r) => ({
+        procedureCode: r.procedureCode,
+        modifiers: r.modifiers.join(", "),
+        placeOfService: r.placeOfService ?? "",
+        allowedAmount: r.allowedAmount.toFixed(2),
+        billedRate: r.billedRate == null ? "" : r.billedRate.toFixed(2),
+        notes: r.notes ?? "",
+      }));
+      setExtractedRows(drafts);
+      setExtractMeta({
+        filename: json.filename ?? file.name,
+        kind: json.kind ?? "unknown",
+      });
+      if (drafts.length === 0) {
+        setError(
+          "No CPT/allowed rate rows found. The file may be a scanned image or use an unusual layout — try the CSV importer.",
+        );
+      } else {
+        setMessage(
+          `Extracted ${drafts.length} rows from ${json.filename ?? file.name}. Review and edit before committing.`,
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Extract failed");
+    } finally {
+      setExtractBusy(false);
+    }
+  }
+
+  function updateExtracted(
+    idx: number,
+    patch: Partial<ExtractedDraftRow>,
+  ) {
+    setExtractedRows((prev) =>
+      prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)),
+    );
+  }
+
+  function removeExtracted(idx: number) {
+    setExtractedRows((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function clearExtracted() {
+    setExtractedRows([]);
+    setExtractMeta(null);
+  }
+
+  async function commitExtracted() {
+    if (extractedRows.length === 0) {
+      setError("Nothing to commit");
+      return;
+    }
+    setBulkBusy(true);
+    setError(null);
+    try {
+      const payloadRows = extractedRows.map((r) => ({
+        procedureCode: r.procedureCode.trim(),
+        modifiers: r.modifiers,
+        placeOfService: r.placeOfService.trim() || null,
+        allowedAmount: r.allowedAmount,
+        billedRate: r.billedRate.trim() === "" ? null : r.billedRate,
+        notes: r.notes.trim() || null,
+      }));
+      const res = await fetch("/api/billing/fee-schedules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          rows: payloadRows,
+          defaultContractId: bulkContract || null,
+          defaultScheduleName: bulkScheduleName.trim() || undefined,
+          defaultEffectiveDate: bulkEffective || null,
+          source: extractMeta
+            ? `${extractMeta.kind}:${extractMeta.filename}`
+            : "preview-grid",
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+        inserted?: number;
+        skipped?: number;
+        errors?: Array<{ line: number; error: string }>;
+      } | null;
+      if (!res.ok || !json?.success) {
+        const detail =
+          json?.errors && json.errors.length > 0
+            ? ` (${json.errors
+                .slice(0, 3)
+                .map((e) => `row ${e.line}: ${e.error}`)
+                .join("; ")})`
+            : "";
+        throw new Error(
+          (json?.error ?? `Import failed (${res.status})`) + detail,
+        );
+      }
+      setMessage(
+        `Imported ${json.inserted ?? 0} rows${
+          json.skipped ? ` (${json.skipped} skipped)` : ""
+        }`,
+      );
+      clearExtracted();
+      setShowBulk(false);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Commit failed");
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -425,16 +581,311 @@ export default function FeeSchedulesClient() {
             background: "#F9FAFB",
           }}
         >
-          <h3 style={{ margin: "0 0 8px", fontSize: 15 }}>Bulk import CSV</h3>
+          <h3 style={{ margin: "0 0 8px", fontSize: 15 }}>Bulk import</h3>
           <p style={{ margin: "0 0 12px", fontSize: 12, color: "#4B5563" }}>
-            Paste a CSV with a header row. Required columns:{" "}
-            <code>cpt</code>, <code>allowed_amount</code>. Optional:{" "}
-            <code>modifiers</code> (space- or comma-separated),{" "}
-            <code>place_of_service</code>, <code>schedule_name</code>,{" "}
-            <code>contract_id</code>, <code>effective_date</code>,{" "}
-            <code>expiration_date</code>, <code>billed_rate</code>,{" "}
-            <code>notes</code>.
+            Upload a payer contract <strong>PDF</strong> or{" "}
+            <strong>Excel (.xlsx)</strong> fee schedule and we'll extract
+            CPT + allowed-rate rows for you to review before committing.
+            Or paste CSV with a header row — required columns:{" "}
+            <code>cpt</code>, <code>allowed_amount</code>.
           </p>
+
+          <div
+            style={{
+              border: "1px dashed #CBD5E1",
+              borderRadius: 6,
+              padding: 12,
+              marginBottom: 16,
+              background: "white",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <label
+              style={{
+                ...subtleButton,
+                display: "inline-block",
+                cursor: extractBusy ? "wait" : "pointer",
+                opacity: extractBusy ? 0.6 : 1,
+              }}
+            >
+              {extractBusy ? "Extracting…" : "Upload PDF or XLSX"}
+              <input
+                type="file"
+                accept=".pdf,.xlsx,.xls,.xlsm,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) void handleExtractFile(f);
+                }}
+                disabled={extractBusy}
+                style={{ display: "none" }}
+              />
+            </label>
+            {extractMeta ? (
+              <span style={{ fontSize: 12, color: "#4B5563" }}>
+                Loaded <strong>{extractMeta.filename}</strong> (
+                {extractMeta.kind.toUpperCase()}) — {extractedRows.length} rows
+                {extractedRows.length > 0 ? " ready to commit" : ""}
+              </span>
+            ) : (
+              <span style={{ fontSize: 12, color: "#6B7280" }}>
+                We look for CPT/HCPCS codes paired with dollar amounts.
+                Scanned (image-only) PDFs can't be parsed.
+              </span>
+            )}
+          </div>
+
+          {extractedRows.length > 0 ? (
+            <div
+              style={{
+                marginBottom: 16,
+                border: "1px solid #E5E7EB",
+                borderRadius: 6,
+                background: "white",
+              }}
+            >
+              <div
+                style={{
+                  padding: "8px 12px",
+                  borderBottom: "1px solid #E5E7EB",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: "#F3F4F6",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                <span>Preview — extracted rows ({extractedRows.length})</span>
+                <button
+                  type="button"
+                  style={{ ...subtleButton, padding: "4px 10px" }}
+                  onClick={clearExtracted}
+                  disabled={bulkBusy}
+                >
+                  Clear
+                </button>
+              </div>
+              <div
+                style={{
+                  maxHeight: 360,
+                  overflow: "auto",
+                }}
+              >
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: 12,
+                  }}
+                >
+                  <thead
+                    style={{
+                      background: "#F9FAFB",
+                      position: "sticky",
+                      top: 0,
+                    }}
+                  >
+                    <tr>
+                      <th style={{ padding: "6px 8px", textAlign: "left" }}>
+                        CPT *
+                      </th>
+                      <th style={{ padding: "6px 8px", textAlign: "left" }}>
+                        Modifiers
+                      </th>
+                      <th style={{ padding: "6px 8px", textAlign: "left" }}>
+                        POS
+                      </th>
+                      <th style={{ padding: "6px 8px", textAlign: "right" }}>
+                        Allowed *
+                      </th>
+                      <th style={{ padding: "6px 8px", textAlign: "right" }}>
+                        Billed
+                      </th>
+                      <th style={{ padding: "6px 8px", textAlign: "left" }}>
+                        Notes
+                      </th>
+                      <th style={{ padding: "6px 8px" }} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {extractedRows.map((r, idx) => (
+                      <tr
+                        key={idx}
+                        style={{ borderTop: "1px solid #E5E7EB" }}
+                      >
+                        <td style={{ padding: "4px 8px" }}>
+                          <input
+                            value={r.procedureCode}
+                            onChange={(e) =>
+                              updateExtracted(idx, {
+                                procedureCode: e.target.value.toUpperCase(),
+                              })
+                            }
+                            style={{
+                              ...inputStyle,
+                              padding: 4,
+                              fontFamily: "ui-monospace, monospace",
+                              fontWeight: 600,
+                              width: 80,
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: "4px 8px" }}>
+                          <input
+                            value={r.modifiers}
+                            onChange={(e) =>
+                              updateExtracted(idx, {
+                                modifiers: e.target.value.toUpperCase(),
+                              })
+                            }
+                            placeholder="95, HJ"
+                            style={{ ...inputStyle, padding: 4, width: 100 }}
+                          />
+                        </td>
+                        <td style={{ padding: "4px 8px" }}>
+                          <input
+                            value={r.placeOfService}
+                            onChange={(e) =>
+                              updateExtracted(idx, {
+                                placeOfService: e.target.value,
+                              })
+                            }
+                            placeholder="11"
+                            style={{ ...inputStyle, padding: 4, width: 60 }}
+                          />
+                        </td>
+                        <td
+                          style={{ padding: "4px 8px", textAlign: "right" }}
+                        >
+                          <input
+                            value={r.allowedAmount}
+                            onChange={(e) =>
+                              updateExtracted(idx, {
+                                allowedAmount: e.target.value,
+                              })
+                            }
+                            inputMode="decimal"
+                            style={{
+                              ...inputStyle,
+                              padding: 4,
+                              width: 90,
+                              textAlign: "right",
+                            }}
+                          />
+                        </td>
+                        <td
+                          style={{ padding: "4px 8px", textAlign: "right" }}
+                        >
+                          <input
+                            value={r.billedRate}
+                            onChange={(e) =>
+                              updateExtracted(idx, {
+                                billedRate: e.target.value,
+                              })
+                            }
+                            inputMode="decimal"
+                            style={{
+                              ...inputStyle,
+                              padding: 4,
+                              width: 90,
+                              textAlign: "right",
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: "4px 8px" }}>
+                          <input
+                            value={r.notes}
+                            onChange={(e) =>
+                              updateExtracted(idx, { notes: e.target.value })
+                            }
+                            style={{ ...inputStyle, padding: 4 }}
+                          />
+                        </td>
+                        <td
+                          style={{ padding: "4px 8px", textAlign: "right" }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => removeExtracted(idx)}
+                            style={{
+                              ...subtleButton,
+                              padding: "2px 8px",
+                              borderColor: "#FCA5A5",
+                              color: "#B91C1C",
+                            }}
+                            title="Remove row"
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div
+                style={{
+                  padding: 12,
+                  borderTop: "1px solid #E5E7EB",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr auto",
+                  gap: 12,
+                  alignItems: "end",
+                  background: "#F9FAFB",
+                }}
+              >
+                <Field label="Payer contract to attach">
+                  <select
+                    value={bulkContract}
+                    onChange={(e) => setBulkContract(e.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">— No contract —</option>
+                    {contracts.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.payerName ? `${c.payerName} — ` : ""}
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Schedule label">
+                  <input
+                    value={bulkScheduleName}
+                    onChange={(e) => setBulkScheduleName(e.target.value)}
+                    placeholder={
+                      extractMeta
+                        ? extractMeta.filename
+                        : "2026 commercial schedule"
+                    }
+                    style={inputStyle}
+                  />
+                </Field>
+                <Field label="Effective date">
+                  <input
+                    type="date"
+                    value={bulkEffective}
+                    onChange={(e) => setBulkEffective(e.target.value)}
+                    style={inputStyle}
+                  />
+                </Field>
+                <button
+                  type="button"
+                  style={buttonStyle}
+                  onClick={commitExtracted}
+                  disabled={bulkBusy || extractedRows.length === 0}
+                >
+                  {bulkBusy
+                    ? "Committing…"
+                    : `Commit ${extractedRows.length} rows`}
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div
             style={{
               display: "grid",

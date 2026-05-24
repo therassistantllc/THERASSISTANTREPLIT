@@ -16,6 +16,9 @@ import {
   type EligibilityIssueRow,
   type EligibilityIssueType,
 } from "@/lib/eligibility/eligibilityIssuesService";
+import UpdateInsuranceDrawer, {
+  type InsuranceUpdate,
+} from "./UpdateInsuranceDrawer";
 
 type ListPayload = {
   success: boolean;
@@ -104,6 +107,7 @@ export default function EligibilityIssuesClient() {
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [insuranceEditRow, setInsuranceEditRow] = useState<EligibilityIssueRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -443,9 +447,35 @@ export default function EligibilityIssuesClient() {
   );
 
   const updateInsurance = useCallback((row: EligibilityIssueRow) => {
-    if (typeof window === "undefined") return;
-    window.open(`/clients/${row.clientId}?tab=insurance`, "_blank");
+    setInsuranceEditRow(row);
   }, []);
+
+  const handleInsuranceSaved = useCallback(
+    (row: EligibilityIssueRow, update: InsuranceUpdate) => {
+      // Refresh the row in-place so the biller sees the new payer / member ID
+      // / coverage window without losing their tab + filter state.
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === row.id
+            ? {
+                ...r,
+                payerId: update.payerId,
+                payerName: update.payerName,
+                memberId: update.policyNumber,
+                effectiveDate: update.effectiveDate,
+                terminationDate: update.terminationDate,
+              }
+            : r,
+        ),
+      );
+      setToast(
+        update.eligibilityRefreshSuggested
+          ? "Insurance updated — run eligibility to refresh"
+          : "Insurance updated",
+      );
+    },
+    [],
+  );
 
   const rowActions: RowAction<EligibilityIssueRow>[] = useMemo(
     () => [
@@ -679,6 +709,16 @@ export default function EligibilityIssuesClient() {
       />
 
       {toast ? <Toast message={toast} onClose={() => setToast(null)} /> : null}
+
+      {insuranceEditRow ? (
+        <UpdateInsuranceDrawer
+          row={insuranceEditRow}
+          organizationId={organizationId}
+          onClose={() => setInsuranceEditRow(null)}
+          onSaved={handleInsuranceSaved}
+          onRunEligibility={runEligibility}
+        />
+      ) : null}
     </>
   );
 }

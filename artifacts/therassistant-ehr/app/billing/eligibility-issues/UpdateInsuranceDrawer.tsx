@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { EligibilityIssueRow } from "@/lib/eligibility/eligibilityIssuesService";
+import type { EligibilityIssueRow } from "@/lib/eligibility/eligibilityIssuesTypes";
 
 type PayerOption = {
   id: string;

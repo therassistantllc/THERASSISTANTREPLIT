@@ -15,7 +15,7 @@ import {
   ELIGIBILITY_ISSUE_TABS,
   type EligibilityIssueRow,
   type EligibilityIssueType,
-} from "@/lib/eligibility/eligibilityIssuesService";
+} from "@/lib/eligibility/eligibilityIssuesTypes";
 import UpdateInsuranceDrawer, {
   type InsuranceUpdate,
 } from "./UpdateInsuranceDrawer";

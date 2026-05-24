@@ -97,7 +97,7 @@ export function buildHomeDashboardPayload(role: string) {
         key: "workqueue",
         label: "Clinical Tasks",
         value: data.workqueueItems.length,
-        href: "/workqueue",
+        href: "/inbox",
       },
       {
         key: "claims",

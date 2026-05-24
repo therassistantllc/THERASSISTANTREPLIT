@@ -1169,12 +1169,10 @@ export default function PatientChartClient({
     .filter((s) => s && s.length > 0)
     .join(" · ");
 
-  const newWorkqueueHref = `/workqueue/new?clientId=${patient.id}${organizationId ? `&organizationId=${organizationId}` : ""}`;
   const railActions: Array<{ key: string; label: string; href: string }> = [
     { key: "elig", label: "Eligibility check", href: `/clients/${patient.id}/eligibility${orgQ}` },
     { key: "pay", label: "Enter payment", href: `/billing/payments${orgQ}` },
     { key: "notes", label: "Notes", href: `/clients/${patient.id}/notes${orgQ}` },
-    { key: "auth", label: "Authorizations", href: newWorkqueueHref },
     { key: "portal", label: "Portal access", href: `/clients/${patient.id}/portal${orgQ}` },
   ];
   const railDisabled: Record<string, boolean> = {};

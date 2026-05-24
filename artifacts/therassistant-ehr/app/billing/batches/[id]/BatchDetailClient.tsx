@@ -235,7 +235,6 @@ export default function BatchDetailClient({ batchId }: { batchId: string }) {
                     {x.actionTaken ? <span className="muted-text">Action: {x.actionTaken}</span> : null}
                   </div>
                   <div>
-                    <Link className="inline-link" href={`/workqueue?claimId=${encodeURIComponent(x.claimId)}`}>Open in workqueue</Link>
                   </div>
                 </div>
               </article>

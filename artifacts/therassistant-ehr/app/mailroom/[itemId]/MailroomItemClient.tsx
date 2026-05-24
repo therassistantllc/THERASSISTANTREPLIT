@@ -192,7 +192,6 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
         </div>
         <div className="hero-actions">
           <Link className="button button-secondary" href="/mailroom">Mailroom</Link>
-          <Link className="button button-secondary" href="/billing/workqueue">Workqueue</Link>
         </div>
       </section>
 

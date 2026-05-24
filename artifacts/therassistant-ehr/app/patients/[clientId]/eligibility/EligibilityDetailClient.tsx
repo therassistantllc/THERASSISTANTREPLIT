@@ -399,7 +399,6 @@ export default function EligibilityDetailClient({ clientId }: { clientId: string
             {isRunningAny ? "Checking…" : "Check eligibility"}
           </button>
           <Link className="button button-secondary" href={`/clients/${clientId}`}>Patient Chart</Link>
-          <Link className="button button-secondary" href={`/workqueue/new?clientId=${clientId}&organizationId=${organizationId}&reason=eligibility_question`}>Route Issue</Link>
         </div>
       </section>
 

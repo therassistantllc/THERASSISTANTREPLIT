@@ -137,9 +137,6 @@ export default function VisitsAppointmentsPage() {
                           Open Note
                         </Link>
                       )}
-                      <Link className="button button-secondary" href={`/workqueue/new?clientId=${clientId}${orgId ? `&organizationId=${orgId}` : ""}`}>
-                        Route
-                      </Link>
                     </div>
                   </td>
                 </tr>

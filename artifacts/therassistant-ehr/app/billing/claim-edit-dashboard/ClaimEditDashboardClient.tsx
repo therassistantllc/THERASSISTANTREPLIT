@@ -94,7 +94,7 @@ export default function ClaimEditDashboardClient() {
         );
       }
       const res = await fetch(
-        `/api/billing/blocked-claims?organizationId=${encodeURIComponent(
+        `/api/billing/rejections?organizationId=${encodeURIComponent(
           organizationId,
         )}`,
         { cache: "no-store" },
@@ -121,7 +121,7 @@ export default function ClaimEditDashboardClient() {
       setRowMessages((prev) => ({ ...prev, [claimId]: "" }));
       try {
         const res = await fetch(
-          `/api/billing/blocked-claims?organizationId=${encodeURIComponent(
+          `/api/billing/rejections?organizationId=${encodeURIComponent(
             organizationId,
           )}&claimId=${encodeURIComponent(claimId)}`,
           { cache: "no-store" },
@@ -192,11 +192,10 @@ export default function ClaimEditDashboardClient() {
       <section className="hero-panel">
         <div>
           <p className="eyebrow">Billing / Workqueue</p>
-          <h1>Claim Edit Dashboard</h1>
+          <h1>Rejections</h1>
           <p className="hero-copy">
-            Every pre-submission claim that the validation engine is currently
-            blocking. Open a fix route to resolve the issue, then press
-            <em> Recheck</em> to re-run validation on that claim.
+            Claims the clearinghouse or payer rejected before adjudication. Fix
+            the issue on the claim, then resubmit on the 837P Batches page.
           </p>
         </div>
         <div className="hero-actions">
@@ -206,10 +205,10 @@ export default function ClaimEditDashboardClient() {
             onClick={() => void load()}
             disabled={loading}
           >
-            {loading ? "Refreshing…" : "Refresh All"}
+            {loading ? "Refreshing…" : "Refresh"}
           </button>
-          <Link className="button button-secondary" href="/billing/claim-readiness">
-            Charge Capture
+          <Link className="button button-secondary" href="/billing/837p-batches">
+            837P Batches
           </Link>
         </div>
       </section>
@@ -218,16 +217,8 @@ export default function ClaimEditDashboardClient() {
 
       <section className="metric-grid">
         <article className="metric-card">
-          <span>Blocked Claims</span>
+          <span>Rejected Claims</span>
           <strong>{loading ? "—" : metrics.blockedClaims}</strong>
-        </article>
-        <article className="metric-card">
-          <span>Total Blocking Findings</span>
-          <strong>{loading ? "—" : metrics.totalBlockingFindings}</strong>
-        </article>
-        <article className="metric-card">
-          <span>Claims Evaluated</span>
-          <strong>{loading ? "—" : metrics.candidatesEvaluated}</strong>
         </article>
         <article className="metric-card">
           <span>Last Refreshed</span>
@@ -240,12 +231,12 @@ export default function ClaimEditDashboardClient() {
       </section>
 
       <section className="panel">
-        <h2>Blocked Claims Workqueue</h2>
-        {loading ? <div className="empty-state">Running validation engine…</div> : null}
+        <h2>Rejected Claims</h2>
+        {loading ? <div className="empty-state">Loading rejections…</div> : null}
         {!loading && items.length === 0 && !error ? (
           <div className="empty-state success-panel">
-            No claims are currently blocked. Every pre-submission claim passes the
-            validation engine.
+            No rejected claims. Everything submitted is currently moving through
+            the payer.
           </div>
         ) : null}
 

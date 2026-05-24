@@ -134,8 +134,7 @@ export default function BillingReportsClient() {
           </p>
         </div>
         <div className="hero-actions">
-          <Link className="button button-secondary" href={`/billing/charge-capture${orgQuery}`}>Charge Capture</Link>
-          <Link className="button" href={`/billing/workqueue${orgQuery}`}>Open Workqueue</Link>
+          <Link className="button button-secondary" href={`/billing/charge-capture${orgQuery}`}>Charges</Link>
         </div>
       </section>
 
@@ -209,9 +208,6 @@ export default function BillingReportsClient() {
                 <p><strong>Items deferred:</strong> {payload.workqueue?.deferred ?? 0}</p>
                 <p><strong>Open now:</strong> {payload.workqueue?.openNow ?? 0}</p>
                 <p><strong>Collections invoices:</strong> {payload.patientResponsibility?.collectionsCount ?? 0}</p>
-              </div>
-              <div className="section-actions">
-                <Link className="button button-secondary" href={`/billing/workqueue${orgQuery}`}>Open Workqueue Dashboard</Link>
               </div>
             </article>
           </section>

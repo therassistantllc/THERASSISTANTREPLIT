@@ -266,12 +266,6 @@ export default function PostedPaymentDetailClient({ compositeId }: { compositeId
                     ) : null}
                     Opened {fmtDate(d.createdAt)}
                     {" · "}
-                    <Link
-                      href={`/billing/workqueue?organizationId=${encodeURIComponent(organizationId)}&itemId=${encodeURIComponent(d.workqueueItemId)}&status=all`}
-                      style={{ color: "#b91c1c", textDecoration: "underline" }}
-                    >
-                      Open workqueue item
-                    </Link>
                   </div>
                 </div>
               ))}

@@ -78,9 +78,6 @@ export default function ClientWorkqueuePage() {
           <p className="eyebrow">Client Chart</p>
           <h2>Workqueue Items</h2>
         </div>
-        <div className="hero-actions">
-          <Link className="button button-secondary" href={`/workqueue${orgQ}`}>All Workqueue</Link>
-        </div>
       </section>
 
       {loading && <div className="empty-state">Loading workqueue…</div>}
@@ -124,9 +121,6 @@ export default function ClientWorkqueuePage() {
                   <td>{item.deferredUntil ? formatDate(item.deferredUntil) : "—"}</td>
                   <td>
                     <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
-                      <Link className="button button-secondary" href={`/workqueue?item=${item.id}${orgId ? `&organizationId=${orgId}` : ""}`}>
-                        Open
-                      </Link>
                       {item.encounterId && (
                         <Link className="inline-link" href={`/encounters/${item.encounterId}${orgQ}`}>
                           Encounter

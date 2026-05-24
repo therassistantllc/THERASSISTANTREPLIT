@@ -40,7 +40,13 @@ const VALID: Action[] = [
   "mark_complete",
 ];
 
+type DbRow = Record<string, any>;
+
 const text = (v: unknown) => String(v ?? "").trim();
+const money = (v: unknown) => {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+};
 
 interface Body {
   organizationId?: string;
@@ -183,6 +189,503 @@ async function mintRefundFromEra(
     claimId: text(era.professional_claim_id) || null,
     reused: false,
   };
+}
+
+// ─── GET — ledger detail for one refund/recoup/era row ─────────────────────
+//
+// Returns the real posted-payment ledger so billers can verify the credit
+// before issuing:
+//   - paymentHistory: every era_posting_ledger_entries, client_payments,
+//     patient_invoice_payments, and payment_refunds row tied to the source
+//     claim (and, for patient credits, the source client_payment).
+//   - creditSource: the originating ERA's CARC/RARC + CAS breakdown plus
+//     any prior refunds linked to the same source payment.
+export interface LedgerEntry {
+  id: string;
+  kind:
+    | "era_posting"
+    | "client_payment"
+    | "patient_invoice_payment"
+    | "refund";
+  postedAt: string | null;
+  amount: number;
+  description: string;
+  status: string | null;
+  reasonCode: string | null;
+  source: string | null;
+}
+
+interface CasAdjustmentRow {
+  groupCode: string;
+  reasonCode: string;
+  amount: number;
+  quantity: number | null;
+}
+
+interface CreditSourcePayload {
+  kind: "era" | "client_payment" | "none";
+  era: {
+    id: string;
+    checkEftNumber: string | null;
+    checkIssueDate: string | null;
+    payerClaimControlNumber: string | null;
+    payerTraceNumber: string | null;
+    totalCharge: number;
+    paymentAmount: number;
+    patientResponsibility: number;
+    allowedAmount: number | null;
+    carcCodes: string[];
+    rarcCodes: string[];
+    casAdjustments: CasAdjustmentRow[];
+  } | null;
+  clientPayment: {
+    id: string;
+    amount: number;
+    postedAt: string | null;
+    method: string | null;
+    referenceNumber: string | null;
+    sourceLabel: string | null;
+  } | null;
+  priorRefunds: Array<{
+    id: string;
+    amount: number;
+    status: string;
+    requestedAt: string | null;
+    issuedAt: string | null;
+    reason: string | null;
+  }>;
+}
+
+function normaliseCas(value: unknown): CasAdjustmentRow[] {
+  if (!Array.isArray(value)) return [];
+  const out: CasAdjustmentRow[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const r = raw as Record<string, unknown>;
+    const group =
+      text(r.group_code) || text(r.groupCode) || text(r.cas01) || "";
+    const reason =
+      text(r.reason_code) || text(r.reasonCode) || text(r.cas02) || "";
+    const amt = Number(r.amount ?? r.cas03 ?? 0);
+    const qty = r.quantity ?? r.cas04;
+    if (!group && !reason && !Number.isFinite(amt)) continue;
+    out.push({
+      groupCode: group,
+      reasonCode: reason,
+      amount: Number.isFinite(amt) ? Math.round(amt * 100) / 100 : 0,
+      quantity:
+        qty === null || qty === undefined || qty === ""
+          ? null
+          : Number.isFinite(Number(qty))
+            ? Number(qty)
+            : null,
+    });
+  }
+  return out;
+}
+
+async function resolveSourceContext(
+  supabase: any,
+  organizationId: string,
+  parsed: ParsedRow,
+): Promise<{
+  claimId: string | null;
+  clientId: string | null;
+  eraId: string | null;
+  clientPaymentId: string | null;
+  selfRefundId: string | null;
+} | null> {
+  if (parsed.kind === "era") {
+    const { data: era } = await supabase
+      .from("era_claim_payments")
+      .select("id, professional_claim_id, client_id")
+      .eq("id", parsed.id)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    if (!era) return null;
+    return {
+      claimId: text(era.professional_claim_id) || null,
+      clientId: text(era.client_id) || null,
+      eraId: text(era.id),
+      clientPaymentId: null,
+      selfRefundId: null,
+    };
+  }
+  if (parsed.kind === "recoup") {
+    const { data: rec } = await supabase
+      .from("payment_recoupments")
+      .select(
+        "id, professional_claim_id, client_id, source_era_claim_payment_id, source_client_payment_id",
+      )
+      .eq("id", parsed.id)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    if (!rec) return null;
+    return {
+      claimId: text(rec.professional_claim_id) || null,
+      clientId: text(rec.client_id) || null,
+      eraId: text(rec.source_era_claim_payment_id) || null,
+      clientPaymentId: text(rec.source_client_payment_id) || null,
+      selfRefundId: null,
+    };
+  }
+  // refund
+  const { data: refund } = await supabase
+    .from("payment_refunds")
+    .select(
+      "id, professional_claim_id, client_id, source_era_claim_payment_id, source_client_payment_id",
+    )
+    .eq("id", parsed.id)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (!refund) return null;
+  return {
+    claimId: text(refund.professional_claim_id) || null,
+    clientId: text(refund.client_id) || null,
+    eraId: text(refund.source_era_claim_payment_id) || null,
+    clientPaymentId: text(refund.source_client_payment_id) || null,
+    selfRefundId: text(refund.id),
+  };
+}
+
+export async function GET(
+  request: Request,
+  ctx: { params: Promise<{ rowId: string }> },
+) {
+  try {
+    const { rowId: rawRowId } = await ctx.params;
+    const rowId = decodeURIComponent(rawRowId);
+    const { searchParams } = new URL(request.url);
+    const guard = await requireBillingAccess({
+      requestedOrganizationId: searchParams.get("organizationId"),
+    });
+    if (guard instanceof NextResponse) return guard;
+    const organizationId = guard.organizationId;
+
+    const parsed = parseRowId(rowId);
+    if (!parsed) {
+      return NextResponse.json(
+        { success: false, error: "Invalid row id" },
+        { status: 400 },
+      );
+    }
+
+    const supabase = createServerSupabaseAdminClient();
+    if (!supabase) {
+      return NextResponse.json(
+        { success: false, error: "Database not available" },
+        { status: 500 },
+      );
+    }
+
+    const ctxIds = await resolveSourceContext(
+      supabase as any,
+      organizationId,
+      parsed,
+    );
+    if (!ctxIds) {
+      return NextResponse.json(
+        { success: false, error: "Row not found" },
+        { status: 404 },
+      );
+    }
+
+    // ── Payment history (real ledger rows) ───────────────────────────────
+    const eraEntriesP =
+      ctxIds.claimId || ctxIds.eraId
+        ? (supabase as any)
+            .from("era_posting_ledger_entries")
+            .select(
+              "id, entry_type, amount, posted_at, description, reason_code, group_code, source_segment, source_type, era_claim_payment_id, professional_claim_id",
+            )
+            .eq("organization_id", organizationId)
+            .is("archived_at", null)
+            .or(
+              [
+                ctxIds.claimId
+                  ? `professional_claim_id.eq.${ctxIds.claimId}`
+                  : null,
+                ctxIds.eraId
+                  ? `era_claim_payment_id.eq.${ctxIds.eraId}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(","),
+            )
+            .order("posted_at", { ascending: false })
+            .limit(500)
+        : Promise.resolve({ data: [] as DbRow[] });
+
+    const clientPaymentsP = ctxIds.claimId
+      ? (supabase as any)
+          .from("client_payments")
+          .select(
+            "id, amount, posted_at, payment_method, posting_status, reference_number, source_label, note, claim_id",
+          )
+          .eq("organization_id", organizationId)
+          .eq("claim_id", ctxIds.claimId)
+          .is("archived_at", null)
+          .order("posted_at", { ascending: false })
+          .limit(200)
+      : Promise.resolve({ data: [] as DbRow[] });
+
+    // patient_invoice_payments link to invoices, not directly to a claim.
+    // Pull the invoices for this claim first, then their payments.
+    const invoicesP = ctxIds.claimId
+      ? (supabase as any)
+          .from("patient_invoices")
+          .select("id, invoice_number")
+          .eq("organization_id", organizationId)
+          .eq("professional_claim_id", ctxIds.claimId)
+          .is("archived_at", null)
+      : Promise.resolve({ data: [] as DbRow[] });
+
+    const refundsForClaimP = ctxIds.claimId
+      ? (supabase as any)
+          .from("payment_refunds")
+          .select(
+            "id, amount, refund_status, refund_type, requested_at, issued_at, reason, note, source_era_claim_payment_id, source_client_payment_id",
+          )
+          .eq("organization_id", organizationId)
+          .eq("professional_claim_id", ctxIds.claimId)
+          .is("archived_at", null)
+          .order("requested_at", { ascending: false })
+          .limit(200)
+      : Promise.resolve({ data: [] as DbRow[] });
+
+    const eraSourceP = ctxIds.eraId
+      ? (supabase as any)
+          .from("era_claim_payments")
+          .select(
+            "id, check_eft_number, check_issue_date, payer_claim_control_number, payer_trace_number, clp03_total_charge, clp04_payment_amount, clp05_patient_responsibility, allowed_amount, carc_codes, rarc_codes, cas_adjustments",
+          )
+          .eq("id", ctxIds.eraId)
+          .eq("organization_id", organizationId)
+          .maybeSingle()
+      : Promise.resolve({ data: null });
+
+    const clientPaymentSourceP = ctxIds.clientPaymentId
+      ? (supabase as any)
+          .from("client_payments")
+          .select(
+            "id, amount, posted_at, payment_method, reference_number, source_label",
+          )
+          .eq("id", ctxIds.clientPaymentId)
+          .eq("organization_id", organizationId)
+          .maybeSingle()
+      : Promise.resolve({ data: null });
+
+    const [
+      { data: eraEntries },
+      { data: claimClientPayments },
+      { data: invoices },
+      { data: refundRows },
+      { data: eraSource },
+      { data: clientPaymentSource },
+    ] = await Promise.all([
+      eraEntriesP,
+      clientPaymentsP,
+      invoicesP,
+      refundsForClaimP,
+      eraSourceP,
+      clientPaymentSourceP,
+    ]);
+
+    const invoiceIds = ((invoices as DbRow[]) ?? [])
+      .map((i) => text(i.id))
+      .filter(Boolean);
+    const invoiceNumberById = new Map<string, string>(
+      ((invoices as DbRow[]) ?? []).map((i) => [
+        text(i.id),
+        text(i.invoice_number) || "",
+      ]),
+    );
+
+    const { data: invoicePayments } = invoiceIds.length
+      ? await (supabase as any)
+          .from("patient_invoice_payments")
+          .select(
+            "id, amount, paid_at, payment_method, payment_status, memo, patient_invoice_id",
+          )
+          .eq("organization_id", organizationId)
+          .in("patient_invoice_id", invoiceIds)
+          .is("archived_at", null)
+          .order("paid_at", { ascending: false })
+          .limit(200)
+      : { data: [] as DbRow[] };
+
+    const ledger: LedgerEntry[] = [];
+
+    for (const e of (eraEntries as DbRow[]) ?? []) {
+      const segment = text(e.source_segment);
+      const grp = text(e.group_code);
+      const reason = text(e.reason_code);
+      const parts = [
+        text(e.entry_type) || "ERA entry",
+        segment ? `(${segment})` : "",
+        grp && reason ? `${grp}/${reason}` : grp || reason,
+        text(e.description),
+      ].filter(Boolean);
+      ledger.push({
+        id: `era_entry:${text(e.id)}`,
+        kind: "era_posting",
+        postedAt: text(e.posted_at) || null,
+        amount: money(e.amount),
+        description: parts.join(" · ") || "ERA ledger entry",
+        status: "posted",
+        reasonCode: reason || grp || null,
+        source: text(e.source_type) || "era",
+      });
+    }
+    for (const p of (claimClientPayments as DbRow[]) ?? []) {
+      const bits = [
+        text(p.payment_method) || "client payment",
+        text(p.source_label),
+        text(p.reference_number) ? `ref ${text(p.reference_number)}` : "",
+      ].filter(Boolean);
+      ledger.push({
+        id: `client_payment:${text(p.id)}`,
+        kind: "client_payment",
+        postedAt: text(p.posted_at) || null,
+        amount: money(p.amount),
+        description: bits.join(" · "),
+        status: text(p.posting_status) || null,
+        reasonCode: null,
+        source: text(p.source_label) || text(p.payment_method) || null,
+      });
+    }
+    for (const p of (invoicePayments as DbRow[]) ?? []) {
+      const invNum = invoiceNumberById.get(text(p.patient_invoice_id)) || "";
+      const bits = [
+        text(p.payment_method) || "patient payment",
+        invNum ? `invoice ${invNum}` : "",
+        text(p.memo),
+      ].filter(Boolean);
+      ledger.push({
+        id: `invoice_payment:${text(p.id)}`,
+        kind: "patient_invoice_payment",
+        postedAt: text(p.paid_at) || null,
+        amount: money(p.amount),
+        description: bits.join(" · "),
+        status: text(p.payment_status) || null,
+        reasonCode: null,
+        source: "patient invoice",
+      });
+    }
+    for (const r of (refundRows as DbRow[]) ?? []) {
+      ledger.push({
+        id: `refund:${text(r.id)}`,
+        kind: "refund",
+        postedAt: text(r.issued_at) || text(r.requested_at) || null,
+        // Refunds reduce the credit on the claim — render as a negative
+        // so the ledger totals correctly without callers having to know
+        // the row kind.
+        amount: -money(r.amount),
+        description:
+          (text(r.refund_type) === "patient"
+            ? "Patient refund"
+            : "Payer refund") +
+          (text(r.reason) ? ` · ${text(r.reason)}` : ""),
+        status: text(r.refund_status) || null,
+        reasonCode: null,
+        source: text(r.refund_type) || "refund",
+      });
+    }
+
+    ledger.sort((a, b) => {
+      const at = a.postedAt ? Date.parse(a.postedAt) : 0;
+      const bt = b.postedAt ? Date.parse(b.postedAt) : 0;
+      return bt - at;
+    });
+
+    // ── Credit source ────────────────────────────────────────────────────
+    const priorRefunds = ((refundRows as DbRow[]) ?? [])
+      .filter((r) => {
+        if (ctxIds.selfRefundId && text(r.id) === ctxIds.selfRefundId) {
+          return false;
+        }
+        if (
+          ctxIds.eraId &&
+          text(r.source_era_claim_payment_id) === ctxIds.eraId
+        ) {
+          return true;
+        }
+        if (
+          ctxIds.clientPaymentId &&
+          text(r.source_client_payment_id) === ctxIds.clientPaymentId
+        ) {
+          return true;
+        }
+        return false;
+      })
+      .map((r) => ({
+        id: text(r.id),
+        amount: money(r.amount),
+        status: text(r.refund_status) || "pending",
+        requestedAt: text(r.requested_at) || null,
+        issuedAt: text(r.issued_at) || null,
+        reason: text(r.reason) || text(r.note) || null,
+      }));
+
+    const creditSource: CreditSourcePayload = {
+      kind: eraSource ? "era" : clientPaymentSource ? "client_payment" : "none",
+      era: eraSource
+        ? {
+            id: text((eraSource as any).id),
+            checkEftNumber: text((eraSource as any).check_eft_number) || null,
+            checkIssueDate: text((eraSource as any).check_issue_date) || null,
+            payerClaimControlNumber:
+              text((eraSource as any).payer_claim_control_number) || null,
+            payerTraceNumber:
+              text((eraSource as any).payer_trace_number) || null,
+            totalCharge: money((eraSource as any).clp03_total_charge),
+            paymentAmount: money((eraSource as any).clp04_payment_amount),
+            patientResponsibility: money(
+              (eraSource as any).clp05_patient_responsibility,
+            ),
+            allowedAmount:
+              (eraSource as any).allowed_amount == null
+                ? null
+                : money((eraSource as any).allowed_amount),
+            carcCodes: Array.isArray((eraSource as any).carc_codes)
+              ? (eraSource as any).carc_codes
+              : [],
+            rarcCodes: Array.isArray((eraSource as any).rarc_codes)
+              ? (eraSource as any).rarc_codes
+              : [],
+            casAdjustments: normaliseCas((eraSource as any).cas_adjustments),
+          }
+        : null,
+      clientPayment: clientPaymentSource
+        ? {
+            id: text((clientPaymentSource as any).id),
+            amount: money((clientPaymentSource as any).amount),
+            postedAt: text((clientPaymentSource as any).posted_at) || null,
+            method: text((clientPaymentSource as any).payment_method) || null,
+            referenceNumber:
+              text((clientPaymentSource as any).reference_number) || null,
+            sourceLabel:
+              text((clientPaymentSource as any).source_label) || null,
+          }
+        : null,
+      priorRefunds,
+    };
+
+    return NextResponse.json({
+      success: true,
+      claimId: ctxIds.claimId,
+      paymentHistory: ledger,
+      creditSource,
+    });
+  } catch (e) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: e instanceof Error ? e.message : "Failed to load detail",
+      },
+      { status: 500 },
+    );
+  }
 }
 
 export async function POST(

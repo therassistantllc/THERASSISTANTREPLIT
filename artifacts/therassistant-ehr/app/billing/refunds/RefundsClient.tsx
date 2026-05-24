@@ -73,6 +73,67 @@ interface ListPayload {
   facets?: Facets;
 }
 
+interface LedgerEntry {
+  id: string;
+  kind:
+    | "era_posting"
+    | "client_payment"
+    | "patient_invoice_payment"
+    | "refund";
+  postedAt: string | null;
+  amount: number;
+  description: string;
+  status: string | null;
+  reasonCode: string | null;
+  source: string | null;
+}
+
+interface CreditSource {
+  kind: "era" | "client_payment" | "none";
+  era: {
+    id: string;
+    checkEftNumber: string | null;
+    checkIssueDate: string | null;
+    payerClaimControlNumber: string | null;
+    payerTraceNumber: string | null;
+    totalCharge: number;
+    paymentAmount: number;
+    patientResponsibility: number;
+    allowedAmount: number | null;
+    carcCodes: string[];
+    rarcCodes: string[];
+    casAdjustments: Array<{
+      groupCode: string;
+      reasonCode: string;
+      amount: number;
+      quantity: number | null;
+    }>;
+  } | null;
+  clientPayment: {
+    id: string;
+    amount: number;
+    postedAt: string | null;
+    method: string | null;
+    referenceNumber: string | null;
+    sourceLabel: string | null;
+  } | null;
+  priorRefunds: Array<{
+    id: string;
+    amount: number;
+    status: string;
+    requestedAt: string | null;
+    issuedAt: string | null;
+    reason: string | null;
+  }>;
+}
+
+interface DetailPayload {
+  success: boolean;
+  error?: string;
+  paymentHistory?: LedgerEntry[];
+  creditSource?: CreditSource;
+}
+
 type ActionId =
   | "approve_refund"
   | "issue_refund"
@@ -324,6 +385,9 @@ export default function RefundsClient() {
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
+  const [detailData, setDetailData] = useState<DetailPayload | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const queryString = useMemo(
     () => buildQuery(organizationId, filterValues),
@@ -354,6 +418,43 @@ export default function RefundsClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // ── Detail fetch (ledger + credit source) ──────────────────────────────
+  useEffect(() => {
+    if (!selectedRowId || !organizationId) {
+      setDetailData(null);
+      setDetailError(null);
+      setDetailLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setDetailLoading(true);
+    setDetailError(null);
+    setDetailData(null);
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/billing/refunds/${encodeURIComponent(
+            selectedRowId,
+          )}?organizationId=${encodeURIComponent(organizationId)}`,
+          { cache: "no-store", signal: controller.signal },
+        );
+        const json = (await res.json()) as DetailPayload;
+        if (!res.ok || !json.success) {
+          throw new Error(json.error ?? "Failed to load detail");
+        }
+        setDetailData(json);
+      } catch (e) {
+        if ((e as { name?: string })?.name === "AbortError") return;
+        setDetailError(
+          e instanceof Error ? e.message : "Failed to load detail",
+        );
+      } finally {
+        setDetailLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [selectedRowId, organizationId]);
 
   // ── Tabs ───────────────────────────────────────────────────────────────
   const tabCounts = useMemo(() => {
@@ -706,18 +807,26 @@ export default function RefundsClient() {
           return (
             <div style={{ fontSize: 13, color: "#0F172A" }}>
               <SectionTitle>Payment history</SectionTitle>
-              <KV label="Original posted payment" value={
-                selectedRow.eraClaimPaymentId
-                  ? shortId(selectedRow.eraClaimPaymentId)
-                  : "—"
-              } />
-              <KV label="Claim" value={selectedRow.claimNumber ?? shortId(selectedRow.professionalClaimId)} />
-              <KV label="Service date" value={formatDate(selectedRow.serviceDate)} />
-              <KV label="Payer" value={selectedRow.payerType === "payer" ? selectedRow.payerOrPatient : "—"} />
-              <KV label="Patient" value={selectedRow.clientName} />
-              <KV label="Requested at" value={formatDate(selectedRow.requestedAt)} />
-              <KV label="Issued at" value={formatDate(selectedRow.issuedAt)} />
-              <KV label="Age (days)" value={String(selectedRow.ageDays)} />
+              <KV
+                label="Claim"
+                value={
+                  selectedRow.claimNumber ??
+                  shortId(selectedRow.professionalClaimId)
+                }
+              />
+              <KV
+                label="Service date"
+                value={formatDate(selectedRow.serviceDate)}
+              />
+              <KV
+                label="Patient"
+                value={selectedRow.clientName}
+              />
+              <PaymentLedger
+                loading={detailLoading}
+                error={detailError}
+                entries={detailData?.paymentHistory ?? []}
+              />
             </div>
           );
         },
@@ -737,20 +846,19 @@ export default function RefundsClient() {
             <div style={{ fontSize: 13 }}>
               <SectionTitle>Credit source</SectionTitle>
               <KV label="Source" value={sourceLabel} />
-              <KV label="Tab" value={statusLabel(selectedRow.tab)} />
-              <KV label="Type" value={selectedRow.payerType === "patient" ? "Patient refund" : "Payer refund"} />
-              {selectedRow.carcCodes.length > 0 ? (
-                <KV label="CARC codes" value={selectedRow.carcCodes.join(", ")} />
-              ) : null}
-              {selectedRow.rarcCodes.length > 0 ? (
-                <KV label="RARC codes" value={selectedRow.rarcCodes.join(", ")} />
-              ) : null}
-              {selectedRow.refundId ? (
-                <KV label="Refund id" value={shortId(selectedRow.refundId)} />
-              ) : null}
-              {selectedRow.recoupmentId ? (
-                <KV label="Recoupment id" value={shortId(selectedRow.recoupmentId)} />
-              ) : null}
+              <KV
+                label="Type"
+                value={
+                  selectedRow.payerType === "patient"
+                    ? "Patient refund"
+                    : "Payer refund"
+                }
+              />
+              <CreditSourceDetail
+                loading={detailLoading}
+                error={detailError}
+                source={detailData?.creditSource ?? null}
+              />
             </div>
           );
         },
@@ -817,7 +925,7 @@ export default function RefundsClient() {
         },
       },
     ],
-    [selectedRow],
+    [selectedRow, detailData, detailLoading, detailError],
   );
 
   // ── Detail panel actions ───────────────────────────────────────────────
@@ -936,6 +1044,375 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     >
       {children}
     </h3>
+  );
+}
+
+function ledgerKindLabel(kind: LedgerEntry["kind"]): string {
+  switch (kind) {
+    case "era_posting":
+      return "ERA";
+    case "client_payment":
+      return "Payment";
+    case "patient_invoice_payment":
+      return "Patient invoice";
+    case "refund":
+      return "Refund";
+  }
+}
+
+function ledgerKindColor(kind: LedgerEntry["kind"]): string {
+  switch (kind) {
+    case "era_posting":
+      return "#0369A1";
+    case "client_payment":
+      return "#15803D";
+    case "patient_invoice_payment":
+      return "#7C3AED";
+    case "refund":
+      return "#B45309";
+  }
+}
+
+function PaymentLedger({
+  loading,
+  error,
+  entries,
+}: {
+  loading: boolean;
+  error: string | null;
+  entries: LedgerEntry[];
+}) {
+  if (loading) {
+    return (
+      <p style={{ marginTop: 12, color: "#64748B", fontSize: 12.5 }}>
+        Loading payment ledger…
+      </p>
+    );
+  }
+  if (error) {
+    return (
+      <p style={{ marginTop: 12, color: "#B91C1C", fontSize: 12.5 }}>
+        Could not load ledger: {error}
+      </p>
+    );
+  }
+  if (entries.length === 0) {
+    return (
+      <p style={{ marginTop: 12, color: "#64748B", fontSize: 12.5 }}>
+        No posted payments, adjustments, or refunds were found for this claim.
+      </p>
+    );
+  }
+  const total =
+    Math.round(entries.reduce((s, e) => s + (e.amount || 0), 0) * 100) / 100;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: 12.5,
+        }}
+      >
+        <thead>
+          <tr style={{ textAlign: "left", color: "#64748B" }}>
+            <th style={{ padding: "4px 4px", fontWeight: 600 }}>Date</th>
+            <th style={{ padding: "4px 4px", fontWeight: 600 }}>Type</th>
+            <th style={{ padding: "4px 4px", fontWeight: 600 }}>Detail</th>
+            <th style={{ padding: "4px 4px", fontWeight: 600 }}>Status</th>
+            <th
+              style={{
+                padding: "4px 4px",
+                fontWeight: 600,
+                textAlign: "right",
+              }}
+            >
+              Amount
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((e) => (
+            <tr key={e.id} style={{ borderTop: "1px solid #E2E8F0" }}>
+              <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>
+                {formatDate(e.postedAt)}
+              </td>
+              <td style={{ padding: "6px 4px" }}>
+                <span
+                  style={{
+                    display: "inline-block",
+                    padding: "1px 6px",
+                    borderRadius: 999,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "#fff",
+                    background: ledgerKindColor(e.kind),
+                  }}
+                >
+                  {ledgerKindLabel(e.kind)}
+                </span>
+              </td>
+              <td style={{ padding: "6px 4px", color: "#334155" }}>
+                {e.description || "—"}
+              </td>
+              <td style={{ padding: "6px 4px", color: "#475569" }}>
+                {e.status ? statusLabel(e.status) : "—"}
+              </td>
+              <td
+                style={{
+                  padding: "6px 4px",
+                  textAlign: "right",
+                  fontVariantNumeric: "tabular-nums",
+                  fontWeight: 600,
+                  color: e.amount < 0 ? "#B45309" : "#0F172A",
+                }}
+              >
+                {money(e.amount)}
+              </td>
+            </tr>
+          ))}
+          <tr style={{ borderTop: "2px solid #CBD5E1", background: "#F8FAFC" }}>
+            <td colSpan={4} style={{ padding: "6px 4px", fontWeight: 600 }}>
+              Net posted
+            </td>
+            <td
+              style={{
+                padding: "6px 4px",
+                textAlign: "right",
+                fontVariantNumeric: "tabular-nums",
+                fontWeight: 700,
+              }}
+            >
+              {money(total)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CreditSourceDetail({
+  loading,
+  error,
+  source,
+}: {
+  loading: boolean;
+  error: string | null;
+  source: CreditSource | null;
+}) {
+  if (loading) {
+    return (
+      <p style={{ marginTop: 12, color: "#64748B", fontSize: 12.5 }}>
+        Loading credit source…
+      </p>
+    );
+  }
+  if (error) {
+    return (
+      <p style={{ marginTop: 12, color: "#B91C1C", fontSize: 12.5 }}>
+        Could not load credit source: {error}
+      </p>
+    );
+  }
+  if (!source || source.kind === "none") {
+    return (
+      <p style={{ marginTop: 12, color: "#64748B", fontSize: 12.5 }}>
+        No originating ERA or patient payment is linked to this credit.
+      </p>
+    );
+  }
+  return (
+    <div style={{ marginTop: 12 }}>
+      {source.era ? (
+        <>
+          <SectionTitle>ERA payment ({shortId(source.era.id)})</SectionTitle>
+          <KV
+            label="Check / EFT"
+            value={source.era.checkEftNumber ?? "—"}
+          />
+          <KV
+            label="Check date"
+            value={formatDate(source.era.checkIssueDate)}
+          />
+          <KV
+            label="Payer claim #"
+            value={source.era.payerClaimControlNumber ?? "—"}
+          />
+          <KV
+            label="Total charge"
+            value={money(source.era.totalCharge)}
+          />
+          <KV
+            label="Payer paid"
+            value={money(source.era.paymentAmount)}
+          />
+          <KV
+            label="Patient responsibility"
+            value={money(source.era.patientResponsibility)}
+          />
+          {source.era.allowedAmount != null ? (
+            <KV label="Allowed" value={money(source.era.allowedAmount)} />
+          ) : null}
+          {source.era.carcCodes.length > 0 ? (
+            <KV
+              label="CARC codes"
+              value={source.era.carcCodes.join(", ")}
+            />
+          ) : null}
+          {source.era.rarcCodes.length > 0 ? (
+            <KV
+              label="RARC codes"
+              value={source.era.rarcCodes.join(", ")}
+            />
+          ) : null}
+          {source.era.casAdjustments.length > 0 ? (
+            <div style={{ marginTop: 12 }}>
+              <SectionTitle>CARC/RARC breakdown</SectionTitle>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 12.5,
+                }}
+              >
+                <thead>
+                  <tr style={{ textAlign: "left", color: "#64748B" }}>
+                    <th style={{ padding: "4px 4px", fontWeight: 600 }}>
+                      Group
+                    </th>
+                    <th style={{ padding: "4px 4px", fontWeight: 600 }}>
+                      Reason
+                    </th>
+                    <th
+                      style={{
+                        padding: "4px 4px",
+                        fontWeight: 600,
+                        textAlign: "right",
+                      }}
+                    >
+                      Amount
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {source.era.casAdjustments.map((c, idx) => (
+                    <tr
+                      key={`${c.groupCode}-${c.reasonCode}-${idx}`}
+                      style={{ borderTop: "1px solid #E2E8F0" }}
+                    >
+                      <td style={{ padding: "6px 4px" }}>
+                        {c.groupCode || "—"}
+                      </td>
+                      <td style={{ padding: "6px 4px" }}>
+                        {c.reasonCode || "—"}
+                      </td>
+                      <td
+                        style={{
+                          padding: "6px 4px",
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {money(c.amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </>
+      ) : source.clientPayment ? (
+        <>
+          <SectionTitle>
+            Patient payment ({shortId(source.clientPayment.id)})
+          </SectionTitle>
+          <KV label="Amount" value={money(source.clientPayment.amount)} />
+          <KV
+            label="Posted at"
+            value={formatDate(source.clientPayment.postedAt)}
+          />
+          <KV
+            label="Method"
+            value={source.clientPayment.method ?? "—"}
+          />
+          <KV
+            label="Reference"
+            value={source.clientPayment.referenceNumber ?? "—"}
+          />
+          {source.clientPayment.sourceLabel ? (
+            <KV label="Source" value={source.clientPayment.sourceLabel} />
+          ) : null}
+        </>
+      ) : null}
+
+      <div style={{ marginTop: 16 }}>
+        <SectionTitle>Prior refunds tied to this source</SectionTitle>
+        {source.priorRefunds.length === 0 ? (
+          <p style={{ color: "#64748B", fontSize: 12.5, margin: 0 }}>
+            No other refunds reference this payment.
+          </p>
+        ) : (
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: 12.5,
+            }}
+          >
+            <thead>
+              <tr style={{ textAlign: "left", color: "#64748B" }}>
+                <th style={{ padding: "4px 4px", fontWeight: 600 }}>
+                  Requested
+                </th>
+                <th style={{ padding: "4px 4px", fontWeight: 600 }}>Issued</th>
+                <th style={{ padding: "4px 4px", fontWeight: 600 }}>Status</th>
+                <th style={{ padding: "4px 4px", fontWeight: 600 }}>Reason</th>
+                <th
+                  style={{
+                    padding: "4px 4px",
+                    fontWeight: 600,
+                    textAlign: "right",
+                  }}
+                >
+                  Amount
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {source.priorRefunds.map((r) => (
+                <tr key={r.id} style={{ borderTop: "1px solid #E2E8F0" }}>
+                  <td style={{ padding: "6px 4px" }}>
+                    {formatDate(r.requestedAt)}
+                  </td>
+                  <td style={{ padding: "6px 4px" }}>
+                    {formatDate(r.issuedAt)}
+                  </td>
+                  <td style={{ padding: "6px 4px" }}>
+                    {statusLabel(r.status)}
+                  </td>
+                  <td style={{ padding: "6px 4px", color: "#475569" }}>
+                    {r.reason ?? "—"}
+                  </td>
+                  <td
+                    style={{
+                      padding: "6px 4px",
+                      textAlign: "right",
+                      fontVariantNumeric: "tabular-nums",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {money(r.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
   );
 }
 

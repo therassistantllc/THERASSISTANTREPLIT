@@ -804,15 +804,43 @@ function OffsetPickerModal({
   onCancel: () => void;
   onPick: (id: string) => void;
 }) {
+  const PAGE_SIZE = 50;
   const [items, setItems] = useState<EraPaymentListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(
     row.offset_era_claim_payment_id ?? null,
   );
   const [autoPreselected, setAutoPreselected] = useState(false);
   const [showAllPayers, setShowAllPayers] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+
+  // Debounce free-text search so we don't refetch on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 250);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const filterPayerId =
+    !showAllPayers && row.payer_profile_id ? row.payer_profile_id : null;
+
+  const buildQs = useCallback(
+    (offset: number) => {
+      const qs = new URLSearchParams({
+        organizationId,
+        limit: String(PAGE_SIZE),
+        offset: String(offset),
+      });
+      if (filterPayerId) qs.set("payerProfileId", filterPayerId);
+      if (search) qs.set("search", search);
+      return qs;
+    },
+    [organizationId, filterPayerId, search],
+  );
 
   const suggestion = useMemo(
     () =>
@@ -850,21 +878,27 @@ function OffsetPickerModal({
       setLoading(true);
       setErr(null);
       try {
-        const qs = new URLSearchParams({ organizationId });
         const res = await fetch(
-          `/api/billing/era-payments?${qs.toString()}`,
+          `/api/billing/era-payments?${buildQs(0).toString()}`,
           { cache: "no-store" },
         );
         const json = (await res.json().catch(() => ({}))) as {
           success?: boolean;
           items?: EraPaymentListItem[];
           error?: string;
+          hasMore?: boolean;
+          nextOffset?: number | null;
         };
         if (cancelled) return;
         if (!res.ok || !json.success) {
           setErr(json.error ?? "Failed to load ERA payments");
+          setItems([]);
+          setHasMore(false);
+          setNextOffset(null);
         } else {
           setItems(json.items ?? []);
+          setHasMore(Boolean(json.hasMore));
+          setNextOffset(json.nextOffset ?? null);
         }
       } catch (e) {
         if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");
@@ -876,47 +910,52 @@ function OffsetPickerModal({
     return () => {
       cancelled = true;
     };
-  }, [organizationId]);
+  }, [buildQs]);
+
+  const loadMore = useCallback(async () => {
+    if (nextOffset == null || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(
+        `/api/billing/era-payments?${buildQs(nextOffset).toString()}`,
+        { cache: "no-store" },
+      );
+      const json = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        items?: EraPaymentListItem[];
+        error?: string;
+        hasMore?: boolean;
+        nextOffset?: number | null;
+      };
+      if (!res.ok || !json.success) {
+        setErr(json.error ?? "Failed to load more ERA payments");
+      } else {
+        setItems((prev) => {
+          const seen = new Set(prev.map((p) => p.id));
+          const additions = (json.items ?? []).filter((p) => !seen.has(p.id));
+          return prev.concat(additions);
+        });
+        setHasMore(Boolean(json.hasMore));
+        setNextOffset(json.nextOffset ?? null);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to load more");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [buildQs, nextOffset, loadingMore]);
 
   const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return items
-      .filter((p) => {
-        if (!showAllPayers && row.payer_profile_id) {
-          if (p.payer.id && p.payer.id !== row.payer_profile_id) return false;
-          if (
-            !p.payer.id &&
-            row.payer_name &&
-            p.payer.name &&
-            p.payer.name.toLowerCase() !== row.payer_name.toLowerCase()
-          ) {
-            return false;
-          }
-        }
-        if (!needle) return true;
-        const hay = [
-          p.checkNumber,
-          p.payer.name,
-          p.client?.displayName,
-          p.professionalClaim?.claimNumber,
-          p.payerClaimControlNumber,
-          p.claimControlNumber,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return hay.includes(needle);
-      })
-      .sort((a, b) => {
-        // Suggested rows float to the top, ordered by score; then date desc.
-        const sa = suggestion.byId.get(a.id)?.score ?? 0;
-        const sb = suggestion.byId.get(b.id)?.score ?? 0;
-        if (sa !== sb) return sb - sa;
-        const da = new Date(a.importedAt ?? a.createdAt).getTime();
-        const db = new Date(b.importedAt ?? b.createdAt).getTime();
-        return db - da;
-      });
-  }, [items, showAllPayers, row.payer_profile_id, row.payer_name, search, suggestion]);
+    return [...items].sort((a, b) => {
+      // Suggested rows float to the top, ordered by score; then date desc.
+      const sa = suggestion.byId.get(a.id)?.score ?? 0;
+      const sb = suggestion.byId.get(b.id)?.score ?? 0;
+      if (sa !== sb) return sb - sa;
+      const da = new Date(a.importedAt ?? a.createdAt).getTime();
+      const db = new Date(b.importedAt ?? b.createdAt).getTime();
+      return db - da;
+    });
+  }, [items, suggestion]);
 
   return (
     <div
@@ -992,9 +1031,9 @@ function OffsetPickerModal({
         >
           <input
             type="search"
-            placeholder="Search check #, claim #, client…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search check #, claim #…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             style={{
               flex: 1,
               minWidth: 220,
@@ -1133,6 +1172,25 @@ function OffsetPickerModal({
               </tbody>
             </table>
           )}
+          {!loading && !err && hasMore ? (
+            <div style={{ padding: 12, textAlign: "center" }}>
+              <button
+                type="button"
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
+                style={{
+                  padding: "6px 14px",
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  borderRadius: 6,
+                  fontSize: 13,
+                  cursor: loadingMore ? "wait" : "pointer",
+                }}
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          ) : null}
         </div>
         <div
           style={{

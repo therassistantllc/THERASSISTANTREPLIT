@@ -87,6 +87,12 @@ function safeString(value: unknown): string | null {
   return String(value);
 }
 
+function escapeForOrPattern(value: string): string {
+  // PostgREST `.or()` parses commas/parentheses as delimiters; strip them
+  // from search input to avoid breaking the filter string.
+  return value.replace(/[,()*]/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export async function GET(request: Request) {
   try {
     const supabase = createServerSupabaseAdminClient();
@@ -99,21 +105,105 @@ export async function GET(request: Request) {
     if (guard instanceof NextResponse) return guard;
     const organizationId = guard.organizationId;
 
-    const { data: payments, error } = await supabase
+    const payerProfileId = searchParams.get("payerProfileId");
+    const searchRaw = searchParams.get("search");
+    const dateFrom = searchParams.get("dateFrom");
+    const dateTo = searchParams.get("dateTo");
+
+    const limitParam = Number.parseInt(searchParams.get("limit") ?? "", 10);
+    const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 200) : 50;
+    const offsetParam = Number.parseInt(searchParams.get("offset") ?? "", 10);
+    const offset = Number.isFinite(offsetParam) && offsetParam >= 0 ? offsetParam : 0;
+
+    // If filtering by payer, resolve the payer profile -> matching ERA batches.
+    // `era_claim_payments` has no direct payer FK; payer is denormalized on
+    // `era_import_batches` (payer_identifier + payer_name).
+    let batchIdFilter: string[] | null = null;
+    if (payerProfileId) {
+      const { data: profile, error: profileError } = await supabase
+        .from("payer_profiles")
+        .select("id, payer_name, availity_payer_id")
+        .eq("organization_id", organizationId)
+        .eq("id", payerProfileId)
+        .maybeSingle();
+      if (profileError) {
+        return NextResponse.json({ success: false, error: profileError.message }, { status: 500 });
+      }
+      if (!profile) {
+        return NextResponse.json({
+          success: true,
+          organizationId,
+          items: [],
+          limit,
+          offset,
+          hasMore: false,
+        });
+      }
+
+      const orParts: string[] = [];
+      if (profile.availity_payer_id) {
+        orParts.push(`payer_identifier.eq.${profile.availity_payer_id}`);
+      }
+      if (profile.payer_name) {
+        orParts.push(`payer_name.ilike.${profile.payer_name}`);
+      }
+      let batchQuery = supabase
+        .from("era_import_batches")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .is("archived_at", null);
+      if (orParts.length) batchQuery = batchQuery.or(orParts.join(","));
+      const { data: batchRows, error: batchErr } = await batchQuery;
+      if (batchErr) {
+        return NextResponse.json({ success: false, error: batchErr.message }, { status: 500 });
+      }
+      batchIdFilter = (batchRows ?? []).map((b) => b.id as string);
+      if (batchIdFilter.length === 0) {
+        return NextResponse.json({
+          success: true,
+          organizationId,
+          items: [],
+          limit,
+          offset,
+          hasMore: false,
+        });
+      }
+    }
+
+    let query = supabase
       .from("era_claim_payments")
       .select(
         "id, organization_id, era_import_batch_id, professional_claim_id, client_id, clp01_claim_control_number, clp03_total_charge, clp04_payment_amount, clp05_patient_responsibility, payer_claim_control_number, claim_match_status, posting_status, cas_adjustments, service_lines, created_at, updated_at",
       )
       .eq("organization_id", organizationId)
-      .is("archived_at", null)
+      .is("archived_at", null);
+
+    if (batchIdFilter) query = query.in("era_import_batch_id", batchIdFilter);
+    if (dateFrom) query = query.gte("created_at", dateFrom);
+    if (dateTo) query = query.lte("created_at", dateTo);
+
+    const searchClean = searchRaw ? escapeForOrPattern(searchRaw) : "";
+    if (searchClean) {
+      const pat = `%${searchClean}%`;
+      query = query.or(
+        [
+          `clp01_claim_control_number.ilike.${pat}`,
+          `payer_claim_control_number.ilike.${pat}`,
+          `check_eft_number.ilike.${pat}`,
+        ].join(","),
+      );
+    }
+
+    const { data: payments, error } = await query
       .order("created_at", { ascending: false })
-      .limit(200);
+      .range(offset, offset + limit - 1);
 
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
     const rows = (payments ?? []) as EraClaimPaymentRow[];
+    const hasMore = rows.length === limit;
 
     const batchIds = Array.from(new Set(rows.map((r) => r.era_import_batch_id).filter(Boolean)));
     const claimIds = Array.from(new Set(rows.map((r) => r.professional_claim_id).filter((id): id is string => Boolean(id))));
@@ -248,7 +338,15 @@ export async function GET(request: Request) {
       };
     });
 
-    return NextResponse.json({ success: true, organizationId, items });
+    return NextResponse.json({
+      success: true,
+      organizationId,
+      items,
+      limit,
+      offset,
+      hasMore,
+      nextOffset: hasMore ? offset + limit : null,
+    });
   } catch (error) {
     console.error("ERA payments API error:", error);
     return NextResponse.json(

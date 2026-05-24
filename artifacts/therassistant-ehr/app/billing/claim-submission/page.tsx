@@ -1,9 +1,9 @@
-import ClaimSubmissionClient from "./ClaimSubmissionClient";
+import { redirect } from "next/navigation";
 
 export const metadata = {
-  title: "Denials",
+  title: "Denied Claims by CARC",
 };
 
-export default function DenialsPage() {
-  return <ClaimSubmissionClient />;
+export default function ClaimSubmissionRedirect() {
+  redirect("/billing/denials-by-carc");
 }

@@ -119,6 +119,16 @@ export default function CasesPanel({
     notes: "",
   });
   const [addingPolicyForCaseId, setAddingPolicyForCaseId] = useState<string | null>(null);
+  // Cases render collapsed by default — just the name + primary payer
+  // summary. Click the row to expand and see attached policies / edit.
+  const [expandedCaseIds, setExpandedCaseIds] = useState<Set<string>>(new Set());
+  const toggleCaseExpanded = (id: string) =>
+    setExpandedCaseIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const [payers, setPayers] = useState<Array<{ id: string; payer_name: string; payer_id: string | null }>>([]);
 
   // Staged "new case" draft. The user adds one or more insurance policies
@@ -549,6 +559,7 @@ export default function CasesPanel({
             const attachedPolicyIds = new Set(c.policies.map((p) => p.policyId));
             const attachable = availablePolicies.filter((p) => !attachedPolicyIds.has(p.id));
             const isEditing = editingId === c.id;
+            const isExpanded = isEditing || expandedCaseIds.has(c.id);
             return (
               <li
                 key={c.id}
@@ -560,7 +571,26 @@ export default function CasesPanel({
                   background: c.isDefault ? "rgba(59,130,246,0.04)" : undefined,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", cursor: isEditing ? "default" : "pointer" }}
+                  onClick={() => {
+                    if (!isEditing) toggleCaseExpanded(c.id);
+                  }}
+                >
+                  {!isEditing ? (
+                    <span
+                      aria-hidden
+                      style={{
+                        display: "inline-block",
+                        width: 14,
+                        textAlign: "center",
+                        color: "var(--muted-color, #6b7280)",
+                        fontSize: "0.75rem",
+                      }}
+                    >
+                      {isExpanded ? "▾" : "▸"}
+                    </span>
+                  ) : null}
                   {isEditing ? (
                     <>
                       <input
@@ -592,18 +622,18 @@ export default function CasesPanel({
                   )}
                 </div>
 
-                {isEditing ? (
+                {isExpanded && isEditing ? (
                   <textarea
                     value={editDraft.notes}
                     onChange={(e) => setEditDraft((d) => ({ ...d, notes: e.target.value }))}
                     rows={2}
                     style={{ width: "100%", marginTop: "0.5rem" }}
                   />
-                ) : c.notes ? (
+                ) : isExpanded && c.notes ? (
                   <p style={{ margin: "0.25rem 0", color: "var(--muted-color, #6b7280)" }}>{c.notes}</p>
                 ) : null}
 
-                <div style={{ marginTop: "0.5rem", fontSize: "0.875rem" }}>
+                <div style={{ marginTop: "0.5rem", fontSize: "0.875rem", color: isExpanded ? undefined : "var(--muted-color, #6b7280)" }}>
                   <strong>Primary payer:</strong>{" "}
                   {primary
                     ? primary.payerName ?? primary.planName ?? "—"
@@ -612,7 +642,7 @@ export default function CasesPanel({
                       : "Not set"}
                 </div>
 
-                {c.policies.length > 0 ? (
+                {isExpanded && c.policies.length > 0 ? (
                   <ul style={{ listStyle: "none", padding: 0, margin: "0.5rem 0", display: "grid", gap: "0.5rem" }}>
                     {c.policies.map((p) => (
                       <li
@@ -650,6 +680,7 @@ export default function CasesPanel({
                 ) : null}
 
                 {(() => {
+                  if (!isExpanded) return null;
                   const openPriorities = PRIORITIES.filter((p) => !usedPriorities.has(p));
                   if (openPriorities.length === 0) return null;
                   const isAdding = addingPolicyForCaseId === c.id;
@@ -696,7 +727,7 @@ export default function CasesPanel({
                   );
                 })()}
 
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+                <div style={{ display: isExpanded ? "flex" : "none", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
                   {isEditing ? (
                     <>
                       <button type="button" className="button" onClick={() => saveEdit(c)} disabled={Boolean(busy)}>

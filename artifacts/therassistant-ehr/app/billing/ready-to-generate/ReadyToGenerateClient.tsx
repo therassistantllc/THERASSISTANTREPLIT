@@ -143,6 +143,7 @@ export default function ReadyToGenerateClient() {
     error: string | null;
   }>({ loading: false, text: null, error: null });
   const [holdReason, setHoldReason] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // ── Initial load + URL tab sync ─────────────────────────────────────────
   useEffect(() => {
@@ -407,6 +408,41 @@ export default function ReadyToGenerateClient() {
     }
   }, [rows, selectedId]);
 
+  // Drop any multi-select rows that have left the current view (filter or
+  // tab change). Server-side validation will still catch stale ids, but
+  // this keeps the header count honest.
+  useEffect(() => {
+    if (selectedIds.length === 0) return;
+    const visible = new Set(items.map((i) => i.id));
+    const next = selectedIds.filter((id) => visible.has(id));
+    if (next.length !== selectedIds.length) setSelectedIds(next);
+  }, [items, selectedIds]);
+
+  // Selected rows (across the full dataset, not just the current view).
+  const selectedRows = useMemo(() => {
+    const set = new Set(selectedIds);
+    return items.filter((i) => set.has(i.id));
+  }, [items, selectedIds]);
+
+  const selectedTotal = useMemo(
+    () => selectedRows.reduce((s, r) => s + (r.charge_amount || 0), 0),
+    [selectedRows],
+  );
+
+  const selectionHasIneligible = useMemo(
+    () => selectedRows.some((r) => r.ready_status !== "ready"),
+    [selectedRows],
+  );
+
+  const selectionPayerIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of selectedRows) {
+      // payer_name is a stable display proxy; the API filters on payer_profile_id.
+      if (r.payer_name) set.add(r.payer_name);
+    }
+    return [...set];
+  }, [selectedRows]);
+
   // ── Header summary strip ────────────────────────────────────────────────
   const summary: SummaryMetric[] = useMemo(() => {
     const dollars = rows.reduce((s, r) => s + (r.charge_amount || 0), 0);
@@ -418,6 +454,18 @@ export default function ReadyToGenerateClient() {
     return [
       { id: "count", label: "Claims", value: rows.length.toLocaleString() },
       { id: "dollars", label: "Total $", value: money(dollars) },
+      {
+        id: "selected",
+        label: "Selected",
+        value: selectedIds.length.toLocaleString(),
+        tone: selectedIds.length > 0 ? "green" : "default",
+      },
+      {
+        id: "selectedDollars",
+        label: "Selected $",
+        value: money(selectedTotal),
+        tone: selectedIds.length > 0 ? "green" : "default",
+      },
       {
         id: "oldest",
         label: "Oldest (days)",
@@ -431,7 +479,7 @@ export default function ReadyToGenerateClient() {
         tone: urgent > 0 ? "amber" : "default",
       },
     ];
-  }, [rows]);
+  }, [rows, selectedIds, selectedTotal]);
 
   // ── Action handlers (optimistic UI) ─────────────────────────────────────
   const selected = useMemo(
@@ -505,6 +553,75 @@ export default function ReadyToGenerateClient() {
     },
     [busy, organizationId],
   );
+
+  // Bulk: bundle every checked claim into a single 837P batch.
+  const runBulkBatch = useCallback(async () => {
+    if (busy) return;
+    if (selectedIds.length === 0) return;
+
+    if (selectionHasIneligible) {
+      setMessage({
+        tone: "error",
+        text: "Some selected claims are on hold or not ready. Clear them from the selection first.",
+      });
+      return;
+    }
+
+    let payerProfileId: string | null = null;
+    if (selectionPayerIds.length > 1) {
+      const ok =
+        typeof window === "undefined"
+          ? true
+          : window.confirm(
+              `You've selected claims across ${selectionPayerIds.length} payers (${selectionPayerIds.join(", ")}).\n\nBundling mixed payers into one 837P file is unusual — clearinghouses normally expect one payer per file. Continue anyway?`,
+            );
+      if (!ok) return;
+    }
+
+    const confirmText = `Generate one 837P batch from ${selectedIds.length} claim${
+      selectedIds.length === 1 ? "" : "s"
+    } totaling ${money(selectedTotal)}?`;
+    if (typeof window !== "undefined" && !window.confirm(confirmText)) return;
+
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/billing/ready-to-generate/bulk-batch`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          claimIds: selectedIds,
+          payerProfileId,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error ?? "Bulk batch failed");
+
+      const batchedIds = new Set<string>(selectedIds);
+      setItems((prev) => prev.filter((i) => !batchedIds.has(i.id)));
+      setSelectedIds([]);
+      setMessage({
+        tone: "success",
+        text: `Created batch ${json.batchNumber ?? ""} from ${json.claimCount ?? selectedIds.length} claims (${money(json.totalChargeAmount ?? selectedTotal)}).`,
+      });
+    } catch (e) {
+      setMessage({
+        tone: "error",
+        text: e instanceof Error ? e.message : "Bulk batch failed",
+      });
+      setReloadKey((k) => k + 1);
+    } finally {
+      setBusy(false);
+    }
+  }, [
+    busy,
+    selectedIds,
+    selectedTotal,
+    selectionHasIneligible,
+    selectionPayerIds,
+    organizationId,
+  ]);
 
   // Load 837 preview when the user opens the preview tab.
   const loadPreview = useCallback(
@@ -916,24 +1033,48 @@ export default function ReadyToGenerateClient() {
     return acts;
   }, [busy, selected, runAction, loadPreview, holdReason]);
 
-  // ── Header actions: tab switcher + refresh ──────────────────────────────
-  const headerActions: PrimaryAction[] = useMemo(
-    () => [
+  // ── Header actions: tab switcher + refresh + bulk batch ────────────────
+  const headerActions: PrimaryAction[] = useMemo(() => {
+    const acts: PrimaryAction[] = [
       ...TABS.map((t) => ({
         id: `tab-${t.id}`,
         label: `${t.label} (${applyTab(filteredAll, t.id).length})`,
         variant: t.id === activeTab ? ("primary" as const) : ("default" as const),
         onClick: () => setActiveTab(t.id),
       })),
-      {
-        id: "refresh",
-        label: loading ? "Refreshing…" : "Refresh",
-        onClick: () => setReloadKey((k) => k + 1),
-        disabled: loading,
-      },
-    ],
-    [filteredAll, activeTab, loading],
-  );
+    ];
+    if (selectedIds.length > 0) {
+      acts.push({
+        id: "bulk-batch",
+        label: `Generate batch (${selectedIds.length} · ${money(selectedTotal)})`,
+        variant: "success",
+        onClick: () => void runBulkBatch(),
+        disabled: busy || selectionHasIneligible,
+      });
+      acts.push({
+        id: "clear-selection",
+        label: "Clear selection",
+        onClick: () => setSelectedIds([]),
+        disabled: busy,
+      });
+    }
+    acts.push({
+      id: "refresh",
+      label: loading ? "Refreshing…" : "Refresh",
+      onClick: () => setReloadKey((k) => k + 1),
+      disabled: loading,
+    });
+    return acts;
+  }, [
+    filteredAll,
+    activeTab,
+    loading,
+    selectedIds,
+    selectedTotal,
+    busy,
+    selectionHasIneligible,
+    runBulkBatch,
+  ]);
 
   return (
     <WorkqueueShell<Item>
@@ -952,6 +1093,8 @@ export default function ReadyToGenerateClient() {
       emptyMessage="No claims in this view."
       selectedRowId={selectedId}
       onSelectRow={setSelectedId}
+      selectedRowIds={selectedIds}
+      onSelectionChange={setSelectedIds}
       rowActions={rowActions}
       detailTabs={detailTabs}
       detailActions={detailActions}

@@ -91,6 +91,9 @@ export interface WorkqueueShellProps<TRow> {
   emptyMessage?: string;
   selectedRowId?: string | null;
   onSelectRow?: (rowId: string | null) => void;
+  /** When provided, enables multi-select with a checkbox column. */
+  selectedRowIds?: string[];
+  onSelectionChange?: (ids: string[]) => void;
   rowActions?: RowAction<TRow>[];
   /** Right-side detail panel */
   detailTabs?: DetailTab[];
@@ -236,6 +239,8 @@ export default function WorkqueueShell<TRow>(props: WorkqueueShellProps<TRow>) {
     emptyMessage,
     selectedRowId,
     onSelectRow,
+    selectedRowIds,
+    onSelectionChange,
     rowActions,
     detailTabs,
     detailActions,
@@ -268,7 +273,45 @@ export default function WorkqueueShell<TRow>(props: WorkqueueShellProps<TRow>) {
     [detailTabs, activeTabId],
   );
 
-  const colSpan = columns.length + (rowActions && rowActions.length > 0 ? 1 : 0);
+  const selectionEnabled = !!onSelectionChange;
+  const selectedSet = useMemo(
+    () => new Set(selectedRowIds ?? []),
+    [selectedRowIds],
+  );
+  const visibleIds = useMemo(() => rows.map((r) => rowId(r)), [rows, rowId]);
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedSet.has(id));
+  const someVisibleSelected =
+    !allVisibleSelected && visibleIds.some((id) => selectedSet.has(id));
+
+  const toggleRow = useCallback(
+    (id: string) => {
+      if (!onSelectionChange) return;
+      const next = new Set(selectedSet);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      onSelectionChange([...next]);
+    },
+    [onSelectionChange, selectedSet],
+  );
+
+  const toggleAllVisible = useCallback(() => {
+    if (!onSelectionChange) return;
+    if (allVisibleSelected) {
+      const next = new Set(selectedSet);
+      for (const id of visibleIds) next.delete(id);
+      onSelectionChange([...next]);
+    } else {
+      const next = new Set(selectedSet);
+      for (const id of visibleIds) next.add(id);
+      onSelectionChange([...next]);
+    }
+  }, [onSelectionChange, allVisibleSelected, selectedSet, visibleIds]);
+
+  const colSpan =
+    columns.length +
+    (rowActions && rowActions.length > 0 ? 1 : 0) +
+    (selectionEnabled ? 1 : 0);
 
   const setFilter = useCallback(
     (id: string, value: string) => {
@@ -444,6 +487,19 @@ export default function WorkqueueShell<TRow>(props: WorkqueueShellProps<TRow>) {
           <table className={styles.table}>
             <thead>
               <tr>
+                {selectionEnabled ? (
+                  <th style={{ width: 32, textAlign: "center" }}>
+                    <input
+                      type="checkbox"
+                      aria-label="Select all rows"
+                      checked={allVisibleSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someVisibleSelected;
+                      }}
+                      onChange={toggleAllVisible}
+                    />
+                  </th>
+                ) : null}
                 {columns.map((c) => (
                   <th
                     key={c.id}
@@ -475,12 +531,26 @@ export default function WorkqueueShell<TRow>(props: WorkqueueShellProps<TRow>) {
                 rows.map((row) => {
                   const id = rowId(row);
                   const selected = selectedRowId === id;
+                  const checked = selectedSet.has(id);
                   return (
                     <tr
                       key={id}
                       className={selected ? styles.rowSelected : ""}
                       onClick={() => onSelectRow?.(id)}
                     >
+                      {selectionEnabled ? (
+                        <td
+                          style={{ width: 32, textAlign: "center" }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            aria-label={`Select row ${id}`}
+                            checked={checked}
+                            onChange={() => toggleRow(id)}
+                          />
+                        </td>
+                      ) : null}
                       {columns.map((c) => (
                         <td
                           key={c.id}

@@ -89,6 +89,15 @@ type SeedResult = {
   error?: string;
 };
 
+type ClearResult = {
+  success: boolean;
+  cleared_at?: string;
+  total_deleted?: number;
+  counts?: Record<string, number>;
+  errors?: Record<string, string>;
+  error?: string;
+};
+
 type SimulationCheck = {
   id: string;
   label: string;
@@ -144,6 +153,10 @@ export default function SystemReadinessClient() {
   const [seeding, setSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<SeedResult | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearResult, setClearResult] = useState<ClearResult | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearConfirmText, setClearConfirmText] = useState("");
   const [simulating, setSimulating] = useState(false);
   const [simulation, setSimulation] = useState<SimulationReport | null>(null);
   const [simulationError, setSimulationError] = useState<string | null>(null);
@@ -186,6 +199,29 @@ export default function SystemReadinessClient() {
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load system readiness."))
       .finally(() => setLoading(false));
   }, [organizationId]);
+
+  const runClear = useCallback(async () => {
+    setClearing(true);
+    setClearResult(null);
+    try {
+      const res = await fetch("/api/admin/clear-demo-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE" }),
+      });
+      const json: ClearResult = await res.json();
+      setClearResult(json);
+      if (json.success) {
+        setShowClearConfirm(false);
+        setClearConfirmText("");
+        load();
+      }
+    } catch {
+      setClearResult({ success: false, error: "Network error — could not reach clear endpoint." });
+    } finally {
+      setClearing(false);
+    }
+  }, [load]);
 
   const runSeed = useCallback(
     async (force = false) => {
@@ -285,6 +321,66 @@ export default function SystemReadinessClient() {
                   Reset Demo Data
                 </button>
               )}
+              {showClearConfirm ? (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: "var(--surface-2, #f4f6f9)",
+                    border: "1px solid var(--text-danger, #c53030)",
+                    borderRadius: "var(--radius, 6px)",
+                    padding: "6px 12px",
+                  }}
+                >
+                  <span style={{ fontSize: "var(--text-sm)", color: "var(--text-danger, #c53030)", fontWeight: 600 }}>
+                    Permanently wipe ALL demo records — type DELETE to confirm:
+                  </span>
+                  <input
+                    type="text"
+                    value={clearConfirmText}
+                    onChange={(e) => setClearConfirmText(e.target.value)}
+                    placeholder="DELETE"
+                    autoFocus
+                    style={{
+                      padding: "4px 8px",
+                      fontSize: "var(--text-sm)",
+                      border: "1px solid var(--border, #d1d5db)",
+                      borderRadius: "var(--radius, 4px)",
+                      width: 90,
+                    }}
+                    disabled={clearing}
+                  />
+                  <button
+                    className="button button-danger"
+                    style={{ padding: "4px 10px", fontSize: "var(--text-sm)" }}
+                    onClick={runClear}
+                    disabled={clearing || clearConfirmText !== "DELETE"}
+                  >
+                    {clearing ? "Clearing…" : "Wipe data"}
+                  </button>
+                  <button
+                    className="button button-secondary"
+                    style={{ padding: "4px 10px", fontSize: "var(--text-sm)" }}
+                    onClick={() => {
+                      setShowClearConfirm(false);
+                      setClearConfirmText("");
+                    }}
+                    disabled={clearing}
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  className="button button-danger"
+                  onClick={() => setShowClearConfirm(true)}
+                  disabled={clearing || loading || seeding}
+                  title="Permanently delete every patient, appointment, encounter, claim, ERA, invoice, mailroom item, workqueue item, and chat record for this organization. Keeps providers, payers, code sets, and billing settings."
+                >
+                  Clear all demo data
+                </button>
+              )}
             </>
           )}
           <button
@@ -376,6 +472,62 @@ export default function SystemReadinessClient() {
             Simulation generated {new Date(simulation.generatedAt).toLocaleString()} · transmitted=false ·
             containsPhi=false
           </p>
+        </section>
+      )}
+
+      {clearResult && (
+        <section
+          className="panel"
+          style={{
+            borderLeft: `3px solid ${clearResult.success ? "var(--text-success)" : "var(--text-danger)"}`,
+          }}
+        >
+          <h2 style={{ marginBottom: "var(--space-3)" }}>
+            {clearResult.success
+              ? `✓ Demo data cleared — ${clearResult.total_deleted ?? 0} record${
+                  (clearResult.total_deleted ?? 0) !== 1 ? "s" : ""
+                } deleted`
+              : "⚠ Clear failed"}
+          </h2>
+          {clearResult.error && (
+            <p style={{ color: "var(--text-danger)", fontSize: "var(--text-sm)" }}>{clearResult.error}</p>
+          )}
+          {clearResult.counts && Object.keys(clearResult.counts).length > 0 && (
+            <ul
+              style={{
+                margin: 0,
+                paddingLeft: "var(--space-4)",
+                fontSize: "var(--text-sm)",
+                color: "var(--text-secondary)",
+                columns: 2,
+              }}
+            >
+              {Object.entries(clearResult.counts)
+                .sort((a, b) => b[1] - a[1])
+                .map(([table, n]) => (
+                  <li key={table}>
+                    <code>{table}</code>: {n}
+                  </li>
+                ))}
+            </ul>
+          )}
+          {clearResult.errors && Object.keys(clearResult.errors).length > 0 && (
+            <div style={{ marginTop: "var(--space-3)" }}>
+              <strong style={{ color: "var(--text-danger)", fontSize: "var(--text-sm)" }}>Errors:</strong>
+              <ul style={{ margin: 0, paddingLeft: "var(--space-4)", fontSize: "var(--text-sm)" }}>
+                {Object.entries(clearResult.errors).map(([table, msg]) => (
+                  <li key={table}>
+                    <code>{table}</code>: {msg}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {clearResult.cleared_at && (
+            <p style={{ fontSize: "var(--text-xs, 0.75rem)", color: "var(--text-secondary)", marginTop: 8 }}>
+              Cleared at {new Date(clearResult.cleared_at).toLocaleString()}
+            </p>
+          )}
         </section>
       )}
 

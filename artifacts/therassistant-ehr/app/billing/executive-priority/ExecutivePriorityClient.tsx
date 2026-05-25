@@ -335,6 +335,7 @@ export default function ExecutivePriorityClient() {
   const [escalateReason, setEscalateReason] = useState<string>("");
   const [noteFor, setNoteFor] = useState<Row | null>(null);
   const [noteBody, setNoteBody] = useState<string>("");
+  const [noteResolvedDenial, setNoteResolvedDenial] = useState<boolean>(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(
@@ -571,7 +572,7 @@ export default function ExecutivePriorityClient() {
       { id: "assign", label: "Assign", onClick: () => { setAssignFor(selected); setAssignPicked(selected.assignedToId ?? ""); } },
       { id: "escalate", label: "Escalate", variant: "danger", onClick: () => { setEscalateFor(selected); setEscalateReason(""); }, disabled: selected.priority === "urgent" },
       { id: "open", label: "Open claim", onClick: () => openClaim(selected) },
-      { id: "note", label: "Add executive note", variant: "primary", onClick: () => { setNoteFor(selected); setNoteBody(""); } },
+      { id: "note", label: "Add executive note", variant: "primary", onClick: () => { setNoteFor(selected); setNoteBody(""); setNoteResolvedDenial(false); } },
       { id: "export", label: "Export list", onClick: exportList },
     ];
   }, [selected, openClaim, exportList]);
@@ -758,8 +759,10 @@ export default function ExecutivePriorityClient() {
         r.id === claimId ? { ...r, notes: [optimisticNote, ...r.notes] } : r,
       ),
     );
+    const resolvedDenialSnapshot = noteResolvedDenial;
     setNoteFor(null);
     setNoteBody("");
+    setNoteResolvedDenial(false);
     try {
       const res = await fetch(`/api/billing/claims/${claimId}/notes`, {
         method: "POST",
@@ -767,6 +770,7 @@ export default function ExecutivePriorityClient() {
         body: JSON.stringify({
           organizationId,
           body: `[Executive] ${body}`,
+          resolved_denial: resolvedDenialSnapshot,
         }),
       });
       const json = await res.json();
@@ -1048,6 +1052,22 @@ export default function ExecutivePriorityClient() {
               fontFamily: "inherit",
             }}
           />
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 13,
+              marginTop: 12,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={noteResolvedDenial}
+              onChange={(e) => setNoteResolvedDenial(e.target.checked)}
+            />
+            This note resolved the denial
+          </label>
           <div
             style={{
               display: "flex",

@@ -265,6 +265,7 @@ function FollowUpNoteModal({
     d.setDate(d.getDate() + 14);
     return d.toISOString().slice(0, 10);
   });
+  const [resolvedDenial, setResolvedDenial] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -283,6 +284,7 @@ function FollowUpNoteModal({
         organizationId,
         body: trimmed,
         defer_until: deferEnabled ? deferDate : null,
+        resolved_denial: resolvedDenial,
       }),
     });
     const json = await res.json().catch(() => ({}));
@@ -331,6 +333,16 @@ function FollowUpNoteModal({
             style={{ ...fieldInput, marginTop: 6, maxWidth: 220 }}
           />
         ) : null}
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={resolvedDenial}
+            onChange={(e) => setResolvedDenial(e.target.checked)}
+          />
+          This note resolved the denial
+        </label>
       </div>
       {error ? (
         <div style={{ color: "#B91C1C", marginTop: 8, fontSize: 13 }}>{error}</div>

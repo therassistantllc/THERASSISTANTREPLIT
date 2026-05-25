@@ -472,6 +472,7 @@ function NoteModal({
   onSaved: () => void;
 }) {
   const [body, setBody] = useState("");
+  const [resolvedDenial, setResolvedDenial] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -485,7 +486,11 @@ function NoteModal({
     const res = await fetch(`/api/billing/claims/${row.id}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ organizationId, body: body.trim() }),
+      body: JSON.stringify({
+        organizationId,
+        body: body.trim(),
+        resolved_denial: resolvedDenial,
+      }),
     });
     const json = await res.json().catch(() => ({}));
     setSaving(false);
@@ -508,6 +513,16 @@ function NoteModal({
         rows={6}
         style={fieldInput}
       />
+      <div style={{ marginTop: 12 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={resolvedDenial}
+            onChange={(e) => setResolvedDenial(e.target.checked)}
+          />
+          This note resolved the denial
+        </label>
+      </div>
       {error ? <div style={{ color: "#B91C1C", marginTop: 8, fontSize: 13 }}>{error}</div> : null}
       <div style={buttonRow}>
         <button type="button" className="button button-secondary" onClick={onClose} disabled={saving}>

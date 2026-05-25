@@ -32,6 +32,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote } from "@/lib/billing/claimNotes";
 
 const ALLOWED = [
   "dispute",
@@ -195,10 +196,10 @@ export async function POST(
       // Best-effort claim_notes write — non-fatal if it fails (e.g.
       // legacy claim ids that aren't FK-resolvable). Audit row still
       // captures the note.
-      await (supabase as any).from("claim_notes").insert({
-        organization_id: organizationId,
-        claim_id: rec.professional_claim_id,
-        author_user_id: guard.userId,
+      await insertClaimNote(supabase as any, {
+        organizationId,
+        claimId: rec.professional_claim_id,
+        authorUserId: guard.userId,
         body: String(body.note).slice(0, 2000),
       });
     }

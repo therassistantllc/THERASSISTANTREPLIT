@@ -16,6 +16,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote } from "@/lib/billing/claimNotes";
 
 const text = (v: unknown) => String(v ?? "").trim();
 
@@ -235,11 +236,11 @@ export async function POST(request: Request) {
         .in("id", claimIds);
       const validIds = ((claims as any[]) ?? []).map((c) => text(c.id));
       for (const id of validIds) {
-        const { error } = await (supabase as any).from("claim_notes").insert({
-          organization_id: organizationId,
-          claim_id: id,
-          author_user_id: guard.userId,
-          author_display_name: "[Payer rule]",
+        const { error } = await insertClaimNote(supabase as any, {
+          organizationId,
+          claimId: id,
+          authorUserId: guard.userId,
+          authorDisplayName: "[Payer rule]",
           body: `[Payer rule] ${summary}\n\n${rule}`,
         });
         if (!error) notesWritten += 1;

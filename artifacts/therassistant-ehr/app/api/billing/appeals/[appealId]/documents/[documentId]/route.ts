@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote } from "@/lib/billing/claimNotes";
 
 const text = (v: unknown) => String(v ?? "").trim();
 
@@ -95,12 +96,12 @@ export async function DELETE(
       .eq("id", appealId);
 
     const userId = (guard as { userId?: string | null }).userId ?? null;
-    await supabase.from("claim_notes").insert({
-      organization_id: organizationId,
-      claim_id: (doc as { claim_id: string }).claim_id,
+    await insertClaimNote(supabase, {
+      organizationId,
+      claimId: (doc as { claim_id: string }).claim_id,
       body: `Removed appeal document: ${text((doc as { file_name?: string }).file_name) || "document"}`,
-      author_user_id: userId,
-      author_display_name: null,
+      authorUserId: userId,
+      authorDisplayName: null,
     });
 
     return NextResponse.json({ success: true, attachmentsCount: count ?? 0 });

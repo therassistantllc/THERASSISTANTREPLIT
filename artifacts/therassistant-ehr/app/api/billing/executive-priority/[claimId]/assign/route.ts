@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote } from "@/lib/billing/claimNotes";
 
 const text = (v: unknown) => String(v ?? "").trim();
 
@@ -126,11 +127,11 @@ export async function POST(
     }
 
     // Audit trail
-    await (supabase as any).from("claim_notes").insert({
-      organization_id: organizationId,
-      claim_id: claimId,
-      author_user_id: guard.userId,
-      author_display_name: "Executive workqueue",
+    await insertClaimNote(supabase as any, {
+      organizationId,
+      claimId,
+      authorUserId: guard.userId,
+      authorDisplayName: "Executive workqueue",
       body: `[System] Assigned to ${assigneeName}.`,
     });
 

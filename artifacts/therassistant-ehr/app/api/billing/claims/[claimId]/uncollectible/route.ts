@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote } from "@/lib/billing/claimNotes";
 
 const text = (v: unknown) => String(v ?? "").trim();
 
@@ -109,11 +110,11 @@ export async function POST(
       .eq("claim_id", claimId)
       .is("archived_at", null);
 
-    await (supabase as any).from("claim_notes").insert({
-      organization_id: organizationId,
-      claim_id: claimId,
-      author_user_id: guard.userId ?? null,
-      author_display_name: "Timely Filing workqueue",
+    await insertClaimNote(supabase as any, {
+      organizationId,
+      claimId,
+      authorUserId: guard.userId ?? null,
+      authorDisplayName: "Timely Filing workqueue",
       body: `[System] Marked uncollectible — reason: ${reason}${
         comment ? ` — ${comment}` : ""
       }`,

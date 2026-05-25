@@ -16,6 +16,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote } from "@/lib/billing/claimNotes";
 
 const text = (v: unknown) => String(v ?? "").trim();
 
@@ -222,11 +223,11 @@ export async function POST(
     }
     const noteBody = lines.filter(Boolean).join("\n");
 
-    const { error } = await (supabase as any).from("claim_notes").insert({
-      organization_id: organizationId,
-      claim_id: claimId,
-      author_user_id: guard.userId ?? null,
-      author_display_name: "Timely Filing workqueue",
+    const { error } = await insertClaimNote(supabase as any, {
+      organizationId,
+      claimId,
+      authorUserId: guard.userId ?? null,
+      authorDisplayName: "Timely Filing workqueue",
       body: noteBody,
     });
     if (error) {

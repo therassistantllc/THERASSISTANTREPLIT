@@ -22,6 +22,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote } from "@/lib/billing/claimNotes";
 
 const text = (v: unknown) => String(v ?? "").trim();
 const money = (v: unknown) => {
@@ -189,14 +190,12 @@ export async function POST(
     }
 
     if (action === "add_note" && note) {
-      const { error: noteErr } = await (supabase as any)
-        .from("claim_notes")
-        .insert({
-          organization_id: organizationId,
-          claim_id: id,
-          author_user_id: guard.userId,
-          body: note,
-        });
+      const { error: noteErr } = await insertClaimNote(supabase as any, {
+        organizationId,
+        claimId: id,
+        authorUserId: guard.userId,
+        body: note,
+      });
       if (noteErr) throw noteErr;
     }
 

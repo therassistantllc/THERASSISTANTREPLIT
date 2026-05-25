@@ -22,6 +22,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote } from "@/lib/billing/claimNotes";
 
 const text = (v: unknown) => String(v ?? "").trim();
 
@@ -176,11 +177,11 @@ export async function POST(request: Request) {
       }
       // Audit trail
       for (const claimId of validIds) {
-        await (supabase as any).from("claim_notes").insert({
-          organization_id: organizationId,
-          claim_id: claimId,
-          author_user_id: guard.userId,
-          author_display_name: authorName,
+        await insertClaimNote(supabase as any, {
+          organizationId,
+          claimId,
+          authorUserId: guard.userId,
+          authorDisplayName: authorName,
           body: `[CARC ${carcCode ?? "UNKNOWN"}] Bulk assigned${
             assignedToUserId ? ` to user ${assignedToUserId}` : " (unassigned)"
           }.`,
@@ -199,11 +200,11 @@ export async function POST(request: Request) {
       }
       let drafted = 0;
       for (const claimId of validIds) {
-        await (supabase as any).from("claim_notes").insert({
-          organization_id: organizationId,
-          claim_id: claimId,
-          author_user_id: guard.userId,
-          author_display_name: authorName,
+        await insertClaimNote(supabase as any, {
+          organizationId,
+          claimId,
+          authorUserId: guard.userId,
+          authorDisplayName: authorName,
           body: `APPEAL DRAFT (CARC ${carcCode ?? "UNKNOWN"}):\n\n${appealBody}`,
         });
         const itemId = await ensureWorkqueueItem(supabase, organizationId, claimId, carcCode);
@@ -240,11 +241,11 @@ export async function POST(request: Request) {
             .eq("id", itemId)
             .eq("organization_id", organizationId);
         }
-        await (supabase as any).from("claim_notes").insert({
-          organization_id: organizationId,
-          claim_id: claimId,
-          author_user_id: guard.userId,
-          author_display_name: authorName,
+        await insertClaimNote(supabase as any, {
+          organizationId,
+          claimId,
+          authorUserId: guard.userId,
+          authorDisplayName: authorName,
           body: `CORRECTION QUEUED (CARC ${carcCode ?? "UNKNOWN"}): ${correctionNote}`,
         });
         updated += 1;
@@ -359,11 +360,11 @@ export async function POST(request: Request) {
         `PAYER RULE (${verbLabel}) — ${payer} / CARC ${carcCode ?? "UNKNOWN"}:\n${ruleSummary}\n` +
         `(Active rule id: ${ruleId})`;
       if (anchorClaimId) {
-        await (supabase as any).from("claim_notes").insert({
-          organization_id: organizationId,
-          claim_id: anchorClaimId,
-          author_user_id: guard.userId,
-          author_display_name: authorName,
+        await insertClaimNote(supabase as any, {
+          organizationId,
+          claimId: anchorClaimId,
+          authorUserId: guard.userId,
+          authorDisplayName: authorName,
           body: noteBody,
         });
       }

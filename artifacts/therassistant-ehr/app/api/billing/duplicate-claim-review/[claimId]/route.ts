@@ -16,6 +16,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote } from "@/lib/billing/claimNotes";
 
 type Action =
   | "submit_anyway"
@@ -85,17 +86,14 @@ async function writeNote(
   },
 ) {
   if (!supabase) return null;
-  return (supabase as any)
-    .from("claim_notes")
-    .insert({
-      organization_id: args.organizationId,
-      claim_id: args.claimId,
-      author_user_id: args.authorUserId,
-      author_display_name: args.authorDisplayName,
-      body: args.body,
-    })
-    .select("id")
-    .single();
+  return insertClaimNote(supabase as any, {
+    organizationId: args.organizationId,
+    claimId: args.claimId,
+    authorUserId: args.authorUserId,
+    authorDisplayName: args.authorDisplayName,
+    body: args.body,
+    returning: "id",
+  });
 }
 
 async function writeAudit(

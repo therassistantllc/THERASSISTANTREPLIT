@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote, inferRarcCodesForClaim } from "@/lib/billing/claimNotes";
 
 const BUCKET = "claim-appeal-documents";
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -250,15 +251,21 @@ async function attachFromChart(
     .eq("organization_id", organizationId)
     .eq("id", appealId);
 
-  const notes = rowsToInsert.map((r) => ({
-    organization_id: organizationId,
-    claim_id: appeal.claim_id,
-    body: `Attached chart document to appeal: ${r.file_name}${description ? ` — ${description}` : ""}`,
-    author_user_id: userId,
-    author_display_name: authorDisplay,
-  }));
-  if (notes.length > 0) {
-    await supabase.from("claim_notes").insert(notes);
+  if (rowsToInsert.length > 0) {
+    const inferredRarcCodes = await inferRarcCodesForClaim(
+      supabase,
+      appeal.claim_id,
+    );
+    for (const r of rowsToInsert) {
+      await insertClaimNote(supabase, {
+        organizationId,
+        claimId: appeal.claim_id,
+        body: `Attached chart document to appeal: ${r.file_name}${description ? ` — ${description}` : ""}`,
+        authorUserId: userId,
+        authorDisplayName: authorDisplay,
+        rarcCodes: inferredRarcCodes,
+      });
+    }
   }
 
   return NextResponse.json({
@@ -454,12 +461,12 @@ export async function POST(
       .eq("organization_id", organizationId)
       .eq("id", appealId);
 
-    await supabase.from("claim_notes").insert({
-      organization_id: organizationId,
-      claim_id: appeal.claim_id,
+    await insertClaimNote(supabase, {
+      organizationId,
+      claimId: appeal.claim_id,
       body: `Uploaded appeal document: ${fileName}${description ? ` — ${description}` : ""}`,
-      author_user_id: userId,
-      author_display_name: authorDisplay,
+      authorUserId: userId,
+      authorDisplayName: authorDisplay,
     });
 
     return NextResponse.json({

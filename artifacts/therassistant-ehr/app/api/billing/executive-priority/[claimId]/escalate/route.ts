@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote } from "@/lib/billing/claimNotes";
 
 const text = (v: unknown) => String(v ?? "").trim();
 const VALID_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
@@ -102,11 +103,11 @@ export async function POST(
       }
     }
 
-    await (supabase as any).from("claim_notes").insert({
-      organization_id: organizationId,
-      claim_id: claimId,
-      author_user_id: guard.userId,
-      author_display_name: "Executive workqueue",
+    await insertClaimNote(supabase as any, {
+      organizationId,
+      claimId,
+      authorUserId: guard.userId,
+      authorDisplayName: "Executive workqueue",
       body: `[System] Escalated to ${priority}${reason ? ` — ${reason}` : ""}.`,
     });
 

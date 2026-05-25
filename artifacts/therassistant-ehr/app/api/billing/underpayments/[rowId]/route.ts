@@ -30,6 +30,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote } from "@/lib/billing/claimNotes";
 
 type Action =
   | "create_appeal"
@@ -97,11 +98,11 @@ async function writeNote(
     body: string;
   },
 ) {
-  return supabase.from("claim_notes").insert({
-    organization_id: args.organizationId,
-    claim_id: args.claimId,
-    author_user_id: args.authorUserId,
-    author_display_name: args.authorDisplayName,
+  return insertClaimNote(supabase, {
+    organizationId: args.organizationId,
+    claimId: args.claimId,
+    authorUserId: args.authorUserId,
+    authorDisplayName: args.authorDisplayName,
     body: args.body,
   });
 }
@@ -347,25 +348,21 @@ export async function POST(
           const cid = text((row as any).professional_claim_id);
           if (cid) claimByEra.set(text((row as any).id), cid);
         }
-        const inserts: Array<Record<string, unknown>> = [];
+        let writtenCount = 0;
         for (const id of extraIds) {
           const eraId = id.split("#")[0];
           const cid = claimByEra.get(eraId);
           if (!cid) continue;
-          inserts.push({
-            organization_id: organizationId,
-            claim_id: cid,
-            author_user_id: guard.userId ?? null,
-            author_display_name: author,
+          const { error: noteErr } = await insertClaimNote(supabase as any, {
+            organizationId,
+            claimId: cid,
+            authorUserId: guard.userId ?? null,
+            authorDisplayName: author,
             body: `UNDERPAYMENT_ACCEPTED:${id} — adopted contract rate ${allowed} (auto, fee_schedule=${updatedId})`,
           });
+          if (!noteErr) writtenCount += 1;
         }
-        if (inserts.length > 0) {
-          const { error: noteErr } = await (supabase as any)
-            .from("claim_notes")
-            .insert(inserts);
-          if (!noteErr) archivedCount = inserts.length;
-        }
+        archivedCount = writtenCount;
       }
 
       return NextResponse.json({

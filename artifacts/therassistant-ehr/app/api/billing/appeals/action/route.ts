@@ -23,6 +23,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { insertClaimNote } from "@/lib/billing/claimNotes";
 
 type DbRow = Record<string, any>;
 
@@ -57,12 +58,12 @@ async function addClaimNote(
 ) {
   const body = params.body.trim();
   if (!body) return;
-  const { error } = await supabase.from("claim_notes").insert({
-    organization_id: params.organizationId,
-    claim_id: params.claimId,
+  const { error } = await insertClaimNote(supabase, {
+    organizationId: params.organizationId,
+    claimId: params.claimId,
     body,
-    author_user_id: params.userId,
-    author_display_name: params.authorDisplayName,
+    authorUserId: params.userId,
+    authorDisplayName: params.authorDisplayName,
   });
   if (error) throw new Error(error.message);
 }

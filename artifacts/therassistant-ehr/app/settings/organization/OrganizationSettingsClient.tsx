@@ -208,8 +208,8 @@ function LetterheadLogoField({
   }, [hasLogo, organizationId, path]);
 
   async function handleFile(file: File) {
-    if (!/^image\/jpe?g$/i.test(file.type)) {
-      setMsg("Logo must be a JPEG image (image/jpeg).");
+    if (!/^image\/(jpe?g|png|webp|gif)$/i.test(file.type)) {
+      setMsg("Logo must be a JPEG, PNG, WebP, or GIF image.");
       return;
     }
     setBusy("upload");
@@ -259,7 +259,7 @@ function LetterheadLogoField({
   return (
     <div style={{ marginTop: "var(--space-4)" }}>
       <label className="field-label" style={{ display: "block", marginBottom: "var(--space-2)" }}>
-        Letterhead Logo (JPEG only, up to 2 MB)
+        Letterhead Logo (JPEG, PNG, WebP, or GIF — up to 2 MB)
       </label>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
         {hasLogo && previewUrl ? (
@@ -286,7 +286,7 @@ function LetterheadLogoField({
         )}
         <input
           type="file"
-          accept="image/jpeg,image/jpg"
+          accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
           disabled={busy !== null || !organizationId}
           onChange={(e) => {
             const f = e.target.files?.[0];
@@ -563,7 +563,7 @@ export default function OrganizationSettingsClient() {
               These contact details and logo appear on generated billing PDFs (cover
               letters, appeal packets) so payers can reach the practice and recognise
               its brand. The billing address and phone above are reused; add fax,
-              email, and an optional JPEG logo here.
+              email, and an optional logo (JPEG, PNG, WebP, or GIF) here.
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
               {bf("billing_fax", "Billing Fax")}

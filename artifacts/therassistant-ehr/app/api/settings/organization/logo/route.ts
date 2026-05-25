@@ -1,18 +1,23 @@
 /**
- * POST   /api/settings/organization/logo  — upload a JPEG letterhead logo and
- *                                            persist its storage path on
+ * POST   /api/settings/organization/logo  — upload a letterhead logo (JPEG,
+ *                                            PNG, WebP, GIF) and persist its
+ *                                            storage path on
  *                                            `organization.billing_profile`.
  * DELETE /api/settings/organization/logo  — clear the persisted logo and best-
  *                                            effort remove the storage object.
  *
- * Why JPEG only: the cover-letter PDF generator embeds images with the
- * `DCTDecode` filter (raw JPEG passthrough). PNG would require a full
- * Deflate/PNG-predictor implementation; we deliberately keep the PDF path
- * dependency-free and small.
+ * Why we store JPEG: the cover-letter PDF generator embeds images with the
+ * `DCTDecode` filter (raw JPEG passthrough). PNG / WebP / GIF uploads are
+ * transcoded to JPEG via `sharp` at upload time so the PDF path remains
+ * dependency-free and small while still accepting common brand-asset formats
+ * (PNG transparency is flattened against white).
  */
 import { NextRequest, NextResponse } from "next/server";
+import sharp from "sharp";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireOrgAccess } from "@/lib/auth/requireOrgAccess";
+
+const ACCEPTED_MIME = /^image\/(jpe?g|png|webp|gif)$/i;
 
 const BUCKET = "organization-assets";
 const BILLING_PROFILE_KEY = "organization.billing_profile";
@@ -110,9 +115,9 @@ export async function POST(req: NextRequest) {
     );
   }
   const mimeType = blob.type || "";
-  if (!/^image\/jpe?g$/i.test(mimeType)) {
+  if (!ACCEPTED_MIME.test(mimeType)) {
     return NextResponse.json(
-      { error: "Logo must be a JPEG image (image/jpeg)." },
+      { error: "Logo must be a JPEG, PNG, WebP, or GIF image." },
       { status: 415 },
     );
   }
@@ -130,7 +135,28 @@ export async function POST(req: NextRequest) {
   const stamp = Date.now();
   const storagePath = `${organizationId}/letterhead/logo-${stamp}.jpg`;
   const arrayBuffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
+  const inputBytes = new Uint8Array(arrayBuffer);
+
+  // Transcode every upload through sharp. JPEG inputs are re-encoded (cheap
+  // and safe — also strips orientation EXIF, fixing rotated-photo logos);
+  // PNG / WebP / GIF are flattened against white and emitted as baseline JPEG
+  // so the PDF generator's DCTDecode path keeps working unchanged.
+  let bytes: Uint8Array;
+  try {
+    const jpeg = await sharp(inputBytes)
+      .flatten({ background: { r: 255, g: 255, b: 255 } })
+      .rotate()
+      .jpeg({ quality: 90, chromaSubsampling: "4:4:4", mozjpeg: false })
+      .toBuffer();
+    bytes = new Uint8Array(jpeg);
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error: `Could not read image: ${err instanceof Error ? err.message : String(err)}`,
+      },
+      { status: 400 },
+    );
+  }
 
   const { error: upErr } = await supabase.storage
     .from(BUCKET)

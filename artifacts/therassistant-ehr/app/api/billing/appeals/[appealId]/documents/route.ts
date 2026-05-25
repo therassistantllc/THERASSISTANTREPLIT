@@ -72,6 +72,203 @@ function shapeDoc(row: Record<string, unknown>) {
   };
 }
 
+async function attachFromChart(
+  request: NextRequest,
+  supabase: NonNullable<ReturnType<typeof createServerSupabaseAdminClient>>,
+  appealId: string,
+): Promise<NextResponse> {
+  const body = (await request.json().catch(() => ({}))) as {
+    organizationId?: string | null;
+    actorDisplayName?: string | null;
+    description?: string | null;
+    chartDocumentIds?: unknown;
+  };
+
+  const ids = Array.isArray(body.chartDocumentIds)
+    ? Array.from(
+        new Set(
+          body.chartDocumentIds
+            .map((v) => text(v))
+            .filter((v) => v.length > 0),
+        ),
+      )
+    : [];
+
+  if (ids.length === 0) {
+    return NextResponse.json(
+      { success: false, error: "chartDocumentIds is required" },
+      { status: 400 },
+    );
+  }
+
+  const guard = await requireBillingAccess({
+    requestedOrganizationId: body.organizationId ?? null,
+  });
+  if (guard instanceof NextResponse) return guard;
+  const organizationId = guard.organizationId;
+
+  const appeal = await loadAppeal(supabase, organizationId, appealId);
+  if (!appeal) {
+    return NextResponse.json(
+      { success: false, error: "Appeal not found" },
+      { status: 404 },
+    );
+  }
+
+  const { data: claimRow, error: claimErr } = await (supabase as unknown as {
+    from: (t: string) => {
+      select: (c: string) => {
+        eq: (a: string, b: string) => {
+          eq: (a: string, b: string) => {
+            maybeSingle: () => Promise<{
+              data: { patient_id: string | null } | null;
+              error: { message: string } | null;
+            }>;
+          };
+        };
+      };
+    };
+  })
+    .from("professional_claims")
+    .select("patient_id")
+    .eq("id", appeal.claim_id)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (claimErr) {
+    return NextResponse.json(
+      { success: false, error: claimErr.message },
+      { status: 422 },
+    );
+  }
+  const claimClientId = (claimRow?.patient_id ?? null) as string | null;
+
+  const { data: docs, error: docsErr } = await supabase
+    .from("documents")
+    .select(
+      "id, client_id, title, file_name, mime_type, file_size_bytes, storage_bucket, storage_path, document_type",
+    )
+    .eq("organization_id", organizationId)
+    .in("id", ids)
+    .is("archived_at", null);
+
+  if (docsErr) {
+    return NextResponse.json(
+      { success: false, error: docsErr.message },
+      { status: 422 },
+    );
+  }
+
+  type ChartDoc = {
+    id: string;
+    client_id: string | null;
+    title: string | null;
+    file_name: string | null;
+    mime_type: string | null;
+    file_size_bytes: number | null;
+    storage_bucket: string | null;
+    storage_path: string | null;
+    document_type: string | null;
+  };
+  const chartDocs = (docs ?? []) as ChartDoc[];
+
+  if (chartDocs.length === 0) {
+    return NextResponse.json(
+      { success: false, error: "No matching chart documents found" },
+      { status: 404 },
+    );
+  }
+
+  if (claimClientId) {
+    const wrongClient = chartDocs.find(
+      (d) => d.client_id && d.client_id !== claimClientId,
+    );
+    if (wrongClient) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "One or more documents do not belong to this claim's client",
+        },
+        { status: 403 },
+      );
+    }
+  }
+
+  const description = text(body.description) || null;
+  const userId = (guard as { userId?: string | null }).userId ?? null;
+  const authorDisplay = text(body.actorDisplayName) || null;
+
+  const rowsToInsert = chartDocs
+    .filter((d) => text(d.storage_bucket) && text(d.storage_path))
+    .map((d) => ({
+      organization_id: organizationId,
+      appeal_id: appealId,
+      claim_id: appeal.claim_id,
+      file_name: text(d.file_name) || text(d.title) || "chart_document",
+      mime_type: text(d.mime_type) || "application/octet-stream",
+      file_size_bytes: d.file_size_bytes ?? null,
+      storage_bucket: text(d.storage_bucket),
+      storage_path: text(d.storage_path),
+      description:
+        description ||
+        `Attached from chart${d.document_type ? ` (${d.document_type})` : ""}`,
+      uploaded_by_user_id: userId,
+      uploaded_by_display_name: authorDisplay,
+      source_document_id: d.id,
+    }));
+
+  if (rowsToInsert.length === 0) {
+    return NextResponse.json(
+      { success: false, error: "Selected chart documents have no stored file" },
+      { status: 422 },
+    );
+  }
+
+  const { data: inserted, error: insertErr } = await supabase
+    .from("claim_appeal_documents")
+    .insert(rowsToInsert)
+    .select(
+      "id, appeal_id, claim_id, file_name, mime_type, file_size_bytes, description, uploaded_by_display_name, created_at",
+    );
+
+  if (insertErr || !inserted) {
+    return NextResponse.json(
+      { success: false, error: insertErr?.message || "Failed to link chart documents" },
+      { status: 422 },
+    );
+  }
+
+  const { count } = await supabase
+    .from("claim_appeal_documents")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .eq("appeal_id", appealId);
+
+  const now = new Date().toISOString();
+  await supabase
+    .from("claim_appeals")
+    .update({ attachments_count: count ?? 0, updated_at: now })
+    .eq("organization_id", organizationId)
+    .eq("id", appealId);
+
+  const notes = rowsToInsert.map((r) => ({
+    organization_id: organizationId,
+    claim_id: appeal.claim_id,
+    body: `Attached chart document to appeal: ${r.file_name}${description ? ` — ${description}` : ""}`,
+    author_user_id: userId,
+    author_display_name: authorDisplay,
+  }));
+  if (notes.length > 0) {
+    await supabase.from("claim_notes").insert(notes);
+  }
+
+  return NextResponse.json({
+    success: true,
+    documents: (inserted as Record<string, unknown>[]).map((r) => shapeDoc(r)),
+    attached: rowsToInsert.length,
+    attachmentsCount: count ?? 0,
+  });
+}
+
 export async function GET(
   request: NextRequest,
   ctx: { params: Promise<{ appealId: string }> },
@@ -147,6 +344,11 @@ export async function POST(
         { success: false, error: "appealId is required" },
         { status: 400 },
       );
+    }
+
+    const contentType = (request.headers.get("content-type") || "").toLowerCase();
+    if (!contentType.includes("multipart/form-data")) {
+      return await attachFromChart(request, supabase, appealId);
     }
 
     const form = await request.formData();

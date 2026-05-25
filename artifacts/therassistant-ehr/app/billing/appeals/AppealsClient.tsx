@@ -555,6 +555,57 @@ async function fetchAppealDocuments(
   return (json.documents ?? []) as AppealDocument[];
 }
 
+interface ChartDocument {
+  id: string;
+  title: string | null;
+  fileName: string | null;
+  type: string | null;
+  scope: string | null;
+  mimeType: string | null;
+  fileSizeBytes: number | null;
+  filedAt: string | null;
+  createdAt: string | null;
+  hasFile: boolean;
+}
+
+async function fetchChartDocuments(
+  clientId: string,
+  organizationId: string,
+): Promise<ChartDocument[]> {
+  const params = new URLSearchParams({ organizationId });
+  const res = await fetch(
+    `/api/patients/${encodeURIComponent(clientId)}/documents?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.success) return [];
+  type RawDoc = {
+    id?: unknown;
+    title?: unknown;
+    fileName?: unknown;
+    type?: unknown;
+    scope?: unknown;
+    mimeType?: unknown;
+    fileSizeBytes?: unknown;
+    filedAt?: unknown;
+    createdAt?: unknown;
+    storagePath?: unknown;
+  };
+  return ((json.documents ?? []) as RawDoc[]).map((d) => ({
+    id: String(d.id ?? ""),
+    title: (d.title as string | null) ?? null,
+    fileName: (d.fileName as string | null) ?? null,
+    type: (d.type as string | null) ?? null,
+    scope: (d.scope as string | null) ?? null,
+    mimeType: (d.mimeType as string | null) ?? null,
+    fileSizeBytes:
+      typeof d.fileSizeBytes === "number" ? d.fileSizeBytes : null,
+    filedAt: (d.filedAt as string | null) ?? null,
+    createdAt: (d.createdAt as string | null) ?? null,
+    hasFile: Boolean(d.storagePath),
+  }));
+}
+
 function AttachModal({
   row, organizationId, onClose, onDone,
 }: {
@@ -566,6 +617,10 @@ function AttachModal({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [existing, setExisting] = useState<AppealDocument[] | null>(null);
+  const [chartDocs, setChartDocs] = useState<ChartDocument[] | null>(null);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartOpen, setChartOpen] = useState(false);
+  const [selectedChartIds, setSelectedChartIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let alive = true;
@@ -578,6 +633,64 @@ function AttachModal({
     }
     return () => { alive = false; };
   }, [row.appealId, organizationId]);
+
+  useEffect(() => {
+    if (!chartOpen || chartDocs !== null || !row.clientId) return;
+    let alive = true;
+    setChartLoading(true);
+    void fetchChartDocuments(row.clientId, organizationId)
+      .then((docs) => { if (alive) setChartDocs(docs); })
+      .finally(() => { if (alive) setChartLoading(false); });
+    return () => { alive = false; };
+  }, [chartOpen, chartDocs, row.clientId, organizationId]);
+
+  function toggleChartId(id: string) {
+    setSelectedChartIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleAttachFromChart() {
+    if (selectedChartIds.size === 0) {
+      setErr("Pick at least one chart document to attach.");
+      return;
+    }
+    setBusy(true); setErr(null);
+    const appealId = await ensureAppealId();
+    if (!appealId) { setBusy(false); return; }
+    const ids = Array.from(selectedChartIds);
+    const res = await fetch(
+      `/api/billing/appeals/${encodeURIComponent(appealId)}/documents`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          chartDocumentIds: ids,
+          description: description || null,
+        }),
+      },
+    );
+    const json = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok || !json?.success) {
+      setErr(json?.error || `Attach failed (${res.status})`);
+      return;
+    }
+    const attached = typeof json.attached === "number" ? json.attached : ids.length;
+    const count =
+      typeof json.attachmentsCount === "number"
+        ? json.attachmentsCount
+        : row.attachmentsCount + attached;
+    setSelectedChartIds(new Set());
+    onDone(
+      { appealId, attachmentsCount: count },
+      `Attached ${attached} chart document${attached === 1 ? "" : "s"}`,
+    );
+    onClose();
+  }
 
   async function ensureAppealId(): Promise<string | null> {
     if (row.appealId) return row.appealId;
@@ -681,6 +794,93 @@ function AttachModal({
         placeholder="e.g. Treatment plan + progress notes for 03/01–03/15"
         disabled={busy}
       />
+
+      <div style={{ marginTop: 16, borderTop: "1px solid #E2E8F0", paddingTop: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Attach from chart</div>
+          {!chartOpen ? (
+            <button
+              type="button"
+              style={secondaryBtn}
+              disabled={busy || !row.clientId}
+              title={!row.clientId ? "No client linked to this claim" : "Browse client documents"}
+              onClick={() => setChartOpen(true)}
+            >
+              Attach from chart
+            </button>
+          ) : (
+            <button
+              type="button"
+              style={{ ...secondaryBtn, padding: "2px 8px" }}
+              onClick={() => { setChartOpen(false); setSelectedChartIds(new Set()); }}
+              disabled={busy}
+            >
+              Hide
+            </button>
+          )}
+        </div>
+        {chartOpen ? (
+          <div style={{ marginTop: 8 }}>
+            {!row.clientId ? (
+              <div style={{ color: "#94A3B8", fontSize: 12 }}>
+                This claim has no linked client chart.
+              </div>
+            ) : chartLoading ? (
+              <div style={{ color: "#94A3B8", fontSize: 12 }}>Loading chart documents…</div>
+            ) : !chartDocs || chartDocs.length === 0 ? (
+              <div style={{ color: "#94A3B8", fontSize: 12 }}>
+                No documents in this client&apos;s chart.
+              </div>
+            ) : (
+              <>
+                <ul style={{
+                  listStyle: "none", padding: 0, margin: 0,
+                  border: "1px solid #E2E8F0", borderRadius: 4,
+                  maxHeight: 220, overflow: "auto",
+                }}>
+                  {chartDocs.map((d) => {
+                    const checked = selectedChartIds.has(d.id);
+                    const label = d.title || d.fileName || "Document";
+                    return (
+                      <li key={d.id} style={{
+                        padding: "6px 10px", borderBottom: "1px solid #F1F5F9",
+                        display: "flex", alignItems: "center", gap: 8, fontSize: 12,
+                        opacity: d.hasFile ? 1 : 0.55,
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={busy || !d.hasFile}
+                          onChange={() => toggleChartId(d.id)}
+                          title={!d.hasFile ? "No file is attached to this chart document" : ""}
+                        />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontWeight: 500, color: "#0F172A" }}>{label}</div>
+                          <div style={{ color: "#64748B" }}>
+                            {[d.type, d.scope, formatBytes(d.fileSizeBytes),
+                              d.filedAt ? new Date(d.filedAt).toLocaleDateString() : null]
+                              .filter(Boolean).join(" · ")}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+                  <button
+                    type="button"
+                    style={primaryBtn}
+                    disabled={busy || selectedChartIds.size === 0}
+                    onClick={() => void handleAttachFromChart()}
+                  >
+                    {busy ? "Attaching…" : `Attach ${selectedChartIds.size || ""} from chart`.trim()}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : null}
+      </div>
 
       {existing && existing.length > 0 ? (
         <div style={{ marginTop: 16 }}>

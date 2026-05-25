@@ -40,7 +40,7 @@ export async function DELETE(
 
     const { data: doc, error: docErr } = await supabase
       .from("claim_appeal_documents")
-      .select("id, claim_id, file_name, storage_bucket, storage_path")
+      .select("id, claim_id, file_name, storage_bucket, storage_path, source_document_id")
       .eq("organization_id", organizationId)
       .eq("appeal_id", appealId)
       .eq("id", documentId)
@@ -60,6 +60,9 @@ export async function DELETE(
 
     const bucket = text((doc as { storage_bucket?: string }).storage_bucket);
     const path = text((doc as { storage_path?: string }).storage_path);
+    const isChartLink = Boolean(
+      (doc as { source_document_id?: string | null }).source_document_id,
+    );
 
     const { error: delRowErr } = await supabase
       .from("claim_appeal_documents")
@@ -74,7 +77,7 @@ export async function DELETE(
       );
     }
 
-    if (bucket && path) {
+    if (bucket && path && !isChartLink) {
       await supabase.storage.from(bucket).remove([path]).catch(() => {});
     }
 

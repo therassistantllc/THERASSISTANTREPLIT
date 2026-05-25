@@ -32,6 +32,9 @@ type IncomingUpdates = {
   phone?: string | null;
   email?: string | null;
   preferredLanguage?: string | null;
+  sourceClientId?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
 };
 
 const FIELD_MAP: Record<keyof IncomingUpdates, string> = {
@@ -52,6 +55,9 @@ const FIELD_MAP: Record<keyof IncomingUpdates, string> = {
   phone: "phone",
   email: "email",
   preferredLanguage: "preferred_language",
+  sourceClientId: "external_client_ref",
+  emergencyContactName: "emergency_contact_name",
+  emergencyContactPhone: "emergency_contact_phone",
 };
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -72,6 +78,9 @@ const COLUMN_LABELS: Record<string, string> = {
   phone: "Phone",
   email: "Email",
   preferred_language: "Preferred language",
+  external_client_ref: "Source client ID",
+  emergency_contact_name: "Emergency contact name",
+  emergency_contact_phone: "Emergency contact phone",
 };
 
 const AUDIT_COLUMNS = Object.values(FIELD_MAP);

@@ -469,6 +469,9 @@ export default function PatientChartClient({
       phone: p.phone ?? "",
       email: p.email ?? "",
       preferredLanguage,
+      sourceClientId: p.sourceClientId ?? "",
+      emergencyContactName: p.emergencyContactName ?? "",
+      emergencyContactPhone: p.emergencyContactPhone ?? "",
     };
     setDemoDraft(initial);
     setDemoOriginal(initial);
@@ -1333,6 +1336,33 @@ export default function PatientChartClient({
                     </div>
                   );
                 })()}
+                <div className="summary-field">
+                  <label htmlFor="demo-sourceClientId">Source client ID</label>
+                  <input
+                    id="demo-sourceClientId"
+                    type="text"
+                    value={demoDraft.sourceClientId ?? ""}
+                    onChange={(e) => setDemoField("sourceClientId", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-emergencyContactName">Emergency contact</label>
+                  <input
+                    id="demo-emergencyContactName"
+                    type="text"
+                    value={demoDraft.emergencyContactName ?? ""}
+                    onChange={(e) => setDemoField("emergencyContactName", e.target.value)}
+                  />
+                </div>
+                <div className="summary-field">
+                  <label htmlFor="demo-emergencyContactPhone">Emergency phone</label>
+                  <input
+                    id="demo-emergencyContactPhone"
+                    type="tel"
+                    value={demoDraft.emergencyContactPhone ?? ""}
+                    onChange={(e) => setDemoField("emergencyContactPhone", e.target.value)}
+                  />
+                </div>
                 <div className="summary-field">
                   <label>Client ID</label>
                   <span>{patient.id}</span>

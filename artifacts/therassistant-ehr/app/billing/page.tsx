@@ -16,5 +16,5 @@ export default async function BillingPage({
     }
   }
   const search = qs.toString();
-  redirect(`/billing/charge-capture${search ? `?${search}` : ""}`);
+  redirect(`/billing/claims${search ? `?${search}` : ""}`);
 }

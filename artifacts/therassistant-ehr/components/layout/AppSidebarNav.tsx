@@ -266,22 +266,13 @@ export default function AppSidebarNav() {
 
       {billingOpen ? (
         <div className={styles.subnav}>
-          <SubNavLinkIcon href="/billing/my-inbox" icon={<TasksIcon />} label="My Inbox" prefixes={["/billing/my-inbox"]} pathname={pathname} badge={<MyInboxBadge />} />
-          <SubNavLinkIcon href="/billing/charge-capture" icon={<ClipboardIcon />} label="Charges" prefixes={["/billing/charge-capture"]} pathname={pathname} />
-          <SubNavLinkIcon href="/billing/documentation-pending" icon={<EditIcon />} label="Documentation Pending" prefixes={["/billing/documentation-pending"]} pathname={pathname} />
-          <SubNavLinkIcon href="/billing/no-response" icon={<CheckCircleIcon />} label="No Response" prefixes={["/billing/no-response", "/billing/claim-readiness"]} pathname={pathname} />
-          <SubNavLinkIcon href="/billing/denials-by-carc" icon={<SendIcon />} label="Denials by CARC" prefixes={["/billing/denials-by-carc", "/billing/claim-submission"]} pathname={pathname} />
-          <SubNavLinkIcon href="/billing/underpayments" icon={<ChartIcon />} label="Underpayments" prefixes={["/billing/underpayments"]} pathname={pathname} />
-          <SubNavLinkIcon href="/billing/timely-filing" icon={<ClipboardIcon />} label="Timely Filing" prefixes={["/billing/timely-filing"]} pathname={pathname} />
-          <SubNavLinkIcon href="/billing/837p-batches" icon={<LayersIcon />} label="837P Batches" prefixes={["/billing/837p-batches", "/billing/batches"]} pathname={pathname} />
-          <SubNavLinkIcon href="/billing/claim-edit-dashboard" icon={<EditIcon />} label="Rejections" prefixes={["/billing/claim-edit-dashboard"]} pathname={pathname} />
-          <SubNavLinkIcon href="/billing/duplicate-claim-review" icon={<DuplicateIcon />} label="Duplicate Review" prefixes={["/billing/duplicate-claim-review"]} pathname={pathname} />
-          <SubNavLinkIcon href="/billing/payments" icon={<CreditCardIcon />} label="Payments" prefixes={["/billing/payments"]} pathname={pathname} />
-          <SubNavLinkIcon href="/billing/partial-payments" icon={<CreditCardIcon />} label="Partial Payments" prefixes={["/billing/partial-payments"]} pathname={pathname} />
+          <SubNavLinkIcon href="/billing/my-inbox" icon={<TasksIcon />} label="Dashboard" prefixes={["/billing/my-inbox", "/billing/executive-priority"]} pathname={pathname} badge={<MyInboxBadge />} />
+          <SubNavLinkIcon href="/billing/claims" icon={<ClipboardIcon />} label="Claims" prefixes={["/billing/claims", "/billing/charge-capture", "/billing/documentation-pending", "/billing/no-response", "/billing/claim-readiness", "/billing/denials-by-carc", "/billing/claim-submission", "/billing/underpayments", "/billing/timely-filing", "/billing/837p-batches", "/billing/batches", "/billing/claim-edit-dashboard", "/billing/duplicate-claim-review", "/billing/aging", "/billing/rejections-999", "/billing/rejections-277ca", "/billing/payer-rejections", "/billing/resubmissions", "/billing/corrected-claims", "/billing/submitted-claims", "/billing/payer-received", "/billing/medical-review", "/billing/medical-necessity", "/billing/appeals", "/billing/cob-issues", "/billing/secondary-billing", "/billing/transmission-failures", "/billing/claim-build-errors", "/billing/claim-hold", "/billing/ready-to-generate", "/billing/eligibility-issues", "/billing/authorization-required", "/billing/provider-enrollment-issues", "/billing/partial-denials", "/billing/adjustments-review"]} pathname={pathname} />
+          <SubNavLinkIcon href="/billing/payments" icon={<CreditCardIcon />} label="Payments" prefixes={["/billing/payments", "/billing/era-import", "/billing/unmatched-era", "/billing/paper-checks", "/billing/partial-payments", "/billing/unposted-payments", "/billing/recoupments", "/billing/refunds", "/billing/credit-balances", "/billing/vcc", "/billing/reconciliation-exceptions"]} pathname={pathname} />
+          <SubNavLinkIcon href="/billing/patient-balances" icon={<UsersIcon />} label="Patient Balances" prefixes={["/billing/patient-balances", "/billing/patient-responsibility", "/billing/patient-billing", "/billing/bad-debt-review", "/billing/write-offs"]} pathname={pathname} />
+          <SubNavLinkIcon href="/billing/reports" icon={<ChartIcon />} label="Reports" prefixes={["/billing/reports"]} pathname={pathname} />
         </div>
       ) : null}
-
-      <NavLink href="/billing/reports" icon={<ChartIcon />} label="Reports" prefixes={["/billing/reports"]} pathname={pathname} />
 
       {/* ── ADMIN ────────────────────────────────────────────── */}
       <div className={styles.navSectionSpacer} />

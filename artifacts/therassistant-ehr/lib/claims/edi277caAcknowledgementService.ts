@@ -487,6 +487,7 @@ export async function intake277CAAcknowledgement(
           detected: perClaimDetected,
           origin: "277CA",
           sourceObjectId: acknowledgementId,
+          claimRefTrn: claimRef.trn || null,
         });
         if (writeResult.status === "error") {
           // Non-fatal: log but don't fail the whole ingest — the rejected

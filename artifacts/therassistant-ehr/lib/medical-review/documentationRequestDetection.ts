@@ -232,10 +232,79 @@ export interface WriteMedicalReviewRequestAuditInput {
   origin: "277CA" | "ERA";
   /** Optional reference back to the source row (acknowledgement / era payment id). */
   sourceObjectId?: string | null;
+  /**
+   * Optional 2200D TRN02 from the 277CA — echoes the original 837P CLM01 the
+   * payer is asking documentation for. Persisted in event_metadata so the
+   * Medical Review queue can show billers exactly which submitted claim
+   * control number the payer cited.
+   */
+  claimRefTrn?: string | null;
   /** Optional ISO date the request was received (defaults to now). */
   requestDate?: string | null;
   /** Optional payer-set due date if available. */
   dueDate?: string | null;
+}
+
+/**
+ * Human-readable descriptions for the codes we use to classify
+ * documentation requests. Used by the Medical Review queue UI to expand
+ * each trigger code into something a biller can act on without looking
+ * up the X12 spec.
+ */
+export const DOCUMENTATION_CODE_DESCRIPTIONS: Record<string, string> = {
+  // 277CA STC status codes
+  "226": "Information requested from the billing/rendering provider was not provided",
+  "287": "Information requested has not been provided",
+  "324": "Need additional documentation",
+  "354": "Medical records / clinical documentation requested",
+  "459": "Need medical notes",
+  // 277CA STC category codes
+  "A6": "Acknowledgement / rejected for missing information",
+  // Necessity CARCs
+  "50": "Non-covered: not deemed medically necessary by payer",
+  "55": "Procedure/treatment deemed experimental/investigational",
+  "167": "Diagnosis not covered — supporting documentation required",
+  // Records-related CARCs
+  "227": "Information requested from patient/insured/responsible party not provided",
+  "252": "An attachment/other documentation is required to adjudicate",
+  // Remittance remark codes
+  "N4": "Missing/incomplete/invalid prior treatment documentation",
+  "N26": "Missing itemized bill/statement",
+  "N29": "Missing documentation/orders/notes/summary/report/chart",
+  "N30": "Patient ineligible — eligibility documentation needed",
+  "N350": "Missing/invalid description of service for unlisted procedure",
+  "N479": "Missing Explanation of Benefits (COB)",
+  "N569": "Not covered without a qualifying medical record",
+  "N657": "Diagnosis code requires supporting documentation",
+  "N702": "Decision based on review of previously adjudicated claims/records",
+  "N705": "Documentation does not support medical necessity of services",
+  "N706": "Missing documentation",
+  "MA01": "Appeal rights — submit records to appeal",
+  "MA04": "Secondary payment requires primary EOB / records",
+  "MA27": "Missing/incomplete/invalid entitlement number or name",
+  "MA130": "Claim contains incomplete/invalid information — resubmit with documentation",
+};
+
+/**
+ * Look up a human-readable description for a trigger code emitted by
+ * `detect277CADocumentationRequest` / `detectEraDocumentationRequest`.
+ * Handles bare codes ("287", "N706", "50") as well as the
+ * `category:status` form 277CA detection emits ("A6:287").
+ */
+export function describeDocumentationCode(code: string): string | null {
+  if (!code) return null;
+  const trimmed = code.trim().toUpperCase().replace(/^(CO|PR|OA|CR|PI)-?/, "");
+  if (DOCUMENTATION_CODE_DESCRIPTIONS[trimmed]) {
+    return DOCUMENTATION_CODE_DESCRIPTIONS[trimmed];
+  }
+  if (trimmed.includes(":")) {
+    const parts = trimmed.split(":").filter(Boolean);
+    const named = parts
+      .map((p) => DOCUMENTATION_CODE_DESCRIPTIONS[p] ? `${p} — ${DOCUMENTATION_CODE_DESCRIPTIONS[p]}` : null)
+      .filter((s): s is string => Boolean(s));
+    if (named.length > 0) return named.join("; ");
+  }
+  return null;
 }
 
 /**
@@ -265,6 +334,7 @@ export async function writeMedicalReviewRequestAudit(
     triggerCodes: input.detected.triggerCodes,
     origin: input.origin,
     sourceObjectId: input.sourceObjectId ?? null,
+    claimRefTrn: input.claimRefTrn ?? null,
   };
 
   // Dedupe: look for an existing row with the same origin + sourceObjectId

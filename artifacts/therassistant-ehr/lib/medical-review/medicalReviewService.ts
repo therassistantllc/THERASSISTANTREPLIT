@@ -90,6 +90,8 @@ interface RawRequest {
    * back to the claim's `denial_reason_code`.
    */
   triggerCodes: string[];
+  triggerOrigin: "277CA" | "ERA" | null;
+  triggerTrn: string | null;
   source: "audit" | "denial";
 }
 
@@ -185,6 +187,10 @@ export async function loadMedicalReview({
           .map((c) => text(c).toUpperCase())
           .filter(Boolean)
       : [];
+    const originRaw = text(meta.origin).toUpperCase();
+    const triggerOrigin: "277CA" | "ERA" | null =
+      originRaw === "277CA" ? "277CA" : originRaw === "ERA" ? "ERA" : null;
+    const triggerTrn = text(meta.claimRefTrn) || null;
     requests.push({
       requestId: text(r.id),
       claimId,
@@ -195,6 +201,8 @@ export async function loadMedicalReview({
       requestDate: text(meta.requestDate) || text(r.created_at) || null,
       dueDate: text(meta.dueDate) || null,
       triggerCodes,
+      triggerOrigin,
+      triggerTrn,
       source: "audit",
     });
     requestedClaimIds.add(claimId);
@@ -228,6 +236,8 @@ export async function loadMedicalReview({
       requestDate: text(c.updated_at) || text(c.first_billed_date) || null,
       dueDate: null,
       triggerCodes: code ? [code.toUpperCase()] : [],
+      triggerOrigin: null,
+      triggerTrn: null,
       source: "denial",
     });
     requestedClaimIds.add(claimId);
@@ -393,6 +403,8 @@ export async function loadMedicalReview({
       chargeAmount: money(claim.total_charge),
       denialCode: text(claim.denial_reason_code) || carcRarcFromNotes(text(claim.billing_notes)),
       triggerCodes: req.triggerCodes,
+      triggerOrigin: req.triggerOrigin,
+      triggerTrn: req.triggerTrn,
       claimStatus: text(claim.claim_status) || null,
       providerId: text(appt?.provider_id) || null,
       practiceId: text(appt?.provider_location_id) || null,

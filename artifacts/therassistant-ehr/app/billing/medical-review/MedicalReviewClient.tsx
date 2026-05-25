@@ -13,6 +13,7 @@ import WorkqueueShell, {
 import { getWorkqueue } from "@/lib/billing/workqueues";
 import { MEDICAL_REVIEW_TABS, type MedicalReviewTab } from "@/lib/medical-review/tabs";
 import type { MedicalReviewRow } from "@/lib/medical-review/types";
+import { describeDocumentationCode } from "@/lib/medical-review/documentationRequestDetection";
 
 interface ListPayload {
   success: boolean;
@@ -297,24 +298,46 @@ export default function MedicalReviewClient() {
       { id: "dos", header: "DOS", cell: (r) => formatDate(r.dateOfService) },
       { id: "rtype", header: "Request type", cell: (r) => r.requestTypeLabel },
       {
-        id: "tcodes", header: "Trigger codes", width: 160,
-        cell: (r) => r.triggerCodes.length
-          ? (
-            <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 4 }}>
-              {r.triggerCodes.map((c) => (
+        id: "tcodes", header: "Trigger codes", width: 180,
+        cell: (r) => {
+          if (!r.triggerCodes.length) return <span style={{ color: "#9CA3AF" }}>—</span>;
+          const originLabel = r.triggerOrigin
+            ? `${r.triggerOrigin}${r.triggerTrn ? ` · TRN ${r.triggerTrn}` : ""}`
+            : null;
+          return (
+            <span style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
+              <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 4 }}>
+                {r.triggerCodes.map((c) => {
+                  const desc = describeDocumentationCode(c);
+                  const title = desc
+                    ? `${c} — ${desc}${r.triggerOrigin ? ` (${r.triggerOrigin})` : ""}`
+                    : r.triggerOrigin ? `${c} (${r.triggerOrigin})` : c;
+                  return (
+                    <span
+                      key={c}
+                      title={title}
+                      style={{
+                        background: "#EFF6FF", color: "#1D4ED8",
+                        padding: "1px 6px", borderRadius: 4,
+                        fontFamily: "ui-monospace, monospace",
+                        fontSize: 11, fontWeight: 600,
+                        cursor: "help",
+                      }}
+                    >{c}</span>
+                  );
+                })}
+              </span>
+              {originLabel ? (
                 <span
-                  key={c}
-                  style={{
-                    background: "#EFF6FF", color: "#1D4ED8",
-                    padding: "1px 6px", borderRadius: 4,
-                    fontFamily: "ui-monospace, monospace",
-                    fontSize: 11, fontWeight: 600,
-                  }}
-                >{c}</span>
-              ))}
+                  title={r.triggerTrn ? `Payer cited claim control number ${r.triggerTrn}` : undefined}
+                  style={{ fontSize: 10, color: "#64748B", fontFamily: "ui-monospace, monospace" }}
+                >
+                  {originLabel}
+                </span>
+              ) : null}
             </span>
-          )
-          : <span style={{ color: "#9CA3AF" }}>—</span>,
+          );
+        },
       },
       {
         id: "rdocs", header: "Requested documents",
@@ -774,11 +797,49 @@ export default function MedicalReviewClient() {
             <DetailKV label="Request type" value={selectedRow.requestTypeLabel} />
             <DetailKV label="Source" value={selectedRow.requestSource ?? "—"} />
             <DetailKV
+              label="Origin"
+              value={selectedRow.triggerOrigin
+                ? (selectedRow.triggerOrigin === "277CA"
+                    ? "Payer 277CA acknowledgement"
+                    : "Payer ERA (835) remittance")
+                : "Manual / denial fallback"}
+            />
+            {selectedRow.triggerTrn ? (
+              <DetailKV
+                label="Matched claim TRN"
+                value={
+                  <span style={{ fontFamily: "ui-monospace, monospace" }}>{selectedRow.triggerTrn}</span>
+                }
+              />
+            ) : null}
+            <DetailKV
               label="Trigger codes"
               value={selectedRow.triggerCodes.length
                 ? selectedRow.triggerCodes.join(", ")
                 : "—"}
             />
+            {selectedRow.triggerCodes.length ? (
+              <div style={{ padding: "8px 0 4px" }}>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {selectedRow.triggerCodes.map((c) => {
+                    const desc = describeDocumentationCode(c);
+                    return (
+                      <li key={c} style={{ fontSize: 12, color: "#475569", display: "flex", gap: 8 }}>
+                        <span
+                          style={{
+                            background: "#EFF6FF", color: "#1D4ED8",
+                            padding: "1px 6px", borderRadius: 4,
+                            fontFamily: "ui-monospace, monospace",
+                            fontSize: 11, fontWeight: 600, alignSelf: "flex-start",
+                          }}
+                        >{c}</span>
+                        <span style={{ flex: 1 }}>{desc ?? "No description on file for this code."}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
             <DetailKV label="Request date" value={formatDateTime(selectedRow.requestDate)} />
             <DetailKV label="Due date" value={selectedRow.dueDate ? `${formatDate(selectedRow.dueDate)}${selectedRow.isOverdue ? " (overdue)" : selectedRow.isUrgent ? ` (in ${selectedRow.daysUntilDue}d)` : ""}` : "—"} />
             <DetailKV label="Requested documents" value={selectedRow.requestedDocuments.length ? selectedRow.requestedDocuments.join(", ") : "—"} />

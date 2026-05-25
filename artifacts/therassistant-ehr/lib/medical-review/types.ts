@@ -42,6 +42,19 @@ export interface MedicalReviewRow {
    * underlying audit row).
    */
   triggerCodes: string[];
+  /**
+   * Origin of the auto-seeded medical-review request, when known. "277CA"
+   * means the row was seeded from a payer 277CA acknowledgement, "ERA"
+   * from an 835 remittance. `null` for manually-authored requests and
+   * for the denial-fallback rows the service still emits when there's
+   * no audit row.
+   */
+  triggerOrigin: "277CA" | "ERA" | null;
+  /**
+   * 2200D TRN02 from the 277CA — echoes the original 837P CLM01 the
+   * payer cited. Only populated for 277CA-origin rows.
+   */
+  triggerTrn: string | null;
   claimStatus: string | null;
 
   providerId: string | null;

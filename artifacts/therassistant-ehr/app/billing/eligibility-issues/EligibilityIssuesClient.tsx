@@ -154,6 +154,11 @@ export default function EligibilityIssuesClient() {
     loading: boolean;
     error: string | null;
     comments: InboxComment[];
+    canComment: boolean;
+    commentRole: "assignee" | "router" | null;
+    draft: string;
+    posting: boolean;
+    postError: string | null;
   };
   const [inboxCommentsById, setInboxCommentsById] = useState<
     Record<string, InboxCommentsState>
@@ -167,6 +172,11 @@ export default function EligibilityIssuesClient() {
           loading: true,
           error: null,
           comments: prev[workqueueItemId]?.comments ?? [],
+          canComment: prev[workqueueItemId]?.canComment ?? false,
+          commentRole: prev[workqueueItemId]?.commentRole ?? null,
+          draft: prev[workqueueItemId]?.draft ?? "",
+          posting: prev[workqueueItemId]?.posting ?? false,
+          postError: prev[workqueueItemId]?.postError ?? null,
         },
       }));
       try {
@@ -186,6 +196,11 @@ export default function EligibilityIssuesClient() {
             loading: false,
             error: null,
             comments: (json.comments ?? []) as InboxComment[],
+            canComment: Boolean(json.canComment),
+            commentRole: (json.commentRole ?? null) as InboxCommentsState["commentRole"],
+            draft: prev[workqueueItemId]?.draft ?? "",
+            posting: false,
+            postError: null,
           },
         }));
       } catch (e) {
@@ -195,11 +210,81 @@ export default function EligibilityIssuesClient() {
             loading: false,
             error: e instanceof Error ? e.message : "Failed to load comments",
             comments: prev[workqueueItemId]?.comments ?? [],
+            canComment: prev[workqueueItemId]?.canComment ?? false,
+            commentRole: prev[workqueueItemId]?.commentRole ?? null,
+            draft: prev[workqueueItemId]?.draft ?? "",
+            posting: false,
+            postError: prev[workqueueItemId]?.postError ?? null,
           },
         }));
       }
     },
     [organizationId],
+  );
+
+  const setCommentDraft = useCallback(
+    (workqueueItemId: string, draft: string) => {
+      setInboxCommentsById((prev) => {
+        const existing = prev[workqueueItemId];
+        if (!existing) return prev;
+        return { ...prev, [workqueueItemId]: { ...existing, draft } };
+      });
+    },
+    [],
+  );
+
+  const postInboxComment = useCallback(
+    async (workqueueItemId: string) => {
+      const current = inboxCommentsById[workqueueItemId];
+      const text = (current?.draft ?? "").trim();
+      if (!text) return;
+      setInboxCommentsById((prev) => {
+        const existing = prev[workqueueItemId];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [workqueueItemId]: { ...existing, posting: true, postError: null },
+        };
+      });
+      try {
+        const res = await fetch("/api/billing/workqueue-comments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            organizationId,
+            workqueueItemId,
+            comment: text,
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json?.success === false) {
+          throw new Error(json?.error ?? "Failed to post comment");
+        }
+        setInboxCommentsById((prev) => {
+          const existing = prev[workqueueItemId];
+          if (!existing) return prev;
+          return {
+            ...prev,
+            [workqueueItemId]: { ...existing, draft: "", posting: false, postError: null },
+          };
+        });
+        await loadInboxComments(workqueueItemId);
+      } catch (e) {
+        setInboxCommentsById((prev) => {
+          const existing = prev[workqueueItemId];
+          if (!existing) return prev;
+          return {
+            ...prev,
+            [workqueueItemId]: {
+              ...existing,
+              posting: false,
+              postError: e instanceof Error ? e.message : "Failed to post comment",
+            },
+          };
+        });
+      }
+    },
+    [inboxCommentsById, loadInboxComments, organizationId],
   );
 
   const load = useCallback(async () => {
@@ -881,11 +966,55 @@ export default function EligibilityIssuesClient() {
           if (state.error) {
             return <p style={{ color: "#B91C1C", fontSize: 13 }}>{state.error}</p>;
           }
+          const itemId = selectedRow.inboxItemId;
+          const composer = state.canComment ? (
+            <div style={{ marginTop: 12, borderTop: "1px solid #E2E8F0", paddingTop: 10 }}>
+              <label style={{ display: "block", fontSize: 12, color: "#475569", marginBottom: 4 }}>
+                {state.commentRole === "router"
+                  ? "Reply to the assignee"
+                  : "Reply to the biller who routed this"}
+              </label>
+              <textarea
+                value={state.draft}
+                onChange={(e) => setCommentDraft(itemId, e.target.value)}
+                rows={3}
+                placeholder="Add a comment…"
+                disabled={state.posting}
+                style={{
+                  width: "100%", padding: "8px 10px", borderRadius: 6,
+                  border: "1px solid #CBD5E1", fontSize: 13, resize: "vertical",
+                  fontFamily: "inherit", background: state.posting ? "#F1F5F9" : "#fff",
+                }}
+              />
+              {state.postError ? (
+                <p style={{ color: "#B91C1C", fontSize: 12, margin: "6px 0 0" }}>{state.postError}</p>
+              ) : null}
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => void postInboxComment(itemId)}
+                  disabled={state.posting || state.draft.trim().length === 0}
+                  style={{
+                    background: state.posting || state.draft.trim().length === 0 ? "#94A3B8" : "#0F172A",
+                    color: "#fff", border: "none",
+                    padding: "6px 14px", borderRadius: 6, fontSize: 13, fontWeight: 600,
+                    cursor: state.posting || state.draft.trim().length === 0 ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {state.posting ? "Posting…" : "Post comment"}
+                </button>
+              </div>
+            </div>
+          ) : null;
+
           if (state.comments.length === 0) {
             return (
-              <p style={{ color: "#94A3B8", fontSize: 13 }}>
-                No replies from {selectedRow.assignedTo ?? "the assignee"} yet.
-              </p>
+              <div>
+                <p style={{ color: "#94A3B8", fontSize: 13 }}>
+                  No replies from {selectedRow.assignedTo ?? "the assignee"} yet.
+                </p>
+                {composer}
+              </div>
             );
           }
           return (
@@ -896,7 +1025,7 @@ export default function EligibilityIssuesClient() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => void loadInboxComments(selectedRow.inboxItemId!)}
+                  onClick={() => void loadInboxComments(itemId)}
                   disabled={state.loading}
                   style={{
                     fontSize: 11.5,
@@ -994,7 +1123,7 @@ export default function EligibilityIssuesClient() {
           ),
       },
     ],
-    [selectedRow, organizationId, inboxCommentsById, loadInboxComments],
+    [selectedRow, organizationId, inboxCommentsById, loadInboxComments, setCommentDraft, postInboxComment],
   );
 
   const detailActions: PrimaryAction[] = useMemo(() => {

@@ -10,8 +10,14 @@
  *
  * POST /api/billing/workqueue-comments
  *   Body: { workqueueItemId, comment, organizationId? }
- *   Only the user currently assigned to the item may add a comment via
- *   this endpoint. Writes to workqueue_item_comments through the existing
+ *   Two roles may post in the thread (both must have VIEW_BILLING):
+ *     (a) the user currently assigned to the item (the assignee), and
+ *     (b) the biller who originally routed the item (workqueue_items.
+ *         routed_by_user_id matches the caller's auth user id).
+ *   Anyone else with VIEW_BILLING can still read the thread via GET but
+ *   may not write — keeps the conversation scoped to the two people
+ *   actually doing the handoff.
+ *   Writes to workqueue_item_comments through the existing
  *   addWorkqueueComment service so the timeline / activity log keeps a
  *   single source of truth.
  */
@@ -74,7 +80,7 @@ export async function GET(request: Request) {
   // Make sure the item belongs to this org before exposing comments.
   const { data: item } = await sb
     .from("workqueue_items")
-    .select("id, organization_id, assigned_to_user_id")
+    .select("id, organization_id, assigned_to_user_id, routed_by_user_id")
     .eq("id", workqueueItemId)
     .eq("organization_id", guard.organizationId)
     .maybeSingle();
@@ -148,12 +154,22 @@ export async function GET(request: Request) {
 
   const assignedToUserId =
     (item as { assigned_to_user_id: string | null }).assigned_to_user_id ?? null;
+  const routedByUserId =
+    (item as { routed_by_user_id: string | null }).routed_by_user_id ?? null;
+
+  // assigned_to_user_id stores staff_profiles.id (see upsertInboxItem),
+  // routed_by_user_id stores the auth user id — compare each against the
+  // matching field on the guard.
+  const isAssignee = assignedToUserId !== null && assignedToUserId === guard.staffId;
+  const isRouter = routedByUserId !== null && routedByUserId === guard.userId;
 
   return NextResponse.json({
     success: true,
     workqueueItemId,
     assignedToUserId,
-    canComment: assignedToUserId !== null && assignedToUserId === guard.staffId,
+    routedByUserId,
+    canComment: isAssignee || isRouter,
+    commentRole: isAssignee ? "assignee" : isRouter ? "router" : null,
     comments: rows,
   });
 }
@@ -204,7 +220,7 @@ export async function POST(request: Request) {
 
   const { data: item } = await sb
     .from("workqueue_items")
-    .select("id, organization_id, assigned_to_user_id")
+    .select("id, organization_id, assigned_to_user_id, routed_by_user_id")
     .eq("id", workqueueItemId)
     .eq("organization_id", guard.organizationId)
     .maybeSingle();
@@ -218,9 +234,17 @@ export async function POST(request: Request) {
 
   const assignedToUserId =
     (item as { assigned_to_user_id: string | null }).assigned_to_user_id ?? null;
-  if (assignedToUserId !== guard.staffId) {
+  const routedByUserId =
+    (item as { routed_by_user_id: string | null }).routed_by_user_id ?? null;
+  const isAssignee = assignedToUserId !== null && assignedToUserId === guard.staffId;
+  const isRouter = routedByUserId !== null && routedByUserId === guard.userId;
+  if (!isAssignee && !isRouter) {
     return NextResponse.json(
-      { success: false, error: "Only the current assignee can comment on this item" },
+      {
+        success: false,
+        error:
+          "Only the current assignee or the biller who routed this item can post a comment",
+      },
       { status: 403 },
     );
   }

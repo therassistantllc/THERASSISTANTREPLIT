@@ -108,6 +108,13 @@ export default function NotesPage() {
                     <Link className="button button-secondary" href={`/encounters/${note.encounterId}${orgQ}`}>
                       Open Encounter
                     </Link>
+                    {" "}
+                    <Link
+                      className="button"
+                      href={`/encounters/${note.encounterId}${orgQ}${orgQ ? "&" : "?"}edit=1`}
+                    >
+                      {String(note.noteStatus ?? "").toLowerCase() === "signed" ? "Amend Note" : "Edit Note"}
+                    </Link>
                   </td>
                 </tr>
               ))}

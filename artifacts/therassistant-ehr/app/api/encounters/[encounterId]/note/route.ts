@@ -47,8 +47,8 @@ export async function POST(request: Request, context: { params: Promise<{ encoun
       return NextResponse.json({ success: false, error: "organizationId is required" }, { status: 400 });
     }
 
-    if (!["save", "sign"].includes(action)) {
-      return NextResponse.json({ success: false, error: "action must be save or sign" }, { status: 400 });
+    if (!["save", "sign", "amend"].includes(action)) {
+      return NextResponse.json({ success: false, error: "action must be save, sign, or amend" }, { status: 400 });
     }
 
     const encounter = await loadEncounter(organizationId, encounterId);
@@ -57,7 +57,32 @@ export async function POST(request: Request, context: { params: Promise<{ encoun
     }
 
     const now = new Date().toISOString();
-    const noteStatus = action === "sign" ? "signed" : "draft";
+
+    // For "amend", preserve the existing signed status + signed_at; we update
+    // SOAP fields in-place on the already-signed note. "save" = draft, "sign"
+    // = transition to signed.
+    let existingSigned: { signed_at: string | null; signed_by_user_id: string | null } | null = null;
+    if (action === "amend") {
+      const { data: existingForAmend } = await supabase
+        .from("encounter_clinical_notes")
+        .select("note_status, signed_at, signed_by_user_id")
+        .eq("organization_id", organizationId)
+        .eq("encounter_id", encounterId)
+        .is("archived_at", null)
+        .maybeSingle();
+      if (!existingForAmend || existingForAmend.note_status !== "signed") {
+        return NextResponse.json(
+          { success: false, error: "Only signed notes can be amended" },
+          { status: 409 },
+        );
+      }
+      existingSigned = {
+        signed_at: existingForAmend.signed_at,
+        signed_by_user_id: existingForAmend.signed_by_user_id,
+      };
+    }
+
+    const noteStatus = action === "sign" ? "signed" : action === "amend" ? "signed" : "draft";
 
     const notePayload = {
       organization_id: organizationId,
@@ -69,8 +94,11 @@ export async function POST(request: Request, context: { params: Promise<{ encoun
       objective: cleanText(body.objective),
       assessment: cleanText(body.assessment),
       plan: cleanText(body.plan),
-      signed_at: action === "sign" ? now : null,
-      signed_by_user_id: action === "sign" ? userId : null,
+      // Preserve the original signed_at / signed_by exactly on amend — never
+      // overwrite with `now`, even if the existing values are null. Sign sets
+      // them; save (draft) clears them.
+      signed_at: action === "sign" ? now : action === "amend" ? existingSigned!.signed_at : null,
+      signed_by_user_id: action === "sign" ? userId : action === "amend" ? existingSigned!.signed_by_user_id : null,
       updated_at: now,
     };
 
@@ -149,10 +177,19 @@ export async function POST(request: Request, context: { params: Promise<{ encoun
           chargeCaptureId: chargeCapture.chargeId,
         });
       }
-    } else {
+    } else if (action === "save") {
       await supabase
         .from("encounters")
         .update({ encounter_status: "draft", updated_at: now })
+        .eq("organization_id", organizationId)
+        .eq("id", encounterId);
+    } else if (action === "amend") {
+      // Note remains signed; just bump updated_at on the encounter so the
+      // chart reflects the amendment time. Do NOT re-run charge capture or
+      // create a new claim draft — those were handled at original sign time.
+      await supabase
+        .from("encounters")
+        .update({ updated_at: now })
         .eq("organization_id", organizationId)
         .eq("id", encounterId);
     }

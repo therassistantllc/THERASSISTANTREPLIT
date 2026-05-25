@@ -77,6 +77,7 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
   const [diagnoses, setDiagnoses] = useState<Diagnosis[]>([]);
   const [serviceLines, setServiceLines] = useState<ServiceLine[]>([]);
   const [showSignModal, setShowSignModal] = useState(false);
+  const [amending, setAmending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -95,10 +96,28 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
     [templates],
   );
 
-  const finalized = useMemo(
+  const isSigned = useMemo(
     () => summary?.encounter?.encounter_status === "signed" || summary?.clinicalNote?.note_status === "signed",
     [summary]
   );
+
+  // Allow the Notes-tab "Amend Note" / "Edit Note" link to deep-link into
+  // amend mode via ?edit=1. We only auto-enter once (per page load) and only
+  // when the note is signed; unsigned notes are already editable.
+  const [autoEditApplied, setAutoEditApplied] = useState(false);
+  useEffect(() => {
+    if (autoEditApplied || loading || !summary) return;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("edit") === "1" && isSigned) {
+      setAmending(true);
+      setMessage("Editing signed note. Click Save Amendment when done.");
+    }
+    setAutoEditApplied(true);
+  }, [autoEditApplied, loading, summary, isSigned]);
+  // "finalized" = signed AND not currently being amended. Editor + Save/Sign
+  // buttons read this; while amending, the editor unlocks for in-place edits.
+  const finalized = isSigned && !amending;
 
   const claimReadinessChecks = useMemo((): ClaimReadinessCheck[] => {
     return [
@@ -322,6 +341,36 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
     }
   }
 
+  async function saveAmendment() {
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/encounters/${encounterId}/note`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          action: "amend",
+          subjective: soapNote.subjective || "",
+          objective: soapNote.objective || "",
+          assessment: soapNote.assessment || "",
+          plan: soapNote.plan || "",
+          userId: null,
+        }),
+      });
+      const json = (await response.json()) as { success?: boolean; error?: string };
+      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to save amendment");
+      setMessage("Amendment saved. Note remains signed.");
+      setAmending(false);
+      await loadEncounter();
+    } catch (amendError) {
+      setError(amendError instanceof Error ? amendError.message : "Failed to save amendment");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function signNote() {
     setSaving(true);
     setError(null);
@@ -408,8 +457,42 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
         <div className="hero-actions">
           {patient?.id ? <Link className="button button-secondary" href={`/clients/${patient.id}`}>Patient Chart</Link> : null}
           <Link className="button button-secondary" href="/clinician/agenda">Agenda</Link>
-          <button className="button button-secondary" type="button" onClick={() => { saveNote(); saveBillingDetails(); }} disabled={saving || finalized}>Save Draft</button>
-          <button className="button" type="button" onClick={() => setShowSignModal(true)} disabled={saving || finalized || !soapNote.subjective}>Sign Note</button>
+          {isSigned && !amending ? (
+            <button
+              className="button button-secondary"
+              type="button"
+              onClick={() => { setAmending(true); setMessage("Editing signed note. Click Save Amendment when done."); }}
+              disabled={saving}
+            >
+              Edit Note
+            </button>
+          ) : null}
+          {isSigned && amending ? (
+            <>
+              <button
+                className="button button-secondary"
+                type="button"
+                onClick={() => { setAmending(false); loadEncounter(); }}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                className="button"
+                type="button"
+                onClick={saveAmendment}
+                disabled={saving || !soapNote.subjective}
+              >
+                {saving ? "Saving…" : "Save Amendment"}
+              </button>
+            </>
+          ) : null}
+          {!isSigned ? (
+            <>
+              <button className="button button-secondary" type="button" onClick={() => { saveNote(); saveBillingDetails(); }} disabled={saving || finalized}>Save Draft</button>
+              <button className="button" type="button" onClick={() => setShowSignModal(true)} disabled={saving || finalized || !soapNote.subjective}>Sign Note</button>
+            </>
+          ) : null}
         </div>
       </section>
 

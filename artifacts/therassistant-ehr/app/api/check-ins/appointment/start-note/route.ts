@@ -5,6 +5,10 @@ import {
   type EncountersSupabase,
 } from "@/lib/encounters/findOrCreate";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
+import {
+  composeCheckInSubjectiveBlock,
+  mergeCheckInIntoSubjective,
+} from "@/lib/checkIns/welcomeFocus";
 
 type AppointmentRow = {
   id: string;
@@ -146,6 +150,32 @@ export async function POST(request: Request) {
       appt.appointment_type,
     );
 
+    // Pull the latest submitted check-in for this appointment so we can
+    // pre-populate Subjective with the patient's stated focus + reflection.
+    // Only "submitted" check-ins count — drafts shouldn't bleed into the note.
+    const { data: checkInRow } = await supabase
+      .from("patient_check_ins")
+      .select("focus_option, focus_reflection, status")
+      .eq("organization_id", organizationId)
+      .eq("appointment_id", appointmentId)
+      .eq("status", "submitted")
+      .is("archived_at", null)
+      .order("submitted_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const checkInBlock = checkInRow
+      ? composeCheckInSubjectiveBlock({
+          focusOption: (checkInRow as { focus_option: string | null }).focus_option,
+          focusReflection: (checkInRow as { focus_reflection: string | null }).focus_reflection,
+        })
+      : "";
+
+    const subjectiveWithCheckIn = mergeCheckInIntoSubjective(
+      templateDefaults.subjective,
+      checkInBlock,
+    );
+
     const noteResult = await findOrCreateNote(
       supabase as unknown as EncountersSupabase,
       organizationId,
@@ -153,7 +183,7 @@ export async function POST(request: Request) {
       encounterResult.clientId,
       encounterResult.providerId,
       nowIso,
-      templateDefaults,
+      { ...templateDefaults, subjective: subjectiveWithCheckIn },
     );
     if (!noteResult.ok) {
       return NextResponse.json(

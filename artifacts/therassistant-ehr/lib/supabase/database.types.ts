@@ -7794,6 +7794,8 @@ export type Database = {
           current_mood: string | null
           current_stressors: string | null
           encounter_id: string | null
+          focus_option: string | null
+          focus_reflection: string | null
           goal_updates: Json
           id: string
           organization_id: string
@@ -7815,6 +7817,8 @@ export type Database = {
           current_mood?: string | null
           current_stressors?: string | null
           encounter_id?: string | null
+          focus_option?: string | null
+          focus_reflection?: string | null
           goal_updates?: Json
           id?: string
           organization_id: string
@@ -7836,6 +7840,8 @@ export type Database = {
           current_mood?: string | null
           current_stressors?: string | null
           encounter_id?: string | null
+          focus_option?: string | null
+          focus_reflection?: string | null
           goal_updates?: Json
           id?: string
           organization_id?: string

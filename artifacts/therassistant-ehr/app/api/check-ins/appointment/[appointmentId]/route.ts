@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 
 import { requireOrgAccess } from "@/lib/auth/requireOrgAccess";
+import {
+  WELCOME_FOCUS_REFLECTION_MAX,
+  isWelcomeFocusOption,
+} from "@/lib/checkIns/welcomeFocus";
 type DbRow = Record<string, unknown>;
 
 function clean(value: unknown) {
@@ -24,6 +28,8 @@ function checkInDto(row: DbRow | null) {
     selectedGoalIds: Array.isArray(row.selected_goal_ids) ? row.selected_goal_ids : [],
     goalUpdates: row.goal_updates ?? [],
     patientStatement: clean(row.patient_statement),
+    focusOption: clean(row.focus_option),
+    focusReflection: clean(row.focus_reflection),
     submittedAt: clean(row.submitted_at),
     reviewedAt: clean(row.reviewed_at),
   };
@@ -92,6 +98,18 @@ export async function POST(request: Request, context: { params: Promise<{ appoin
     if (guard instanceof NextResponse) return guard;
     const organizationId = guard.organizationId;
     const status = clean(body.status) || "submitted";
+    const rawFocusOption = clean(body.focusOption);
+    const focusOption = rawFocusOption ? (isWelcomeFocusOption(rawFocusOption) ? rawFocusOption : null) : null;
+    if (rawFocusOption && !focusOption) {
+      return NextResponse.json({ success: false, error: "Invalid focusOption value" }, { status: 422 });
+    }
+    if (status === "submitted" && !focusOption) {
+      return NextResponse.json(
+        { success: false, error: "Please choose a focus for today before submitting." },
+        { status: 422 },
+      );
+    }
+    const focusReflection = clean(body.focusReflection).slice(0, WELCOME_FOCUS_REFLECTION_MAX) || null;
 
     const appointment = await loadAppointment(organizationId, appointmentId);
     if (!appointment) return NextResponse.json({ success: false, error: "Appointment not found" }, { status: 404 });
@@ -112,6 +130,8 @@ export async function POST(request: Request, context: { params: Promise<{ appoin
       selected_goal_ids: Array.isArray(body.selectedGoalIds) ? body.selectedGoalIds.map(clean).filter(Boolean) : [],
       goal_updates: Array.isArray(body.goalUpdates) ? body.goalUpdates : [],
       patient_statement: clean(body.patientStatement) || null,
+      focus_option: focusOption,
+      focus_reflection: focusReflection,
       submitted_at: status === "submitted" ? new Date().toISOString() : null,
       updated_at: new Date().toISOString(),
     };

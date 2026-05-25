@@ -8,12 +8,17 @@ import CptCodePanel, { ServiceLine } from "@/components/encounter/CptCodePanel";
 import ClaimReadinessSidebar, { ClaimReadinessCheck } from "@/components/encounter/ClaimReadinessSidebar";
 import SignNoteModal from "@/components/encounter/SignNoteModal";
 import { DEFAULT_ORG_ID } from "@/lib/config";
+import {
+  CHECK_IN_SUBJECTIVE_MARKER,
+  composeCheckInSubjectiveBlock,
+  mergeCheckInIntoSubjective,
+} from "@/lib/checkIns/welcomeFocus";
 
 type EncounterSummary = {
   success: boolean;
   error?: string;
   patient?: { id: string; name: string; dateOfBirth?: string | null } | null;
-  encounter?: { id: string; encounter_status?: string | null; service_date?: string | null; started_at?: string | null; ended_at?: string | null };
+  encounter?: { id: string; appointment_id?: string | null; encounter_status?: string | null; service_date?: string | null; started_at?: string | null; ended_at?: string | null };
   appointment?: { appointment_type?: string | null; scheduled_start_at?: string | null; scheduled_end_at?: string | null; service_location?: string | null; telehealth_url?: string | null } | null;
   diagnoses?: Array<{ id: string; diagnosis_code?: string | null; diagnosis_description?: string | null; is_primary?: boolean | null }>;
   clinicalNote?: { id: string; note_status?: string | null; subjective?: string | null; objective?: string | null; assessment?: string | null; plan?: string | null; signed_at?: string | null } | null;
@@ -141,8 +146,38 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
       const json = (await response.json()) as EncounterSummary;
       if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to load encounter");
       setSummary(json);
+      let mergedSubjective = json.clinicalNote?.subjective ?? "";
+      const appointmentIdForCheckIn = json.encounter?.appointment_id ?? null;
+      if (
+        appointmentIdForCheckIn &&
+        !mergedSubjective.includes(CHECK_IN_SUBJECTIVE_MARKER)
+      ) {
+        try {
+          const checkInResponse = await fetch(
+            `/api/check-ins/appointment/${appointmentIdForCheckIn}?organizationId=${encodeURIComponent(organizationId)}`,
+            { cache: "no-store" },
+          );
+          const checkInJson = (await checkInResponse.json()) as {
+            success?: boolean;
+            checkIn?: { status?: string; focusOption?: string; focusReflection?: string } | null;
+          };
+          const ci = checkInJson?.checkIn;
+          if (checkInJson?.success && ci && ci.status === "submitted") {
+            const block = composeCheckInSubjectiveBlock({
+              focusOption: ci.focusOption,
+              focusReflection: ci.focusReflection,
+            });
+            if (block) {
+              mergedSubjective = mergeCheckInIntoSubjective(mergedSubjective, block);
+              setMessage("Pulled the patient's pre-session focus into Subjective. Save the draft to keep it.");
+            }
+          }
+        } catch {
+          /* pre-session check-in is best-effort */
+        }
+      }
       setSoapNote({
-        subjective: json.clinicalNote?.subjective ?? "",
+        subjective: mergedSubjective,
         objective: json.clinicalNote?.objective ?? "",
         assessment: json.clinicalNote?.assessment ?? "",
         plan: json.clinicalNote?.plan ?? "",

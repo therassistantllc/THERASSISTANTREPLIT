@@ -210,6 +210,14 @@ export const WORKQUEUES: WorkqueueDef[] = [
     stage: "submission_rejections",
     status: "live",
   },
+  {
+    id: "outbound_faxes",
+    title: "Outbound Faxes",
+    description: "Fax queue for appeals and denials submissions — confirm what was sent, retry failures, cancel pending rows.",
+    href: "/billing/fax-queue",
+    stage: "submission_rejections",
+    status: "live",
+  },
 
   // ── Adjudication & Denials ──────────────────────────────────────────────
   {

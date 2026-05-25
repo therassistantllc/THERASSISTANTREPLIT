@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import LatestPayerStatusResponse from "@/components/billing/LatestPayerStatusResponse";
+import Claim277caAckSummary from "@/components/billing/Claim277caAckSummary";
 import { DEFAULT_ORG_ID } from "@/lib/config";
 
 type Claim = {
@@ -195,6 +196,13 @@ export default function ClaimDetailClient({ claimId }: { claimId: string }) {
                 </div>
               </div>
             ) : null}
+          </section>
+
+          <section style={{ marginTop: "1rem" }}>
+            <Claim277caAckSummary
+              claimId={claim.id ?? claimId}
+              organizationId={orgId}
+            />
           </section>
 
           <section style={{ marginTop: "1rem" }}>

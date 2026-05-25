@@ -5,7 +5,8 @@
  *   {
  *     organizationId: string,
  *     action: "resubmit_corrected_claim" | "route_to_eligibility"
- *           | "route_to_enrollment"      | "mark_resolved",
+ *           | "route_to_enrollment"      | "mark_resolved"
+ *           | "undo_auto_route",
  *     itemIds: string[],
  *     note?: string,
  *   }
@@ -28,6 +29,7 @@ const ALLOWED_BULK_ACTIONS: ReadonlySet<Rejection277CaActionId> = new Set([
   "route_to_eligibility",
   "route_to_enrollment",
   "mark_resolved",
+  "undo_auto_route",
 ]);
 
 const MAX_BULK_ITEMS = 500;

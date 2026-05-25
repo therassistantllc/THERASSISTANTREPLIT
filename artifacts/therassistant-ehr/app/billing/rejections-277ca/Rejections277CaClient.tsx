@@ -477,16 +477,35 @@ export default function Rejections277CaClient() {
         | "resubmit_corrected_claim"
         | "route_to_eligibility"
         | "route_to_enrollment"
-        | "mark_resolved",
+        | "mark_resolved"
+        | "undo_auto_route",
     ) => {
       if (selectedIds.length === 0 || bulkBusy) return;
       setBulkBusy(true);
       setMessage(null);
 
-      // Optimistic patch — all four bulk actions take the row out of view.
+      // Optimistic patch — close/defer actions drop rows from view; undo
+      // keeps them visible but clears the auto-routed badge.
       const snapshot = items;
       const targetIds = new Set(selectedIds);
-      setItems((prev) => prev.filter((r) => !targetIds.has(r.id)));
+      if (action === "undo_auto_route") {
+        setItems((prev) =>
+          prev.map((r) =>
+            targetIds.has(r.id) && r.autoRouted
+              ? {
+                  ...r,
+                  autoRouted: false,
+                  autoRoutedTab: null,
+                  autoRoutedReason: null,
+                  autoRoutedAt: null,
+                  followUpDue: null,
+                }
+              : r,
+          ),
+        );
+      } else {
+        setItems((prev) => prev.filter((r) => !targetIds.has(r.id)));
+      }
 
       try {
         const res = await fetch(`/api/billing/rejections-277ca/bulk`, {
@@ -520,7 +539,9 @@ export default function Rejections277CaClient() {
               ? "Routed to eligibility"
               : action === "route_to_enrollment"
                 ? "Routed to credentialing/enrollment"
-                : "Marked resolved";
+                : action === "undo_auto_route"
+                  ? "Auto-route cleared"
+                  : "Marked resolved";
 
         if (failedCount === 0) {
           setMessage({
@@ -929,6 +950,20 @@ export default function Rejections277CaClient() {
     if (selectedIds.length > 0) {
       const n = selectedIds.length;
       const suffix = ` (${n})`;
+      const selectedSet = new Set(selectedIds);
+      const autoRoutedSelectedCount = items.reduce(
+        (sum, r) => sum + (selectedSet.has(r.id) && r.autoRouted ? 1 : 0),
+        0,
+      );
+      if (autoRoutedSelectedCount > 0) {
+        acts.push({
+          id: "bulk-undo-auto-route",
+          label: `Undo auto-route (${autoRoutedSelectedCount})`,
+          variant: "primary",
+          onClick: () => void runBulkAction("undo_auto_route"),
+          disabled: bulkBusy,
+        });
+      }
       acts.push(
         {
           id: "bulk-resubmit",
@@ -971,7 +1006,7 @@ export default function Rejections277CaClient() {
       disabled: loading || bulkBusy,
     });
     return acts;
-  }, [loading, selectedIds, bulkBusy, runBulkAction]);
+  }, [loading, selectedIds, bulkBusy, runBulkAction, items]);
 
   const primaryTabs: PrimaryTab[] = useMemo(
     () =>

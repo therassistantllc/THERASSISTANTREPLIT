@@ -132,6 +132,28 @@ function applyTab(items: Item[], tab: TabId): Item[] {
 
 const queueDef = getWorkqueue("ready_to_generate");
 
+// Mirrors Rebuild837PBatchErrorDetail in @/lib/claims/rebuild837PBatchFile
+// so the client can highlight every validator pointer to a failing
+// field on the 837P field checklist tab. `errors` carries the full
+// list; top-level loop/segment/field still mirror errors[0] for
+// back-compat with older persisted payloads.
+type GenerationErrorPointer = {
+  loop?: string;
+  segment?: string;
+  field?: string;
+  message: string;
+};
+
+type GenerationErrorFieldDetail = {
+  code: "validation_failed" | "infrastructure_error";
+  message: string;
+  claimId?: string;
+  loop?: string;
+  segment?: string;
+  field?: string;
+  errors?: GenerationErrorPointer[];
+};
+
 type GenerationErrorBatch = {
   batchId: string;
   batchNumber: string;
@@ -191,12 +213,14 @@ export default function ReadyToGenerateClient() {
   // Controls the WorkqueueShell's detail tab so "Fix claim" can jump
   // straight to the 837P field checklist. null = let the shell pick.
   const [activeDetailTabId, setActiveDetailTabId] = useState<string | null>(null);
-  // Checklist row to flag as the validator's first failure, keyed by
-  // claim id. Cleared when the user picks a different claim or dismisses
-  // the error panel so the highlight doesn't linger on unrelated rows.
+  // Checklist rows to flag as failing, keyed by claim id. Carries the
+  // *full* set of validator pointers (Task #742) so the operator can
+  // see every broken row at once instead of regenerating once per error.
+  // Cleared when the user picks a different claim or dismisses the
+  // error panel so the highlight doesn't linger on unrelated rows.
   const [highlightedChecklistRow, setHighlightedChecklistRow] = useState<{
     claimId: string;
-    rowId: ChecklistRowId;
+    rowIds: ChecklistRowId[];
   } | null>(null);
 
   // ── Initial load + URL tab sync ─────────────────────────────────────────
@@ -1077,15 +1101,16 @@ export default function ReadyToGenerateClient() {
     ];
     // Only highlight when the highlight points at the *currently
     // selected* claim — otherwise switching claims would leave the row
-    // glowing on the wrong record.
-    const highlightId =
+    // glowing on the wrong record. Multiple rows can be flagged when
+    // the validator reported several failures (Task #742).
+    const highlightSet =
       highlightedChecklistRow && highlightedChecklistRow.claimId === selected.id
-        ? highlightedChecklistRow.rowId
+        ? new Set<ChecklistRowId>(highlightedChecklistRow.rowIds)
         : null;
     return (
       <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
         {checks.map((c) => {
-          const isHighlight = highlightId === c.id;
+          const isHighlight = highlightSet ? highlightSet.has(c.id) : false;
           return (
             <li
               key={c.id}
@@ -1388,23 +1413,49 @@ export default function ReadyToGenerateClient() {
             setHighlightedChecklistRow(null);
           }}
           onFixClaim={(claimId, fieldDetail) => {
-            // The validator hands us a field path; map it to a checklist
-            // row so the user sees *which* required field tripped the
-            // 837P generator. Falls through to the batch page when the
-            // failing claim isn't in this worklist (e.g. a bulk batch
-            // that ran across pages) or when no field pointer is set.
+            // The validator hands us a *list* of failing field paths;
+            // map each to a checklist row so the user sees every
+            // required field that tripped the 837P generator at once
+            // (Task #742). Falls through to the batch page when the
+            // failing claim isn't in this worklist or when no field
+            // pointer is set.
             if (!claimId) return false;
             const exists = items.some((i) => i.id === claimId);
             if (!exists) return false;
             setSelectedId(claimId);
-            const rowId = checklistRowFor(fieldDetail);
-            if (rowId) {
-              setHighlightedChecklistRow({ claimId, rowId });
+            const pointers: GenerationErrorPointer[] =
+              fieldDetail?.errors && fieldDetail.errors.length > 0
+                ? fieldDetail.errors
+                : fieldDetail
+                ? [{
+                    loop: fieldDetail.loop,
+                    segment: fieldDetail.segment,
+                    field: fieldDetail.field,
+                    message: fieldDetail.message,
+                  }]
+                : [];
+            const rowIds = Array.from(
+              new Set(
+                pointers
+                  .map((p) =>
+                    checklistRowFor({
+                      code: fieldDetail?.code ?? "validation_failed",
+                      message: p.message,
+                      loop: p.loop,
+                      segment: p.segment,
+                      field: p.field,
+                    }),
+                  )
+                  .filter((r): r is ChecklistRowId => r != null),
+              ),
+            );
+            if (rowIds.length > 0) {
+              setHighlightedChecklistRow({ claimId, rowIds });
               setActiveDetailTabId("checklist");
             } else {
-              // No checklist row matched — the validator pointer
-              // belongs on the provider/payer validation tab instead
-              // (e.g. subscriber, connection, billing address).
+              // No checklist row matched any pointer — the validator
+              // errors belong on the provider/payer validation tab
+              // instead (e.g. subscriber, connection, billing address).
               setHighlightedChecklistRow(null);
               setActiveDetailTabId("validation");
             }
@@ -1701,11 +1752,20 @@ function GenerationErrorPanel({
       ? `/billing/batches/${encodeURIComponent(detail.batchId)}`
       : undefined;
     const fieldPointer = detail.errorDetail;
-    const pointerBits = [
-      fieldPointer?.loop,
-      fieldPointer?.segment,
-      fieldPointer?.field,
-    ].filter(Boolean);
+    // Render every validator pointer the generator reported (Task #742),
+    // not just the first one — falling back to top-level loop/segment/field
+    // when an older payload without `errors` is replayed.
+    const pointers: GenerationErrorPointer[] =
+      fieldPointer?.errors && fieldPointer.errors.length > 0
+        ? fieldPointer.errors
+        : fieldPointer && (fieldPointer.loop || fieldPointer.segment || fieldPointer.field)
+        ? [{
+            loop: fieldPointer.loop,
+            segment: fieldPointer.segment,
+            field: fieldPointer.field,
+            message: fieldPointer.message,
+          }]
+        : [];
     return (
       <div role="alert" style={baseWrap}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -1733,17 +1793,30 @@ function GenerationErrorPanel({
         <div style={{ marginTop: 6, color: "#991B1B", whiteSpace: "pre-wrap" }}>
           {detail.message}
         </div>
-        {pointerBits.length > 0 ? (
-          <div
+        {pointers.length > 0 ? (
+          <ul
             style={{
-              marginTop: 6,
-              fontSize: 11.5,
+              margin: "6px 0 0",
+              paddingLeft: 16,
+              fontSize: 12,
               color: "#7F1D1D",
-              fontFamily: "ui-monospace, monospace",
             }}
           >
-            {pointerBits.join(" · ")}
-          </div>
+            {pointers.map((p, idx) => {
+              const bits = [p.loop, p.segment, p.field].filter(Boolean);
+              return (
+                <li key={`${idx}-${p.field ?? p.segment ?? p.loop ?? idx}`} style={{ marginBottom: 2 }}>
+                  {bits.length > 0 ? (
+                    <span style={{ fontFamily: "ui-monospace, monospace" }}>
+                      {bits.join(" · ")}
+                    </span>
+                  ) : null}
+                  {bits.length > 0 && p.message ? " — " : null}
+                  {p.message}
+                </li>
+              );
+            })}
+          </ul>
         ) : null}
         <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
           {fixHref ? (
@@ -1867,20 +1940,47 @@ function GenerationErrorPanel({
                 </td>
                 <td style={{ padding: "6px 8px", color: ok ? "#0F172A" : "#991B1B" }}>
                   {ok ? b.fileName ?? "—" : b.error ?? "Validation failed"}
-                  {!ok && b.errorDetail && (b.errorDetail.loop || b.errorDetail.segment || b.errorDetail.field) ? (
-                    <div
-                      style={{
-                        marginTop: 2,
-                        fontSize: 11,
-                        color: "#7F1D1D",
-                        fontFamily: "ui-monospace, monospace",
-                      }}
-                    >
-                      {[b.errorDetail.loop, b.errorDetail.segment, b.errorDetail.field]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </div>
-                  ) : null}
+                  {!ok && b.errorDetail ? (() => {
+                    // Show every validator pointer for this batch (Task #742),
+                    // falling back to the top-level loop/segment/field when an
+                    // older payload without `errors` is replayed.
+                    const ptrs: GenerationErrorPointer[] =
+                      b.errorDetail.errors && b.errorDetail.errors.length > 0
+                        ? b.errorDetail.errors
+                        : b.errorDetail.loop || b.errorDetail.segment || b.errorDetail.field
+                        ? [{
+                            loop: b.errorDetail.loop,
+                            segment: b.errorDetail.segment,
+                            field: b.errorDetail.field,
+                            message: b.errorDetail.message,
+                          }]
+                        : [];
+                    if (ptrs.length === 0) return null;
+                    return (
+                      <ul
+                        style={{
+                          margin: "2px 0 0",
+                          paddingLeft: 14,
+                          fontSize: 11,
+                          color: "#7F1D1D",
+                        }}
+                      >
+                        {ptrs.map((p, idx) => {
+                          const bits = [p.loop, p.segment, p.field].filter(Boolean);
+                          return (
+                            <li
+                              key={`${idx}-${p.field ?? p.segment ?? p.loop ?? idx}`}
+                              style={{ fontFamily: "ui-monospace, monospace" }}
+                            >
+                              {bits.join(" · ")}
+                              {bits.length > 0 && p.message ? " — " : null}
+                              {p.message}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    );
+                  })() : null}
                 </td>
                 <td style={{ padding: "6px 8px" }}>
                   {ok ? null : (

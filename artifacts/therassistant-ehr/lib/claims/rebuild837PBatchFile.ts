@@ -182,11 +182,23 @@ function normalizeConnection(row: Row): AvailityConnection {
 }
 
 /**
- * Structured pointer to the first failing field reported by the per-claim
- * 837P validator. The Ready-to-Generate UI maps `field` onto its
- * "837P field checklist" detail tab so the operator can jump directly to
- * the broken row instead of parsing the prose `message`.
+ * Structured pointers to the failing fields reported by the per-claim
+ * 837P validator. The Ready-to-Generate UI maps every `field` onto its
+ * "837P field checklist" detail tab so the operator can fix all broken
+ * rows in one pass instead of regenerating once per error.
+ *
+ * Top-level loop/segment/field/message mirror `errors[0]` and are kept
+ * for backwards compatibility with persisted `last_generation_error_detail`
+ * rows written before the array was introduced (so the orphaned-batches
+ * UI keeps working without a backfill).
  */
+export interface Rebuild837PBatchErrorPointer {
+  loop?: string;
+  segment?: string;
+  field?: string;
+  message: string;
+}
+
 export interface Rebuild837PBatchErrorDetail {
   code: "validation_failed" | "infrastructure_error";
   message: string;
@@ -194,6 +206,7 @@ export interface Rebuild837PBatchErrorDetail {
   loop?: string;
   segment?: string;
   field?: string;
+  errors: Rebuild837PBatchErrorPointer[];
 }
 
 export interface Rebuild837PBatchResult {
@@ -416,12 +429,22 @@ export async function rebuild837PBatchFile(args: {
     });
   } catch (e) {
     if (e instanceof Availity837PValidationFailedError) {
-      // Pick the first claim with errors, then its first error, as the
-      // pointer for the UI to highlight. Multiple errors still flow
-      // through the prose `error` string; the UI uses errorDetail only
-      // as a focus hint.
+      // Pick the first claim with errors and carry the *full* list of
+      // its failing pointers so the UI can highlight every broken
+      // checklist row at once (Task #742). Top-level loop/segment/field
+      // mirror errors[0] for backwards compatibility with persisted
+      // `last_generation_error_detail` rows written before the array was
+      // introduced.
       const firstFailing = e.perClaimErrors.find((p) => p.errors.length > 0);
-      const firstError = firstFailing?.errors[0];
+      const pointerErrors: Rebuild837PBatchErrorPointer[] = (firstFailing?.errors ?? []).map(
+        (err) => ({
+          loop: err.loop,
+          segment: err.segment,
+          field: err.field,
+          message: err.message,
+        }),
+      );
+      const firstError = pointerErrors[0];
       const errorDetail: Rebuild837PBatchErrorDetail = {
         code: "validation_failed",
         message: firstError?.message ?? e.message,
@@ -429,12 +452,17 @@ export async function rebuild837PBatchFile(args: {
         loop: firstError?.loop,
         segment: firstError?.segment,
         field: firstError?.field,
+        errors: pointerErrors,
       };
       await persistGenerationFailure(e.message, errorDetail);
       return { ok: false, batchId, error: e.message, errorDetail };
     }
     const msg = e instanceof Error ? e.message : "Failed to build 837P content";
-    const errorDetail: Rebuild837PBatchErrorDetail = { code: "infrastructure_error", message: msg };
+    const errorDetail: Rebuild837PBatchErrorDetail = {
+      code: "infrastructure_error",
+      message: msg,
+      errors: [{ message: msg }],
+    };
     await persistGenerationFailure(msg, errorDetail);
     return { ok: false, batchId, error: msg, errorDetail };
   }

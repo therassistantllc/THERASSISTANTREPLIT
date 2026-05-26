@@ -106,6 +106,21 @@ type CommentsState = {
   canComment: boolean;
 };
 
+type ReminderRow = {
+  id: string;
+  sentAt: string;
+  reminderNumber: number | null;
+  emailSent: boolean;
+  channelAttempts: unknown[];
+  assignedToStaffId: string | null;
+};
+
+type RemindersState = {
+  loading: boolean;
+  error: string | null;
+  reminders: ReminderRow[];
+};
+
 export default function MyInboxClient() {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,6 +134,8 @@ export default function MyInboxClient() {
   const [commentsById, setCommentsById] = useState<Record<string, CommentsState>>({});
   const [draftById, setDraftById] = useState<Record<string, string>>({});
   const [postingId, setPostingId] = useState<string | null>(null);
+  const [remindersOpenId, setRemindersOpenId] = useState<string | null>(null);
+  const [remindersById, setRemindersById] = useState<Record<string, RemindersState>>({});
 
   const organizationId = useMemo(() => getOrganizationId(), []);
 
@@ -290,6 +307,60 @@ export default function MyInboxClient() {
       }
     },
     [expandedId, commentsById, loadComments],
+  );
+
+  const loadReminders = useCallback(
+    async (workqueueItemId: string) => {
+      setRemindersById((prev) => ({
+        ...prev,
+        [workqueueItemId]: {
+          loading: true,
+          error: null,
+          reminders: prev[workqueueItemId]?.reminders ?? [],
+        },
+      }));
+      try {
+        const res = await fetch(
+          `/api/billing/my-inbox/reminders?workqueueItemId=${encodeURIComponent(
+            workqueueItemId,
+          )}&organizationId=${encodeURIComponent(organizationId)}`,
+          { cache: "no-store" },
+        );
+        const json = await res.json();
+        if (!res.ok || json?.success === false) {
+          throw new Error(json?.error ?? "Failed to load reminder history");
+        }
+        setRemindersById((prev) => ({
+          ...prev,
+          [workqueueItemId]: {
+            loading: false,
+            error: null,
+            reminders: (json.reminders ?? []) as ReminderRow[],
+          },
+        }));
+      } catch (e) {
+        setRemindersById((prev) => ({
+          ...prev,
+          [workqueueItemId]: {
+            loading: false,
+            error: e instanceof Error ? e.message : "Failed to load reminder history",
+            reminders: prev[workqueueItemId]?.reminders ?? [],
+          },
+        }));
+      }
+    },
+    [organizationId],
+  );
+
+  const toggleReminders = useCallback(
+    (item: InboxItem) => {
+      const next = remindersOpenId === item.id ? null : item.id;
+      setRemindersOpenId(next);
+      if (next && !remindersById[item.id]) {
+        void loadReminders(item.id);
+      }
+    },
+    [remindersOpenId, remindersById, loadReminders],
   );
 
   const postComment = useCallback(
@@ -525,24 +596,31 @@ export default function MyInboxClient() {
                       routed {relative(item.updatedAt)}
                     </span>
                     {item.reminderCount > 0 ? (
-                      <span
+                      <button
+                        type="button"
+                        onClick={() => toggleReminders(item)}
+                        aria-expanded={remindersOpenId === item.id}
                         title={
                           item.lastRemindedAt
-                            ? `Last reminder ${formatWhen(item.lastRemindedAt)}`
-                            : "Reminder sent"
+                            ? `Last reminder ${formatWhen(item.lastRemindedAt)} — click for history`
+                            : "Click to see reminder history"
                         }
                         style={{
                           fontSize: 10.5,
                           fontWeight: 700,
                           letterSpacing: 0.04,
                           textTransform: "uppercase",
-                          background: "#FEF3C7",
+                          background:
+                            remindersOpenId === item.id ? "#FDE68A" : "#FEF3C7",
                           color: "#92400E",
                           padding: "2px 8px",
                           borderRadius: 4,
                           display: "inline-flex",
                           alignItems: "center",
                           gap: 4,
+                          border: "1px solid #FCD34D",
+                          cursor: "pointer",
+                          fontFamily: "inherit",
                         }}
                       >
                         <span aria-hidden>🔔</span>
@@ -551,7 +629,7 @@ export default function MyInboxClient() {
                         {item.lastRemindedAt
                           ? ` · last ${relative(item.lastRemindedAt)}`
                           : null}
-                      </span>
+                      </button>
                     ) : null}
                   </div>
 
@@ -662,6 +740,9 @@ export default function MyInboxClient() {
                   </button>
                 </div>
                 </div>
+                {remindersOpenId === item.id ? (
+                  <RemindersPanel state={remindersById[item.id]} />
+                ) : null}
                 {isExpanded ? (
                   <div
                     style={{
@@ -808,6 +889,7 @@ export default function MyInboxClient() {
         </ul>
       )}
 
+      {/* spacer */}
       {toast ? (
         <div
           style={{
@@ -826,6 +908,94 @@ export default function MyInboxClient() {
           {toast}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function RemindersPanel({ state }: { state: RemindersState | undefined }) {
+  return (
+    <div
+      style={{
+        borderTop: "1px solid #FCD34D",
+        background: "#FFFBEB",
+        padding: "10px 12px",
+        borderRadius: 6,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E" }}>
+        Reminder history
+      </div>
+      {!state || state.loading ? (
+        <div style={{ fontSize: 12.5, color: "#92400E" }}>
+          Loading reminder history…
+        </div>
+      ) : state.error ? (
+        <div style={{ fontSize: 12.5, color: "#B91C1C" }}>{state.error}</div>
+      ) : state.reminders.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: "#92400E" }}>
+          No reminders have been sent yet.
+        </div>
+      ) : (
+        <ul
+          style={{
+            listStyle: "none",
+            padding: 0,
+            margin: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+          }}
+        >
+          {state.reminders.map((r) => (
+            <li
+              key={r.id}
+              style={{
+                background: "#FFFFFF",
+                border: "1px solid #FDE68A",
+                borderRadius: 6,
+                padding: "6px 10px",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                fontSize: 12.5,
+                color: "#334155",
+              }}
+            >
+              <span
+                style={{
+                  fontWeight: 700,
+                  color: "#92400E",
+                  minWidth: 38,
+                }}
+              >
+                #{r.reminderNumber ?? "?"}
+              </span>
+              <span title={r.sentAt}>{formatWhen(r.sentAt)}</span>
+              <span style={{ color: "#94A3B8" }}>·</span>
+              <span
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  letterSpacing: 0.04,
+                  textTransform: "uppercase",
+                  background: r.emailSent ? "#DCFCE7" : "#FEE2E2",
+                  color: r.emailSent ? "#166534" : "#B91C1C",
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                }}
+              >
+                {r.emailSent ? "Email delivered" : "Email not sent"}
+              </span>
+              <span style={{ color: "#94A3B8", marginLeft: "auto" }}>
+                {relative(r.sentAt)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -66,6 +66,11 @@ const SETTINGS_SECTIONS = [
     href: "/settings/system-readiness",
     description: "Configuration checklist — verify the system is ready to generate and submit claims.",
   },
+  {
+    label: "Settings Audit Log",
+    href: "/settings/audit-log",
+    description: "One place to see who changed any system setting — billing defaults, 277CA auto-routing, payer connections. Filter by setting, user, and date.",
+  },
 ];
 
 export default function SettingsPage() {

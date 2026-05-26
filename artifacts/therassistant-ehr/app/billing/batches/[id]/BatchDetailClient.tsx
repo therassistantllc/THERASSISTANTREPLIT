@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DEFAULT_ORG_ID } from "@/lib/config";
+import {
+  CHECKLIST_ROW_LABEL,
+  checklistRowFor,
+  type GenerationErrorFieldDetail,
+} from "@/lib/claims/checklistMapping";
 
 type TimelineEvent = {
   id: string;
@@ -59,6 +64,9 @@ type BatchHeader = {
   submittedAt: string;
   createdAt: string;
   updatedAt: string;
+  lastGenerationError?: string | null;
+  lastGenerationErrorDetail?: GenerationErrorFieldDetail | null;
+  lastGenerationAttemptedAt?: string | null;
 };
 
 type Payload = {
@@ -103,12 +111,24 @@ function batchStatusClass(status: string) {
   return "status status-yellow";
 }
 
+type RebuildError = {
+  message: string;
+  detail?: GenerationErrorFieldDetail | null;
+};
+
 export default function BatchDetailClient({ batchId }: { batchId: string }) {
   const organizationId = useMemo(() => getOrganizationId(), []);
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeAckId, setActiveAckId] = useState<string | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuildMessage, setRebuildMessage] = useState<string | null>(null);
+  // Validator failure surfaced by /api/claims/837p/batch/[id]/rebuild.
+  // Initialised from the persisted last_generation_error on load so a
+  // biller who lands here via a deep link or refresh sees the same
+  // structured pointer the Ready-to-Generate panel would have shown.
+  const [rebuildError, setRebuildError] = useState<RebuildError | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,6 +138,19 @@ export default function BatchDetailClient({ batchId }: { batchId: string }) {
       const json = (await res.json()) as Payload;
       if (!res.ok || !json.success) throw new Error(json.error || "Failed to load batch.");
       setData(json);
+      // Seed the inline error panel from the persisted last generation
+      // failure so direct nav / refresh shows the same pointer instead
+      // of forcing the biller to hit Rebuild again to see it.
+      const persistedError = json.batch?.lastGenerationError;
+      const persistedDetail = json.batch?.lastGenerationErrorDetail as
+        | GenerationErrorFieldDetail
+        | null
+        | undefined;
+      if (persistedError) {
+        setRebuildError({ message: persistedError, detail: persistedDetail ?? null });
+      } else {
+        setRebuildError(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load batch.");
     } finally {
@@ -126,6 +159,43 @@ export default function BatchDetailClient({ batchId }: { batchId: string }) {
   }, [batchId, organizationId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const rebuild = useCallback(async () => {
+    if (rebuilding) return;
+    setRebuilding(true);
+    setRebuildMessage(null);
+    try {
+      const res = await fetch(
+        `/api/claims/837p/batch/${encodeURIComponent(batchId)}/rebuild`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ organizationId }),
+        },
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        const detail =
+          json?.errorDetail && typeof json.errorDetail === "object"
+            ? (json.errorDetail as GenerationErrorFieldDetail)
+            : null;
+        setRebuildError({ message: json?.error ?? "Rebuild failed", detail });
+        return;
+      }
+      setRebuildError(null);
+      setRebuildMessage(
+        `Batch regenerated as ${json.fileName ?? "new 837P file"}.`,
+      );
+      await load();
+    } catch (err) {
+      setRebuildError({
+        message: err instanceof Error ? err.message : "Rebuild failed",
+        detail: null,
+      });
+    } finally {
+      setRebuilding(false);
+    }
+  }, [batchId, organizationId, rebuilding, load]);
 
   const batch = data?.batch;
   const claims = data?.claims ?? [];
@@ -165,6 +235,14 @@ export default function BatchDetailClient({ batchId }: { batchId: string }) {
           <button className="button button-secondary" type="button" onClick={() => void load()} disabled={loading}>
             Refresh
           </button>
+          <button
+            className="button button-secondary"
+            type="button"
+            onClick={() => void rebuild()}
+            disabled={rebuilding}
+          >
+            {rebuilding ? "Rebuilding…" : "Rebuild 837P"}
+          </button>
           <a
             className="button button-secondary"
             href={`/api/claims/837p/batch/${encodeURIComponent(batch.id)}/file?organizationId=${encodeURIComponent(organizationId)}`}
@@ -175,6 +253,27 @@ export default function BatchDetailClient({ batchId }: { batchId: string }) {
           </a>
         </div>
       </section>
+
+      {rebuildMessage ? (
+        <div
+          className="alert-panel"
+          style={{
+            background: "#ECFDF5",
+            border: "1px solid #A7F3D0",
+            color: "#065F46",
+          }}
+        >
+          {rebuildMessage}
+        </div>
+      ) : null}
+
+      {rebuildError ? (
+        <RebuildErrorPanel
+          error={rebuildError}
+          claims={claims}
+          onDismiss={() => setRebuildError(null)}
+        />
+      ) : null}
 
       <section className="metric-grid">
         <article className="metric-card"><span>Claims</span><strong>{counts?.claims ?? claims.length}</strong></article>
@@ -273,22 +372,126 @@ export default function BatchDetailClient({ batchId }: { batchId: string }) {
           <div className="empty-state">No claims linked to this batch.</div>
         ) : (
           <div className="stack-list">
-            {claims.map((c) => (
-              <article key={c.id} className="stack-item">
-                <div className="stack-row">
-                  <div>
-                    <strong>
-                      <Link className="inline-link" href={`/clients/${encodeURIComponent(c.patientId)}`}>{c.patientName}</Link>
-                    </strong>
-                    <span>Claim {c.claimNumber || c.id.slice(0, 8)} · {c.status || "no status"} · {formatMoney(c.totalCharge)}</span>
-                    {c.submittedAt ? <span className="muted-text">Submitted {formatDateTime(c.submittedAt)}</span> : null}
+            {claims.map((c) => {
+              const failingClaimId = rebuildError?.detail?.claimId ?? null;
+              const isFailing = failingClaimId === c.id;
+              return (
+                <article
+                  key={c.id}
+                  id={isFailing ? "failing-claim" : undefined}
+                  className="stack-item"
+                  aria-current={isFailing ? "true" : undefined}
+                  style={
+                    isFailing
+                      ? {
+                          background: "#FEF3C7",
+                          borderLeft: "3px solid #D97706",
+                          borderRadius: 4,
+                          padding: 8,
+                        }
+                      : undefined
+                  }
+                >
+                  <div className="stack-row">
+                    <div>
+                      <strong>
+                        <Link className="inline-link" href={`/clients/${encodeURIComponent(c.patientId)}`}>{c.patientName}</Link>
+                        {isFailing ? (
+                          <span
+                            style={{
+                              marginLeft: 8,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: "#92400E",
+                              textTransform: "uppercase",
+                              letterSpacing: 0.3,
+                            }}
+                          >
+                            Failing
+                          </span>
+                        ) : null}
+                      </strong>
+                      <span>Claim {c.claimNumber || c.id.slice(0, 8)} · {c.status || "no status"} · {formatMoney(c.totalCharge)}</span>
+                      {c.submittedAt ? <span className="muted-text">Submitted {formatDateTime(c.submittedAt)}</span> : null}
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
     </main>
+  );
+}
+
+function RebuildErrorPanel({
+  error,
+  claims,
+  onDismiss,
+}: {
+  error: RebuildError;
+  claims: ClaimRow[];
+  onDismiss: () => void;
+}) {
+  const detail = error.detail ?? null;
+  const checklistRow = checklistRowFor(detail ?? undefined);
+  const checklistLabel = checklistRow ? CHECKLIST_ROW_LABEL[checklistRow] : null;
+  const failingClaim = detail?.claimId
+    ? claims.find((c) => c.id === detail.claimId)
+    : null;
+  const pointerParts: string[] = [];
+  if (detail?.loop) pointerParts.push(`Loop ${detail.loop}`);
+  if (detail?.segment) pointerParts.push(`Segment ${detail.segment}`);
+  if (detail?.field) pointerParts.push(`Field ${detail.field}`);
+  const pointer = pointerParts.join(" · ");
+  return (
+    <section
+      className="alert-panel"
+      style={{
+        background: "#FEF2F2",
+        border: "1px solid #FECACA",
+        color: "#7F1D1D",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <strong>837P generation failed</strong>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={onDismiss}
+          style={{ height: 26, padding: "0 8px", fontSize: 12 }}
+        >
+          Dismiss
+        </button>
+      </div>
+      <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{error.message}</div>
+      {pointer ? (
+        <div style={{ fontSize: 12, fontFamily: "ui-monospace, monospace", color: "#991B1B" }}>
+          {pointer}
+        </div>
+      ) : null}
+      {checklistLabel ? (
+        <div style={{ fontSize: 12 }}>
+          <span style={{ fontWeight: 600 }}>Checklist row: </span>
+          {checklistLabel}
+        </div>
+      ) : null}
+      {failingClaim ? (
+        <div style={{ fontSize: 12 }}>
+          Failing claim:{" "}
+          <a className="inline-link" href="#failing-claim">
+            {failingClaim.patientName} · {failingClaim.claimNumber || failingClaim.id.slice(0, 8)}
+          </a>
+        </div>
+      ) : detail?.claimId ? (
+        <div style={{ fontSize: 12, color: "#991B1B" }}>
+          Failing claim {detail.claimId.slice(0, 8)} is no longer linked to this batch.
+        </div>
+      ) : null}
+    </section>
   );
 }

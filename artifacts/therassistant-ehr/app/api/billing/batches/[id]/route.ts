@@ -239,6 +239,13 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
         submittedAt: text(batchRow.submitted_at),
         createdAt: text(batchRow.created_at),
         updatedAt: text(batchRow.updated_at),
+        lastGenerationError: text(batchRow.last_generation_error) || null,
+        lastGenerationErrorDetail:
+          batchRow.last_generation_error_detail &&
+          typeof batchRow.last_generation_error_detail === "object"
+            ? (batchRow.last_generation_error_detail as Record<string, unknown>)
+            : null,
+        lastGenerationAttemptedAt: text(batchRow.last_generation_attempted_at) || null,
       },
       claims: claimsOut,
       submissions: ((submissions ?? []) as DbRow[]).map((s) => {

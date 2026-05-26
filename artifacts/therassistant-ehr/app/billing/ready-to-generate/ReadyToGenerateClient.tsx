@@ -12,6 +12,11 @@ import WorkqueueShell, {
 } from "@/components/billing/WorkqueueShell";
 import PlaceClaimOnHoldModal from "@/components/billing/PlaceClaimOnHoldModal";
 import { getWorkqueue } from "@/lib/billing/workqueues";
+import {
+  checklistRowFor,
+  type ChecklistRowId,
+  type GenerationErrorFieldDetail,
+} from "@/lib/claims/checklistMapping";
 
 type Item = {
   id: string;
@@ -127,18 +132,6 @@ function applyTab(items: Item[], tab: TabId): Item[] {
 
 const queueDef = getWorkqueue("ready_to_generate");
 
-// Mirrors Rebuild837PBatchErrorDetail in @/lib/claims/rebuild837PBatchFile
-// so the client can highlight the validator's pointer to the failing
-// field on the 837P field checklist tab.
-type GenerationErrorFieldDetail = {
-  code: "validation_failed" | "infrastructure_error";
-  message: string;
-  claimId?: string;
-  loop?: string;
-  segment?: string;
-  field?: string;
-};
-
 type GenerationErrorBatch = {
   batchId: string;
   batchNumber: string;
@@ -167,42 +160,6 @@ type GenerationErrorDetail =
       message: string;
       batches: GenerationErrorBatch[];
     };
-
-// Checklist row ids rendered by renderChecklistTab below. Keep in sync.
-type ChecklistRowId = "ref" | "amt" | "pos" | "dx" | "lines" | "billing" | "rendering" | "payer";
-
-/**
- * Map a validator `field` path (e.g. "parties.billing_provider_npi",
- * "serviceLines[0].procedure_code") onto the checklist row that displays
- * the same constraint. Falls back to a loop/segment-based match so newer
- * validator fields still light up the closest row instead of nothing.
- */
-function checklistRowFor(detail: GenerationErrorFieldDetail | undefined): ChecklistRowId | null {
-  if (!detail) return null;
-  const field = detail.field ?? "";
-  if (field.startsWith("parties.billing_provider")) return "billing";
-  if (
-    field.startsWith("parties.rendering_provider") ||
-    field.includes("rendering_provider_npi")
-  ) {
-    return "rendering";
-  }
-  if (field.startsWith("payerProfile.") || field.startsWith("parties.payer_")) return "payer";
-  if (field === "claim.diagnosis_codes" || field.includes("diagnosis_pointers")) return "dx";
-  if (field === "claim.place_of_service") return "pos";
-  if (field === "claim.total_charge" || field.includes(".charge_amount")) return "amt";
-  if (field === "claim.patient_account_number" || field === "claim.claim_number") return "ref";
-  if (field === "serviceLines" || field.includes(".procedure_code") || field.includes(".units")) {
-    return "lines";
-  }
-  // Loop-based fallback so we still focus *something* useful.
-  const loop = detail.loop ?? "";
-  if (loop.startsWith("2010AA")) return "billing";
-  if (loop.startsWith("2010BB")) return "payer";
-  if (loop.startsWith("2310B")) return "rendering";
-  if (loop.startsWith("2400")) return "lines";
-  return null;
-}
 
 export default function ReadyToGenerateClient() {
   const organizationId = useMemo(() => getOrganizationId(), []);

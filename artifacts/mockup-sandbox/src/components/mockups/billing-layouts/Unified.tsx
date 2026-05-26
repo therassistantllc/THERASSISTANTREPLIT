@@ -1,4 +1,3 @@
-/** @jsx React.createElement */
 import React, { useState } from "react";
 import "./_group.css";
 import {

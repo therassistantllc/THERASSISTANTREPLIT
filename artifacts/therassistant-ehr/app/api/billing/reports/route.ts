@@ -137,6 +137,168 @@ function dayDiff(from: string | null, to: string | null) {
   return diff >= 0 ? diff : null;
 }
 
+/**
+ * Shift a `YYYY-MM` month string by N months (negative for past).
+ */
+function shiftMonth(month: string, deltaMonths: number): string {
+  const [y, m] = month.split("-").map((s) => Number(s));
+  const date = new Date(Date.UTC(y, m - 1 + deltaMonths, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+type MonthlyHeadline = {
+  month: string;
+  claimsSubmitted: number;
+  claimsPaid: number;
+  denials: number;
+  chargesSubmitted: number;
+  paymentsPosted: number;
+  paymentCount: number;
+  outstandingAR: number;
+  averageDaysInAR: number | null;
+  collectionRate: number;
+};
+
+/**
+ * Cheap per-month roll-up used for prior-month deltas and the 6-month
+ * sparkline series. Does NOT include the heavy aggregations (denial
+ * breakdown, payer performance, call activity). Respects clinician
+ * scoping when `claimAppointmentFilter` is provided (null = practice-wide).
+ *
+ * Outstanding AR & average days in AR are computed as a snapshot at the
+ * end of the month: every claim currently in an outstanding status whose
+ * submitted_at is on/before monthEnd is counted. This is an approximation
+ * (status may have changed since), but it is the best signal we have
+ * without an audited status-history table.
+ */
+async function computeMonthlyHeadline(args: {
+  supabase: ReturnType<typeof createServerSupabaseAdminClient>;
+  organizationId: string;
+  month: string;
+  claimAppointmentFilter: string[] | null;
+  includePatientPayments: boolean;
+}): Promise<MonthlyHeadline> {
+  const { supabase, organizationId, month, claimAppointmentFilter, includePatientPayments } = args;
+  if (!supabase) {
+    return emptyMonthlyHeadline(month);
+  }
+  const { periodStart, periodEnd } = monthBounds(month);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function scope(query: any): any {
+    if (claimAppointmentFilter === null) return query;
+    if (claimAppointmentFilter.length === 0) return query.in("id", ["00000000-0000-0000-0000-000000000000"]);
+    return query.in("appointment_id", claimAppointmentFilter);
+  }
+
+  const submittedQ = scope(
+    supabase
+      .from("professional_claims")
+      .select("id, total_charge")
+      .eq("organization_id", organizationId)
+      .gte("submitted_at", periodStart)
+      .lt("submitted_at", periodEnd),
+  ) as Promise<{ data: Array<{ id: string; total_charge: number | string | null }> | null }>;
+
+  const paidQ = scope(
+    supabase
+      .from("professional_claims")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .eq("claim_status", "paid")
+      .gte("updated_at", periodStart)
+      .lt("updated_at", periodEnd),
+  ) as Promise<{ count: number | null }>;
+
+  const deniedQ = scope(
+    supabase
+      .from("professional_claims")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .in("claim_status", ["denied", "rejected_oa", "rejected_payer"])
+      .gte("updated_at", periodStart)
+      .lt("updated_at", periodEnd),
+  ) as Promise<{ count: number | null }>;
+
+  const paymentsQ = includePatientPayments
+    ? supabase
+        .from("patient_invoice_payments")
+        .select("id, amount")
+        .eq("organization_id", organizationId)
+        .gte("paid_at", periodStart)
+        .lt("paid_at", periodEnd)
+        .is("archived_at", null)
+    : Promise.resolve({ data: [] as Array<{ id: string; amount: number | string | null }> });
+
+  // Outstanding AR as-of monthEnd
+  const outstandingQ = scope(
+    supabase
+      .from("professional_claims")
+      .select("id, total_charge, submitted_at")
+      .eq("organization_id", organizationId)
+      .in("claim_status", Array.from(OUTSTANDING_STATUSES))
+      .not("submitted_at", "is", null)
+      .lt("submitted_at", periodEnd),
+  ) as Promise<{ data: Array<{ id: string; total_charge: number | string | null; submitted_at: string | null }> | null }>;
+
+  const [{ data: submittedClaims }, { count: paidCount }, { count: deniedCount }, paymentsRes, { data: outstandingRows }] =
+    await Promise.all([submittedQ, paidQ, deniedQ, paymentsQ, outstandingQ]);
+
+  const chargesSubmitted = (submittedClaims ?? []).reduce(
+    (s, c) => s + Number(c.total_charge ?? 0),
+    0,
+  );
+  const paymentsRows = (paymentsRes as { data: Array<{ id: string; amount: number | string | null }> | null }).data ?? [];
+  const paymentsTotal = paymentsRows.reduce((s, p) => s + Number(p.amount ?? 0), 0);
+
+  const monthEndMs = new Date(periodEnd).getTime();
+  let outstandingTotal = 0;
+  const ageSamples: number[] = [];
+  for (const c of outstandingRows ?? []) {
+    const charge = Number(c.total_charge ?? 0);
+    outstandingTotal += charge;
+    const submittedMs = c.submitted_at ? new Date(c.submitted_at).getTime() : null;
+    if (submittedMs !== null && !Number.isNaN(submittedMs) && submittedMs <= monthEndMs) {
+      ageSamples.push((monthEndMs - submittedMs) / (1000 * 60 * 60 * 24));
+    }
+  }
+  const avgDaysInAR =
+    ageSamples.length > 0
+      ? Math.round((ageSamples.reduce((a, b) => a + b, 0) / ageSamples.length) * 10) / 10
+      : null;
+
+  const collectionRate =
+    chargesSubmitted > 0 ? Math.round((paymentsTotal / chargesSubmitted) * 1000) / 10 : 0;
+
+  return {
+    month,
+    claimsSubmitted: (submittedClaims ?? []).length,
+    claimsPaid: paidCount ?? 0,
+    denials: deniedCount ?? 0,
+    chargesSubmitted: money(chargesSubmitted),
+    paymentsPosted: money(paymentsTotal),
+    paymentCount: paymentsRows.length,
+    outstandingAR: money(outstandingTotal),
+    averageDaysInAR: avgDaysInAR,
+    collectionRate,
+  };
+}
+
+function emptyMonthlyHeadline(month: string): MonthlyHeadline {
+  return {
+    month,
+    claimsSubmitted: 0,
+    claimsPaid: 0,
+    denials: 0,
+    chargesSubmitted: 0,
+    paymentsPosted: 0,
+    paymentCount: 0,
+    outstandingAR: 0,
+    averageDaysInAR: null,
+    collectionRate: 0,
+  };
+}
+
 export async function GET(request: Request) {
   try {
     const supabase = createServerSupabaseAdminClient();
@@ -174,11 +336,11 @@ export async function GET(request: Request) {
     const { data: submittedClaims } = await scopeClaims(
       supabase
         .from("professional_claims")
-        .select("id, total_charge")
+        .select("id, total_charge, appointment_id")
         .eq("organization_id", organizationId)
         .gte("submitted_at", periodStart)
         .lt("submitted_at", periodEnd) as unknown as { in: (c: string, v: string[]) => unknown },
-    ) as unknown as { data: Array<{ id: string; total_charge: number | string | null }> | null };
+    ) as unknown as { data: Array<{ id: string; total_charge: number | string | null; appointment_id: string | null }> | null };
 
     const { count: paidClaimsCount } = await scopeClaims(
       supabase
@@ -307,7 +469,9 @@ export async function GET(request: Request) {
     }
     let eraPaymentsQuery = supabase
       .from("era_claim_payments")
-      .select("id, cas_adjustments, created_at")
+      .select(
+        "id, cas_adjustments, created_at, updated_at, posting_status, claim_match_status, professional_claim_id",
+      )
       .eq("organization_id", organizationId)
       .gte("created_at", periodStart)
       .lt("created_at", periodEnd)
@@ -320,6 +484,9 @@ export async function GET(request: Request) {
     const { data: eraPayments } = await eraPaymentsQuery;
 
     const denialMap = new Map<string, DenialEntry>();
+    // Track which claim IDs contributed to each CARC so we can later enrich
+    // the top denial with the payer it most commonly came from.
+    const denialClaimIdsByCarc = new Map<string, Set<string>>();
     let totalAdjustmentAmount = 0;
     let totalAdjustmentCount = 0;
     for (const era of eraPayments ?? []) {
@@ -344,6 +511,14 @@ export async function GET(request: Request) {
             occurrences: 1,
             totalAmount: amount,
           });
+        }
+        if (era.professional_claim_id) {
+          let claimSet = denialClaimIdsByCarc.get(carcCode);
+          if (!claimSet) {
+            claimSet = new Set<string>();
+            denialClaimIdsByCarc.set(carcCode, claimSet);
+          }
+          claimSet.add(era.professional_claim_id);
         }
         totalAdjustmentAmount += amount;
         totalAdjustmentCount += 1;
@@ -449,16 +624,22 @@ export async function GET(request: Request) {
       .slice(0, 10);
 
     // Payer-call volume & disposition mix (Task #634). Sourced from the
-    // structured payer_call_attempts ledger written by the "Call payer" panel.
-    // We do not scope this by clinician — calls are made against a claim's
-    // payer regardless of which provider rendered the service, so a
-    // provider-scoped view would just hide the calls a biller actually made.
-    const { data: callAttemptsRaw } = await supabase
+    // structured payer_call_attempts ledger. When a clinician is selected we
+    // restrict to call attempts on that clinician's claims so the operational
+    // row stays scope-consistent.
+    let callAttemptsQuery = supabase
       .from("payer_call_attempts")
       .select("payer_profile_id, contact_channel, disposition, claim_id, created_at")
       .eq("organization_id", organizationId)
       .gte("created_at", periodStart)
       .lt("created_at", periodEnd);
+    if (scopedClaimIdsForEra !== null) {
+      callAttemptsQuery =
+        scopedClaimIdsForEra.length === 0
+          ? callAttemptsQuery.in("claim_id", ["00000000-0000-0000-0000-000000000000"])
+          : callAttemptsQuery.in("claim_id", scopedClaimIdsForEra);
+    }
+    const { data: callAttemptsRaw } = await callAttemptsQuery;
 
     const callAttempts = (callAttemptsRaw ?? []) as Array<{
       payer_profile_id: string | null;
@@ -606,6 +787,230 @@ export async function GET(request: Request) {
       openNow: workqueueOpenNowCount ?? 0,
     };
 
+    // Prior-month + 6-month time series for sparklines & trend charts.
+    // The current month is included in the series as the last point.
+    const seriesMonths = Array.from({ length: 6 }, (_, i) => shiftMonth(month, -(5 - i)));
+    const headlinePromises = seriesMonths.map((m) =>
+      computeMonthlyHeadline({
+        supabase,
+        organizationId,
+        month: m,
+        claimAppointmentFilter,
+        includePatientPayments: !providerId,
+      }),
+    );
+    const priorMonth = shiftMonth(month, -1);
+    const priorHeadlinePromise = computeMonthlyHeadline({
+      supabase,
+      organizationId,
+      month: priorMonth,
+      claimAppointmentFilter,
+      includePatientPayments: !providerId,
+    });
+    const [timeSeries, priorMonthMetrics] = await Promise.all([
+      Promise.all(headlinePromises),
+      priorHeadlinePromise,
+    ]);
+
+    // Derived metrics for the executive snapshot.
+    // Outstanding AR + avg days in AR snapshot as of "now" come from the
+    // existing `aging` aggregation above (which uses live status); for the
+    // current-period collection rate we reuse charges submitted vs payments
+    // posted within the period.
+    const liveOutstandingTotal =
+      aging.bucket0to30.totalCharge +
+      aging.bucket31to60.totalCharge +
+      aging.bucket61Plus.totalCharge;
+
+    const liveAgeSamples: number[] = [];
+    const liveNow = Date.now();
+    for (const claim of outstandingClaims ?? []) {
+      const submitted = claim.submitted_at ? new Date(claim.submitted_at).getTime() : null;
+      if (submitted === null || Number.isNaN(submitted)) continue;
+      liveAgeSamples.push((liveNow - submitted) / (1000 * 60 * 60 * 24));
+    }
+    const liveAverageDaysInAR =
+      liveAgeSamples.length > 0
+        ? Math.round((liveAgeSamples.reduce((s, n) => s + n, 0) / liveAgeSamples.length) * 10) / 10
+        : null;
+
+    const periodCollectionRate =
+      claims.totalChargeSubmitted > 0
+        ? Math.round((paymentsSummary.totalAmount / claims.totalChargeSubmitted) * 1000) / 10
+        : 0;
+
+    // Net collection % = payments / (charges - contractual adjustments).
+    // We approximate contractual adjustments as the CARC group code "CO"
+    // total within the period (the same CAS rows we already walked above).
+    let contractualAdjustments = 0;
+    for (const era of eraPayments ?? []) {
+      const adjustments = Array.isArray(era.cas_adjustments) ? (era.cas_adjustments as CasAdjustment[]) : [];
+      for (const adj of adjustments) {
+        if ((adj.groupCode ?? "").toString().toUpperCase() === "CO") {
+          contractualAdjustments += Number(adj.amount ?? 0);
+        }
+      }
+    }
+    const netDenominator = Math.max(0, claims.totalChargeSubmitted - contractualAdjustments);
+    const netCollectionPct =
+      netDenominator > 0 ? Math.round((paymentsSummary.totalAmount / netDenominator) * 1000) / 10 : 0;
+
+    // Enrich the top denial with the payer that contributed it most. We
+    // look up payer_profile_id for the claims that produced the top CARC,
+    // pick the most common, and resolve its display name. Falls back to
+    // null when the top CARC has no linked claims.
+    let topDenialPayerName: string | null = null;
+    if (denialBreakdown[0]) {
+      const carc = denialBreakdown[0].carcCode;
+      const claimIds = Array.from(denialClaimIdsByCarc.get(carc) ?? []);
+      if (claimIds.length > 0) {
+        const { data: payerRowsForCarc } = await supabase
+          .from("professional_claims")
+          .select("payer_profile_id")
+          .eq("organization_id", organizationId)
+          .in("id", claimIds);
+        const payerCounts = new Map<string, number>();
+        for (const row of payerRowsForCarc ?? []) {
+          if (!row.payer_profile_id) continue;
+          payerCounts.set(row.payer_profile_id, (payerCounts.get(row.payer_profile_id) ?? 0) + 1);
+        }
+        if (payerCounts.size > 0) {
+          const [topPayerId] = Array.from(payerCounts.entries()).sort((a, b) => b[1] - a[1])[0];
+          const cached = payerNameById.get(topPayerId);
+          if (cached) {
+            topDenialPayerName = cached;
+          } else {
+            const { data: payerLookup } = await supabase
+              .from("payer_profiles")
+              .select("payer_name")
+              .eq("id", topPayerId)
+              .maybeSingle();
+            topDenialPayerName = (payerLookup as { payer_name?: string } | null)?.payer_name ?? null;
+          }
+        }
+      }
+    }
+
+    const topDenial = denialBreakdown[0]
+      ? {
+          carcCode: denialBreakdown[0].carcCode,
+          groupCode: denialBreakdown[0].groupCode,
+          reasonCode: denialBreakdown[0].reasonCode,
+          occurrences: denialBreakdown[0].occurrences,
+          totalAmount: denialBreakdown[0].totalAmount,
+          payerName: topDenialPayerName,
+        }
+      : null;
+
+    // ERA processing lag: avg days from ERA created_at → updated_at for
+    // rows that finished posting this period. Also count rows still in
+    // a non-posted / unmatched state as the operational backlog.
+    const eraLagSamples: number[] = [];
+    let eraUnposted = 0;
+    let eraUnmatched = 0;
+    for (const era of eraPayments ?? []) {
+      const status = (era.posting_status ?? "").toString();
+      const matchStatus = (era.claim_match_status ?? "").toString();
+      if (status && status !== "posted") eraUnposted += 1;
+      if (matchStatus && matchStatus !== "matched") eraUnmatched += 1;
+      if (status === "posted" && era.created_at && era.updated_at) {
+        const days = dayDiff(era.created_at, era.updated_at);
+        if (days !== null) eraLagSamples.push(days);
+      }
+    }
+    const eraLagAverageDays =
+      eraLagSamples.length > 0
+        ? Math.round((eraLagSamples.reduce((s, n) => s + n, 0) / eraLagSamples.length) * 10) / 10
+        : null;
+
+    // Eligibility / auth-issue backlog: open workqueue items whose work_type
+    // is the eligibility queue id ("eligibility_issues"). Best-effort — when
+    // the project doesn't use that work_type the count is simply 0.
+    const { count: authIssuesOpenCount } = await supabase
+      .from("workqueue_items")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .eq("work_type", "eligibility_issues")
+      .in("status", ["open", "in_progress", "blocked", "deferred"])
+      .is("archived_at", null);
+
+    const operational = {
+      unresolvedClaims: aging.totalOutstanding,
+      eraLagAverageDays,
+      eraUnpostedCount: eraUnposted,
+      eraUnmatchedCount: eraUnmatched,
+      authIssuesOpen: authIssuesOpenCount ?? 0,
+    };
+
+    // Clinician productivity: claims & charges this month, grouped by the
+    // rendering provider. Computed by mapping each submitted claim's
+    // appointment_id → provider_id → provider_name.
+    const claimAppointmentIds = Array.from(
+      new Set(
+        (submittedClaims ?? [])
+          .map((c) => c.appointment_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    let providerByAppointment = new Map<string, string>();
+    let providerNameById = new Map<string, string>();
+    if (claimAppointmentIds.length > 0) {
+      const { data: apptProviderRows } = await supabase
+        .from("appointments")
+        .select("id, provider_id")
+        .eq("organization_id", organizationId)
+        .in("id", claimAppointmentIds);
+      providerByAppointment = new Map(
+        (apptProviderRows ?? [])
+          .filter((r: { id: string; provider_id: string | null }) => r.provider_id)
+          .map((r: { id: string; provider_id: string | null }) => [r.id, r.provider_id as string]),
+      );
+      const providerIds = Array.from(new Set(providerByAppointment.values()));
+      if (providerIds.length > 0) {
+        const { data: providerRows } = await supabase
+          .from("providers")
+          .select("id, provider_name")
+          .in("id", providerIds);
+        providerNameById = new Map(
+          (providerRows ?? []).map((p: { id: string; provider_name: string | null }) => [
+            p.id,
+            p.provider_name ?? "Unnamed clinician",
+          ]),
+        );
+      }
+    }
+    const productivityMap = new Map<string, { providerId: string; providerName: string; claimsSubmitted: number; chargesSubmitted: number }>();
+    for (const claim of submittedClaims ?? []) {
+      const providerIdForClaim = claim.appointment_id
+        ? providerByAppointment.get(claim.appointment_id)
+        : undefined;
+      if (!providerIdForClaim) continue;
+      const existing =
+        productivityMap.get(providerIdForClaim) ??
+        {
+          providerId: providerIdForClaim,
+          providerName: providerNameById.get(providerIdForClaim) ?? "Unknown clinician",
+          claimsSubmitted: 0,
+          chargesSubmitted: 0,
+        };
+      existing.claimsSubmitted += 1;
+      existing.chargesSubmitted += Number(claim.total_charge ?? 0);
+      productivityMap.set(providerIdForClaim, existing);
+    }
+    const clinicianProductivity = Array.from(productivityMap.values())
+      .map((p) => ({ ...p, chargesSubmitted: money(p.chargesSubmitted) }))
+      .sort((a, b) => b.claimsSubmitted - a.claimsSubmitted)
+      .slice(0, 12);
+
+    const derived = {
+      collectionRate: periodCollectionRate,
+      netCollectionPct,
+      contractualAdjustments: money(contractualAdjustments),
+      averageDaysInAR: liveAverageDaysInAR,
+      outstandingAR: money(liveOutstandingTotal),
+      topDenial,
+    };
+
     return NextResponse.json({
       success: true,
       organizationId,
@@ -620,6 +1025,11 @@ export async function GET(request: Request) {
       denials,
       payerPerformance,
       payerCallVolume,
+      priorMonth: priorMonthMetrics,
+      timeSeries,
+      derived,
+      operational,
+      clinicianProductivity,
     });
   } catch (error) {
     console.error("Billing reports API error:", error);

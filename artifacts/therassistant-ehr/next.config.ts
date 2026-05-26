@@ -75,6 +75,12 @@ const nextConfig: NextConfig = {
     "*.replit.dev",
     "*.repl.co",
   ],
+  experimental: {
+    // Disable the separate build worker process so the webpack build runs
+    // in the main process — avoids a second Node.js heap during production
+    // builds in memory-constrained environments (< 3 GB available).
+    webpackBuildWorker: false,
+  },
   async redirects() {
     return claimRedirects.map(({ from, tab, filter }) => {
       const qs = new URLSearchParams();

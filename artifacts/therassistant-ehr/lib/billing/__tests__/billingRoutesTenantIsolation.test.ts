@@ -486,6 +486,7 @@ describe("billing API tenant isolation (Task #167 e2e)", () => {
       "app/api/billing/authorization-required/route.ts",
       "app/api/billing/authorization-required/actions/route.ts",
       "app/api/billing/claims/[claimId]/notes/route.ts",
+      "app/api/billing/claims/[claimId]/notes/[noteId]/route.ts",
       "app/api/billing/claims/[claimId]/write-off/route.ts",
       "app/api/billing/denials/route.ts",
       "app/api/billing/fax-queue/route.ts",

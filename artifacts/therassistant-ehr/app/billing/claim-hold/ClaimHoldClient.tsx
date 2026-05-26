@@ -15,6 +15,7 @@ import {
   ClaimDocumentUploadsOverlay,
   useClaimDocumentUploads,
 } from "@/components/billing/ClaimDocumentUploads";
+import { ResolvedDenialNoteCard } from "@/components/billing/ResolvedDenialNoteCard";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ type Note = {
   body: string;
   author_display_name: string | null;
   created_at: string;
+  resolved_denial?: boolean | null;
 };
 
 const TABS: Array<{ id: HoldCategory; label: string }> = [
@@ -645,21 +647,15 @@ function NotesHistory({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {notes.map((n) => (
-        <div
+        <ResolvedDenialNoteCard
           key={n.id}
-          style={{
-            border: "1px solid #E5E7EB",
-            borderRadius: 6,
-            padding: 10,
-            background: "#F9FAFB",
-          }}
-        >
-          <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 4 }}>
-            {n.author_display_name ?? "Staff"} ·{" "}
-            {new Date(n.created_at).toLocaleString()}
-          </div>
-          <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{n.body}</div>
-        </div>
+          note={n}
+          claimId={claimId}
+          organizationId={organizationId}
+          onChange={(updated) =>
+            setNotes((prev) => (prev ?? []).map((x) => (x.id === updated.id ? updated : x)))
+          }
+        />
       ))}
     </div>
   );

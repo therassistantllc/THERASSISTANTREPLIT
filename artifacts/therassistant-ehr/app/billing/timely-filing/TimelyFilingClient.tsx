@@ -11,6 +11,7 @@ import WorkqueueShell, {
   type SummaryMetric,
 } from "@/components/billing/WorkqueueShell";
 import { ClaimDocumentsPanel } from "@/components/billing/ClaimDocumentsPanel";
+import { ResolvedDenialNoteCard } from "@/components/billing/ResolvedDenialNoteCard";
 import {
   TIMELY_FILING_TABS,
   type TimelyFilingTab,
@@ -68,6 +69,7 @@ type Note = {
   body: string;
   author_display_name: string | null;
   created_at: string;
+  resolved_denial?: boolean | null;
 };
 
 type SubmissionEvent = {
@@ -542,20 +544,15 @@ function NotesPanel({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {visible.map((n) => (
-        <div
+        <ResolvedDenialNoteCard
           key={n.id}
-          style={{
-            border: "1px solid #E5E7EB",
-            borderRadius: 6,
-            padding: 10,
-            background: "#F9FAFB",
-          }}
-        >
-          <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 4 }}>
-            {n.author_display_name ?? "Staff"} · {formatDateTime(n.created_at)}
-          </div>
-          <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{n.body}</div>
-        </div>
+          note={n}
+          claimId={claimId}
+          organizationId={organizationId}
+          onChange={(updated) =>
+            setNotes((prev) => (prev ?? []).map((x) => (x.id === updated.id ? updated : x)))
+          }
+        />
       ))}
     </div>
   );

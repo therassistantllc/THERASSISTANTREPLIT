@@ -4,17 +4,21 @@
  * POST — row-level actions on a single fax_queue entry.
  *
  * Actions:
- *   retry  : move a 'failed' row back to 'pending' so the downstream
- *            fax worker picks it up again (clears the error message).
+ *   retry  : move a 'failed' row back to 'pending', then immediately
+ *            invoke the fax-queue dispatcher so the row is actually
+ *            re-transmitted through the configured fax provider
+ *            (Telnyx) instead of just sitting on 'pending' until the
+ *            next scheduled sweep. Surfaces the per-fax outcome
+ *            (sent / failed / skipped) in the response.
  *   cancel : move a still-'pending' row to 'canceled' so it never
  *            gets sent.
  *
- * No fax-provider integration exists yet — these state changes only
- * affect the queue row itself. Sent rows are immutable here.
+ * Sent rows are immutable here.
  */
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
+import { runFaxQueueDispatch } from "@/lib/billing/faxQueueWorker";
 
 type DbRow = Record<string, any>;
 
@@ -83,18 +87,54 @@ export async function POST(
           { status: 409 },
         );
       }
-      const { data: updated, error } = await (supabase as any)
+      // Step 1 — reset row to 'pending' so the dispatcher can claim it.
+      const { error: resetErr } = await (supabase as any)
         .from("fax_queue")
-        .update({ status: "pending", error: null })
+        .update({ status: "pending", error: null, sent_at: null })
+        .eq("organization_id", organizationId)
+        .eq("id", faxId);
+      if (resetErr) throw resetErr;
+
+      // Step 2 — actually re-transmit. The dispatcher will atomically claim
+      // the row (pending → processing), download the documents referenced by
+      // the matching transmission, upload the merged PDF, hand the signed
+      // URL to the fax provider, and flip the row to sent/failed with the
+      // real outcome. If only this one fax is pending in the org it's the
+      // only row touched; if others are pending too they ride along, which
+      // is the desired behavior (a manual retry shouldn't strand neighbors).
+      let dispatchOutcome:
+        | { status: "sent" | "failed" | "skipped"; error?: string | null; providerMessageId?: string | null }
+        | null = null;
+      let providerName: string | null = null;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const r = await runFaxQueueDispatch(supabase as any, { organizationId, maxFaxes: 25 });
+        providerName = r.providerName;
+        const mine = r.perFax.find((p) => p.faxId === faxId) ?? null;
+        if (mine) dispatchOutcome = mine;
+      } catch (e) {
+        console.warn(
+          `[fax-queue retry] dispatcher threw for ${faxId}:`,
+          e instanceof Error ? e.message : e,
+        );
+      }
+
+      // Re-read the row to report the actual terminal state to the UI.
+      const { data: after } = await (supabase as any)
+        .from("fax_queue")
+        .select("id, status, error, sent_at")
         .eq("organization_id", organizationId)
         .eq("id", faxId)
-        .select("id, status")
-        .single();
-      if (error) throw error;
+        .maybeSingle();
+      const afterRow = (after as DbRow) ?? {};
       return NextResponse.json({
         success: true,
-        id: text((updated as DbRow).id),
-        status: text((updated as DbRow).status),
+        id: text(afterRow.id) || faxId,
+        status: text(afterRow.status) || "pending",
+        error: text(afterRow.error) || null,
+        sentAt: text(afterRow.sent_at) || null,
+        providerName,
+        dispatchOutcome,
       });
     }
 

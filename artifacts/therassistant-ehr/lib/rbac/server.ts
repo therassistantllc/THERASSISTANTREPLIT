@@ -81,35 +81,37 @@ export async function getStaffContext(
 
   const roles = Array.from(roleCodeSet);
 
-  // Get all permissions for these roles
-  const { data: permLinkData, error: permLinkError } = await supabase
-    .from("staff_role_permissions")
-    .select(
-      `
-      permission_id,
-      staff_permissions!inner(
-        permission_code
-      )
-    `,
-    )
-    .in("staff_role_id", assignmentList.map((a) => a.staff_role_id))
-    .eq("organization_id", organizationId);
-
-  if (permLinkError) {
-    return null;
-  }
-
-  // Extract unique permissions
+  // Get all permissions for these roles — skip if no roles assigned
   const permissionSet = new Set<PermissionCode>();
-  const permList = permLinkData as unknown as Array<{
-    staff_permissions: { permission_code: PermissionCode };
-  }>;
 
-  permList.forEach((perm) => {
-    if (perm.staff_permissions?.permission_code) {
-      permissionSet.add(perm.staff_permissions.permission_code);
+  if (assignmentList.length > 0) {
+    const { data: permLinkData, error: permLinkError } = await supabase
+      .from("staff_role_permissions")
+      .select(
+        `
+        permission_id,
+        staff_permissions!inner(
+          permission_code
+        )
+      `,
+      )
+      .in("staff_role_id", assignmentList.map((a) => a.staff_role_id))
+      .eq("organization_id", organizationId);
+
+    if (permLinkError) {
+      return null;
     }
-  });
+
+    const permList = permLinkData as unknown as Array<{
+      staff_permissions: { permission_code: PermissionCode };
+    }>;
+
+    permList.forEach((perm) => {
+      if (perm.staff_permissions?.permission_code) {
+        permissionSet.add(perm.staff_permissions.permission_code);
+      }
+    });
+  }
 
   const permissions = Array.from(permissionSet);
 

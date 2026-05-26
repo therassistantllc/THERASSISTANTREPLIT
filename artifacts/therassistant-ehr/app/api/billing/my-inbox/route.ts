@@ -18,6 +18,7 @@ import { resolveWorkqueueItem } from "@/lib/workqueue/workqueueActionService";
 const INBOX_WORK_TYPES = [
   "eligibility_routed_clinician",
   "eligibility_routed_admin",
+  "provider_approval_needed",
 ];
 const OPEN_STATUSES = ["open", "in_progress", "blocked"];
 
@@ -240,7 +241,9 @@ export async function GET(request: Request) {
       id: i.id,
       workType: i.work_type,
       kind:
-        i.work_type === "eligibility_routed_clinician" ? "clinician" : "admin",
+        i.work_type === "eligibility_routed_clinician" || i.work_type === "provider_approval_needed"
+          ? "clinician"
+          : "admin",
       title: i.title,
       description: i.description,
       status: i.status,
@@ -255,9 +258,17 @@ export async function GET(request: Request) {
       note: (ctxPayload.note as string | null) ?? null,
       createdAt: i.created_at,
       updatedAt: i.updated_at,
-      eligibilityHref: appt?.id
+      eligibilityHref: i.work_type === "provider_approval_needed"
+        ? `/billing/patient-balances`
+        : appt?.id
         ? `/billing/eligibility-issues?appointmentId=${encodeURIComponent(appt.id)}`
         : `/billing/eligibility-issues`,
+      billingComment: i.work_type === "provider_approval_needed"
+        ? ((ctxPayload.billingComment as string | null) ?? null)
+        : null,
+      patientResponsibility: i.work_type === "provider_approval_needed"
+        ? ((ctxPayload.patientResponsibility as number | null) ?? null)
+        : null,
       commentCount: commentCountByItem.get(i.id) ?? 0,
       reminderCount: reminderStatsByItem.get(i.id)?.count ?? 0,
       lastRemindedAt: reminderStatsByItem.get(i.id)?.lastSentAt ?? null,
@@ -289,15 +300,15 @@ export async function PATCH(request: Request) {
   }
 
   const action = body.action ?? "resolve";
-  if (action !== "resolve") {
+  const validActions = ["resolve", "approve", "charity_care", "discount"];
+  if (!validActions.includes(action)) {
     return NextResponse.json(
       { success: false, error: `Unsupported action: ${action}` },
       { status: 400 },
     );
   }
 
-  // Make sure the item belongs to the current user before resolving — we
-  // never want one user closing another user's routed handoff.
+  // Make sure the item belongs to the current user before acting.
   const supabase = createServerSupabaseAdminClient();
   if (!supabase) {
     return NextResponse.json(
@@ -309,7 +320,7 @@ export async function PATCH(request: Request) {
   const sb = supabase as unknown as { from: (t: string) => any };
   const { data: owned } = await sb
     .from("workqueue_items")
-    .select("id, assigned_to_user_id, work_type, organization_id")
+    .select("id, assigned_to_user_id, work_type, organization_id, claim_id, context_payload")
     .eq("id", itemId)
     .eq("organization_id", ctx.organizationId)
     .maybeSingle();
@@ -320,19 +331,98 @@ export async function PATCH(request: Request) {
       { status: 404 },
     );
   }
-  if ((owned as { assigned_to_user_id: string | null }).assigned_to_user_id !== ctx.staffId) {
-    return NextResponse.json(
-      { success: false, error: "This inbox item is assigned to someone else" },
-      { status: 403 },
-    );
-  }
   if (!INBOX_WORK_TYPES.includes((owned as { work_type: string }).work_type)) {
     return NextResponse.json(
-      { success: false, error: "Not an eligibility inbox item" },
+      { success: false, error: "Not a valid inbox item" },
       { status: 400 },
     );
   }
 
+  // Provider approval actions — for items with work_type = provider_approval_needed
+  if (["approve", "charity_care", "discount"].includes(action)) {
+    const ownedTyped = owned as {
+      work_type: string;
+      claim_id: string | null;
+      context_payload: Record<string, unknown> | null;
+    };
+    if (ownedTyped.work_type !== "provider_approval_needed") {
+      return NextResponse.json(
+        { success: false, error: "Action only valid for provider approval items" },
+        { status: 400 },
+      );
+    }
+    const claimId = ownedTyped.claim_id;
+    if (!claimId) {
+      return NextResponse.json(
+        { success: false, error: "No claim linked to this approval item" },
+        { status: 400 },
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    if (action === "approve") {
+      // Mark workqueue item resolved; return claim to patient balances queue
+      await sb
+        .from("workqueue_items")
+        .update({ status: "resolved", resolved_at: now, updated_at: now })
+        .eq("id", itemId);
+      return NextResponse.json({ success: true, action, claimId });
+    }
+
+    if (action === "charity_care") {
+      // Write off the patient balance as charity care
+      const { error: wErr } = await sb
+        .from("professional_claims")
+        .update({
+          patient_responsibility_amount: 0,
+          write_off_amount: null, // handled by existing write_off columns if available
+          billing_notes: `[Charity care write-off by provider — ${now.split("T")[0]}]`,
+          updated_at: now,
+        })
+        .eq("id", claimId)
+        .eq("organization_id", ctx.organizationId);
+      if (wErr) throw wErr;
+      await sb
+        .from("workqueue_items")
+        .update({ status: "resolved", resolved_at: now, updated_at: now })
+        .eq("id", itemId);
+      return NextResponse.json({ success: true, action, claimId });
+    }
+
+    if (action === "discount") {
+      // Provider sends back a new approved patient amount
+      const discountedAmount = Number((body as { discountedAmount?: unknown }).discountedAmount ?? 0);
+      if (!Number.isFinite(discountedAmount) || discountedAmount < 0) {
+        return NextResponse.json(
+          { success: false, error: "discountedAmount must be a non-negative number" },
+          { status: 400 },
+        );
+      }
+      const { error: dErr } = await sb
+        .from("professional_claims")
+        .update({
+          patient_responsibility_amount: discountedAmount,
+          billing_notes: `[Discounted to $${discountedAmount.toFixed(2)} by provider — ${now.split("T")[0]}]`,
+          updated_at: now,
+        })
+        .eq("id", claimId)
+        .eq("organization_id", ctx.organizationId);
+      if (dErr) throw dErr;
+      await sb
+        .from("workqueue_items")
+        .update({ status: "resolved", resolved_at: now, updated_at: now })
+        .eq("id", itemId);
+      return NextResponse.json({
+        success: true,
+        action,
+        claimId,
+        newPatientResponsibility: discountedAmount,
+      });
+    }
+  }
+
+  // Standard resolve action
   const result = await resolveWorkqueueItem({
     organizationId: ctx.organizationId,
     workqueueItemId: itemId,

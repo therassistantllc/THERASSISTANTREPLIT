@@ -1,7 +1,7 @@
 /**
- * GET /api/billing/patient-balances
- * Returns professional_claims with patient_responsibility_amount > 0,
- * joined with client, payer, and appointment/provider data.
+ * GET /api/billing/denied-claims
+ * Returns professional_claims where claim_status = 'denied',
+ * joined with client, payer, appointment/provider data.
  */
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
@@ -32,24 +32,20 @@ export async function GET(request: Request) {
       .from("professional_claims")
       .select(
         `id, claim_number, claim_status, total_charge, patient_responsibility_amount,
-         payer_responsibility_amount, denial_reason_code, first_billed_date, billing_notes,
-         diagnosis_codes, place_of_service, prior_authorization_number, client_id,
-         payer_profile_id, appointment_id, created_at, updated_at,
-         clients(id, first_name, last_name, email, phone,
-                 stripe_payment_method_id, stripe_customer_id,
-                 stripe_payment_method_brand, stripe_payment_method_last4,
-                 stripe_payment_method_exp_month, stripe_payment_method_exp_year,
-                 autopay_enabled),
+         payer_responsibility_amount, denial_reason_code, denial_reason_description,
+         first_billed_date, submitted_at, appeal_deadline_date, billing_notes,
+         diagnosis_codes, place_of_service, prior_authorization_number,
+         correction_status, correction_type, client_id, payer_profile_id, appointment_id,
+         created_at, updated_at,
+         clients(id, first_name, last_name, email),
          payer_profiles(payer_name),
          appointments(id, scheduled_start_at, provider_id,
-                      providers(id, first_name, last_name, display_name, npi))`,
+                      providers(id, first_name, last_name, display_name))`,
       )
       .eq("organization_id", organizationId)
-      .gt("patient_responsibility_amount", 0)
+      .eq("claim_status", "denied")
       .is("archived_at", null)
-      .is("write_off_at", null)
-      .not("claim_status", "in", '("draft","archived")')
-      .order("created_at", { ascending: false });
+      .order("updated_at", { ascending: false });
 
     if (error) throw error;
 
@@ -58,15 +54,14 @@ export async function GET(request: Request) {
       const payer = r.payer_profiles as unknown as Record<string, unknown> | null;
       const appt = r.appointments as unknown as Record<string, unknown> | null;
       const provider = appt?.providers as Record<string, unknown> | null;
-
-      const hasCard = Boolean(client?.stripe_payment_method_id);
-      const cardBrand = str(client?.stripe_payment_method_brand) || null;
-      const cardLast4 = str(client?.stripe_payment_method_last4) || null;
-      const autopay = Boolean(client?.autopay_enabled);
       const providerName =
         str(provider?.display_name) ||
         [str(provider?.first_name), str(provider?.last_name)].filter(Boolean).join(" ") ||
         null;
+      const totalCharge = num(r.total_charge);
+      const patientResp = num(r.patient_responsibility_amount);
+      const payerPaid = num(r.payer_responsibility_amount);
+      const adjAmt = totalCharge - patientResp - payerPaid;
 
       return {
         id: str(r.id),
@@ -77,31 +72,29 @@ export async function GET(request: Request) {
         clientName: client
           ? [str(client.first_name), str(client.last_name)].filter(Boolean).join(" ")
           : "—",
-        clientEmail: str(client?.email) || null,
-        clientPhone: str(client?.phone) || null,
         payerName: str(payer?.payer_name) || "—",
         providerName,
-        providerId: str(provider?.id) || null,
         dateOfService: appt?.scheduled_start_at
           ? new Date(str(appt.scheduled_start_at)).toISOString().split("T")[0]
           : str(r.first_billed_date) || null,
-        totalCharge: num(r.total_charge),
-        patientResponsibility: num(r.patient_responsibility_amount),
-        payerPaid: num(r.payer_responsibility_amount),
-        amountPaid: 0, // placeholder — patient payments not yet tracked separately
-        adjustmentAmount: num(r.total_charge) - num(r.patient_responsibility_amount) - num(r.payer_responsibility_amount),
-        diagnosisCodes: Array.isArray(r.diagnosis_codes) ? (r.diagnosis_codes as string[]) : [],
-        placeOfService: str(r.place_of_service),
-        priorAuthNumber: str(r.prior_authorization_number) || null,
+        totalCharge,
+        allowedAmount: payerPaid + patientResp,
+        adjustmentAmount: adjAmt,
+        patientResponsibility: patientResp,
+        payerPaid,
+        amountPaid: 0,
+        denialReasonCode: str(r.denial_reason_code) || null,
+        denialReasonDescription: str(r.denial_reason_description) || null,
+        appealDeadline: str(r.appeal_deadline_date) || null,
+        correctionStatus: str(r.correction_status) || null,
+        correctionType: str(r.correction_type) || null,
         billingNotes: str(r.billing_notes) || null,
-        hasCardOnFile: hasCard,
-        cardSummary: hasCard && cardLast4 ? `${cardBrand ?? "Card"} ••••${cardLast4}` : null,
-        autopayEnabled: autopay,
+        submittedAt: str(r.submitted_at) || null,
         createdAt: str(r.created_at),
       };
     });
 
-    return NextResponse.json({ success: true, rows });
+    return NextResponse.json({ success: true, rows, total: rows.length });
   } catch (e) {
     return NextResponse.json(
       { success: false, error: e instanceof Error ? e.message : "Failed" },

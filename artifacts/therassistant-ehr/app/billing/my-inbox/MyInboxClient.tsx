@@ -28,6 +28,8 @@ type InboxItem = {
   commentCount: number;
   reminderCount: number;
   lastRemindedAt: string | null;
+  billingComment: string | null;
+  patientResponsibility: number | null;
 };
 
 function getOrganizationId() {
@@ -136,6 +138,9 @@ export default function MyInboxClient() {
   const [postingId, setPostingId] = useState<string | null>(null);
   const [remindersOpenId, setRemindersOpenId] = useState<string | null>(null);
   const [remindersById, setRemindersById] = useState<Record<string, RemindersState>>({});
+  // Provider approval discount modal state
+  const [discountModal, setDiscountModal] = useState<{ item: InboxItem; amount: string } | null>(null);
+  const [providerActionId, setProviderActionId] = useState<string | null>(null);
 
   const organizationId = useMemo(() => getOrganizationId(), []);
 
@@ -241,6 +246,40 @@ export default function MyInboxClient() {
         setToast(e instanceof Error ? e.message : "Failed to mark resolved");
       } finally {
         setResolvingId(null);
+      }
+    },
+    [organizationId],
+  );
+
+  const providerAction = useCallback(
+    async (item: InboxItem, action: "approve" | "charity_care" | "discount", discountedAmount?: number) => {
+      setProviderActionId(item.id);
+      try {
+        const body: Record<string, unknown> = { id: item.id, action, organizationId };
+        if (action === "discount" && discountedAmount !== undefined) {
+          body.discountedAmount = discountedAmount;
+        }
+        const res = await fetch("/api/billing/my-inbox", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const json = await res.json();
+        if (!res.ok || json?.success === false) {
+          throw new Error(json?.error ?? "Action failed");
+        }
+        setItems((prev) => prev.filter((r) => r.id !== item.id));
+        const labels: Record<string, string> = {
+          approve: "Approved — returned to Patient Balances",
+          charity_care: "Written off as charity care",
+          discount: `Discounted to $${discountedAmount?.toFixed(2) ?? "0.00"} — returned to Patient Balances`,
+        };
+        setToast(labels[action] ?? "Action completed");
+        setDiscountModal(null);
+      } catch (e) {
+        setToast(e instanceof Error ? e.message : "Action failed");
+      } finally {
+        setProviderActionId(null);
       }
     },
     [organizationId],
@@ -672,39 +711,115 @@ export default function MyInboxClient() {
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "stretch", minWidth: 160 }}>
-                  <Link
-                    href={item.eligibilityHref}
-                    style={{
-                      display: "inline-block",
-                      textAlign: "center",
-                      padding: "6px 10px",
-                      borderRadius: 6,
-                      background: "#1D4ED8",
-                      color: "#FFFFFF",
-                      fontSize: 12.5,
-                      fontWeight: 600,
-                      textDecoration: "none",
-                    }}
-                  >
-                    Open eligibility issue
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => void resolve(item)}
-                    disabled={resolvingId === item.id}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 6,
-                      border: "1px solid #16A34A",
-                      background: resolvingId === item.id ? "#F0FDF4" : "#FFFFFF",
-                      color: "#166534",
-                      fontSize: 12.5,
-                      fontWeight: 600,
-                      cursor: resolvingId === item.id ? "default" : "pointer",
-                    }}
-                  >
-                    {resolvingId === item.id ? "Resolving…" : "Mark resolved"}
-                  </button>
+                  {item.workType === "provider_approval_needed" ? (
+                    // Provider approval action buttons
+                    <>
+                      {item.billingComment && (
+                        <div style={{ fontSize: 11, color: "#475569", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 6, padding: "5px 8px", marginBottom: 2 }}>
+                          <span style={{ fontWeight: 600 }}>Note: </span>{item.billingComment}
+                        </div>
+                      )}
+                      {item.patientResponsibility != null && (
+                        <div style={{ fontSize: 11, color: "#334155", marginBottom: 2 }}>
+                          Patient responsibility:{" "}
+                          <strong>${Number(item.patientResponsibility).toFixed(2)}</strong>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void providerAction(item, "approve")}
+                        disabled={providerActionId === item.id}
+                        style={{
+                          padding: "7px 10px",
+                          borderRadius: 6,
+                          border: "none",
+                          background: "#166534",
+                          color: "#fff",
+                          fontSize: 12.5,
+                          fontWeight: 700,
+                          cursor: providerActionId === item.id ? "default" : "pointer",
+                        }}
+                      >
+                        ✓ Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void providerAction(item, "charity_care")}
+                        disabled={providerActionId === item.id}
+                        style={{
+                          padding: "7px 10px",
+                          borderRadius: 6,
+                          border: "1px solid #cbd5e1",
+                          background: "#fff",
+                          color: "#475569",
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          cursor: providerActionId === item.id ? "default" : "pointer",
+                        }}
+                      >
+                        ♥ Charity Care
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDiscountModal({
+                            item,
+                            amount: String(item.patientResponsibility ?? ""),
+                          })
+                        }
+                        disabled={providerActionId === item.id}
+                        style={{
+                          padding: "7px 10px",
+                          borderRadius: 6,
+                          border: "1px solid #cbd5e1",
+                          background: "#fff",
+                          color: "#7a5000",
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          cursor: providerActionId === item.id ? "default" : "pointer",
+                        }}
+                      >
+                        % Discount
+                      </button>
+                    </>
+                  ) : (
+                    // Standard eligibility routing actions
+                    <>
+                      <Link
+                        href={item.eligibilityHref}
+                        style={{
+                          display: "inline-block",
+                          textAlign: "center",
+                          padding: "6px 10px",
+                          borderRadius: 6,
+                          background: "#1D4ED8",
+                          color: "#FFFFFF",
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          textDecoration: "none",
+                        }}
+                      >
+                        Open eligibility issue
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => void resolve(item)}
+                        disabled={resolvingId === item.id}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 6,
+                          border: "1px solid #16A34A",
+                          background: resolvingId === item.id ? "#F0FDF4" : "#FFFFFF",
+                          color: "#166534",
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          cursor: resolvingId === item.id ? "default" : "pointer",
+                        }}
+                      >
+                        {resolvingId === item.id ? "Resolving…" : "Mark resolved"}
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={() => toggleExpanded(item)}
@@ -908,6 +1023,93 @@ export default function MyInboxClient() {
           {toast}
         </div>
       ) : null}
+
+      {/* ── Discount Modal ─────────────────────────────────────────────── */}
+      {discountModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            zIndex: 1200,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={(e) => e.target === e.currentTarget && setDiscountModal(null)}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 10,
+              width: "100%",
+              maxWidth: 380,
+              padding: "24px 22px 18px",
+              boxShadow: "0 8px 32px rgba(16,36,63,.18)",
+            }}
+          >
+            <h3 style={{ margin: "0 0 6px", fontSize: 15, fontWeight: 700, color: "#0F172A" }}>
+              Set Discounted Amount
+            </h3>
+            <p style={{ margin: "0 0 16px", fontSize: 12, color: "#64748b" }}>
+              Enter the new amount the patient should be charged for{" "}
+              <strong>{discountModal.item.clientName ?? "this patient"}</strong>.
+              {discountModal.item.patientResponsibility != null && (
+                <> Original: <strong>${Number(discountModal.item.patientResponsibility).toFixed(2)}</strong>.</>
+              )}
+            </p>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#64748b", marginBottom: 4, textTransform: "uppercase" }}>
+              New Patient Amount ($)
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={discountModal.amount}
+              onChange={(e) => setDiscountModal((prev) => prev ? { ...prev, amount: e.target.value } : null)}
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                border: "1px solid #cbd5e1",
+                borderRadius: 6,
+                fontSize: 14,
+                marginBottom: 18,
+                boxSizing: "border-box",
+              }}
+              autoFocus
+            />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setDiscountModal(null)}
+                style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#fff", fontSize: 13, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={providerActionId === discountModal.item.id}
+                onClick={() => {
+                  const amt = parseFloat(discountModal.amount);
+                  if (!Number.isFinite(amt) || amt < 0) return;
+                  void providerAction(discountModal.item, "discount", amt);
+                }}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: "#7a5000",
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: providerActionId === discountModal.item.id ? "not-allowed" : "pointer",
+                }}
+              >
+                {providerActionId === discountModal.item.id ? "Saving…" : "Apply Discount"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import PatientBalancesClient from "./PatientBalancesClient";
 
 export default function PatientBalancesPage() {
-  redirect("/billing/claims?tab=resolutions&filter=patient_resp");
+  return <PatientBalancesClient />;
 }

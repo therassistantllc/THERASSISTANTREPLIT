@@ -259,7 +259,7 @@ function recoupmentResultToCommitResult(
   // so existing UI iterating result.effects in its preview modal renders
   // the takeback row without a special-case branch.
   if (r.preview) {
-    const e = r.preview.compensatingLedgerEntry;
+    const e = r.preview.ledgerEntry;
     out.effects = [
       {
         // entry_type is 'insurance_payment' (a member of the union) but

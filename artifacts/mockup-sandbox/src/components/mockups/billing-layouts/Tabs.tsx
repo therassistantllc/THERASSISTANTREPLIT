@@ -4,7 +4,7 @@ import {
   CheckSquare, MessageSquare, BarChart2, Settings,
   Search, ChevronDown, Phone, RotateCcw,
   CheckCircle2, AlertCircle, FileText, X,
-  ArrowRight, CreditCard, XCircle
+  ArrowRight, CreditCard, XCircle, Clock
 } from 'lucide-react';
 
 const GLOBAL_NAV = [
@@ -48,7 +48,7 @@ const MOCK_CLAIMS = [
 ];
 
 export default function TabsLayout() {
-  const [selectedClaim, setSelectedClaim] = useState(MOCK_CLAIMS[2]);
+  const [selectedClaim, setSelectedClaim] = useState<typeof MOCK_CLAIMS[0] | null>(MOCK_CLAIMS[2]);
 
   return (
     <div className="flex h-screen w-full bg-[#f8fafc] text-slate-900 font-sans overflow-hidden">

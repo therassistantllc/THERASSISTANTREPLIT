@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import "../_group.css";
 
-const NAV = [
+type NavItem = { label: string; href: string; active?: boolean; subs?: { label: string; href: string; active?: boolean }[] };
+type NavSection = { section: string; items: NavItem[] };
+
+const NAV: NavSection[] = [
   { section: "HOME", items: [
     { label: "Schedule", href: "#" },
     { label: "Clients", href: "#" },

@@ -59,6 +59,10 @@ export default function ClaimDetailClient({ claimId }: { claimId: string }) {
   const [claim, setClaim] = useState<Claim | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [statusBumpKey, setStatusBumpKey] = useState(0);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [runInfo, setRunInfo] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!claimId || !orgId) return;
@@ -88,6 +92,40 @@ export default function ClaimDetailClient({ claimId }: { claimId: string }) {
   }, [load]);
 
   const orgQ = orgId ? `?organizationId=${encodeURIComponent(orgId)}` : "";
+
+  const runClaimStatus = useCallback(async () => {
+    if (!claim?.id) return;
+    if (!claim.patient_id) {
+      setRunError("Missing patient on claim");
+      setRunInfo(null);
+      return;
+    }
+    setRunning(true);
+    setRunError(null);
+    setRunInfo(null);
+    try {
+      const res = await fetch("/api/clearinghouse/availity/claim-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: orgId,
+          clientId: claim.patient_id,
+          claimId: claim.id,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.success === false) {
+        setRunError(json?.error || `Request failed (${res.status})`);
+        return;
+      }
+      setRunInfo("Status check sent — history refreshed.");
+      setStatusBumpKey((k) => k + 1);
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : "Failed to run status check");
+    } finally {
+      setRunning(false);
+    }
+  }, [claim?.id, claim?.patient_id, orgId]);
 
   return (
     <main className="app-shell">
@@ -208,6 +246,7 @@ export default function ClaimDetailClient({ claimId }: { claimId: string }) {
 
           <section style={{ marginTop: "1rem" }}>
             <LatestPayerStatusResponse
+              key={`latest-${statusBumpKey}`}
               claimId={claim.id ?? claimId}
               organizationId={orgId}
               claimStatus={claim.claim_status}
@@ -216,12 +255,48 @@ export default function ClaimDetailClient({ claimId }: { claimId: string }) {
           </section>
 
           <section className="panel" style={{ marginTop: "1rem", padding: "1rem" }}>
-            <h3 style={{ margin: "0 0 0.75rem", fontSize: 14 }}>
-              Status check history
-            </h3>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                marginBottom: "0.75rem",
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: 14 }}>Status check history</h3>
+              <button
+                type="button"
+                onClick={() => void runClaimStatus()}
+                disabled={running}
+                style={{
+                  background: running ? "#E2E8F0" : "#1D4ED8",
+                  color: running ? "#475569" : "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: running ? "wait" : "pointer",
+                }}
+              >
+                {running ? "Running…" : "Run claim status"}
+              </button>
+            </div>
+            {runError ? (
+              <div style={{ color: "#B91C1C", fontSize: 12, marginBottom: 8 }}>
+                {runError}
+              </div>
+            ) : null}
+            {runInfo && !runError ? (
+              <div style={{ color: "#047857", fontSize: 12, marginBottom: 8 }}>
+                {runInfo}
+              </div>
+            ) : null}
             <StatusCheckHistory
               claimId={claim.id ?? claimId}
               organizationId={orgId}
+              bumpKey={statusBumpKey}
             />
           </section>
         </>

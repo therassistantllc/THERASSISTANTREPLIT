@@ -74,7 +74,81 @@ type TelnyxCredentials = {
   apiKey: string;
   fromNumber: string;
   connectionId?: string;
+  /**
+   * Base64-encoded raw 32-byte Ed25519 public key Telnyx uses to sign
+   * outgoing webhooks. Optional because `send`/`getStatus` don't need it;
+   * only the webhook receiver does.
+   */
+  publicKey?: string;
 };
+
+/**
+ * Verify a Telnyx webhook signature.
+ *
+ * Telnyx signs each webhook with Ed25519 over the bytes
+ * `${telnyx-timestamp}|${rawBody}`. The signature is delivered base64-
+ * encoded in `telnyx-signature-ed25519`; the timestamp (unix seconds) is
+ * in `telnyx-timestamp`. The matching public key lives in the Telnyx
+ * portal as a raw 32-byte Ed25519 key, base64-encoded.
+ *
+ * Returns false (fail-closed) for any missing/malformed input, stale
+ * timestamps outside the replay window, or signatures that don't verify.
+ */
+export function verifyTelnyxSignature(
+  rawBody: string,
+  signatureB64: string | null | undefined,
+  timestamp: string | null | undefined,
+  publicKeyB64: string | null | undefined,
+  opts?: { now?: number; replayWindowSeconds?: number },
+): boolean {
+  if (!signatureB64 || !timestamp || !publicKeyB64) return false;
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts)) return false;
+  const now = opts?.now ?? Math.floor(Date.now() / 1000);
+  const window = opts?.replayWindowSeconds ?? 300;
+  if (Math.abs(now - ts) > window) return false;
+
+  let sig: Buffer;
+  let rawKey: Buffer;
+  try {
+    sig = Buffer.from(signatureB64, "base64");
+    rawKey = Buffer.from(publicKeyB64, "base64");
+  } catch {
+    return false;
+  }
+  if (sig.length !== 64 || rawKey.length !== 32) return false;
+
+  // Wrap the raw Ed25519 key as a SPKI DER so node's crypto can import it.
+  // 302a300506032b6570032100 is the standard SPKI prefix for Ed25519.
+  const spkiPrefix = Buffer.from("302a300506032b6570032100", "hex");
+  const der = Buffer.concat([spkiPrefix, rawKey]);
+
+  // Local require so the module stays edge-runtime-friendly at parse time;
+  // verification only runs in the Node route handler.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { createPublicKey, verify } = require("node:crypto") as typeof import("node:crypto");
+  let key;
+  try {
+    key = createPublicKey({ key: der, format: "der", type: "spki" });
+  } catch {
+    return false;
+  }
+  const message = Buffer.from(`${timestamp}|${rawBody}`, "utf8");
+  try {
+    return verify(null, message, key, sig);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Same vocabulary mapper used by the poller, exported so the webhook
+ * handler can collapse Telnyx's `data.event_type` (or `payload.status`)
+ * onto the normalized lifecycle without redefining the table.
+ */
+export function normalizeTelnyxFaxStatus(raw: string | null | undefined): NormalizedFaxStatus {
+  return normalizeTelnyxStatus(raw);
+}
 
 async function fetchTelnyxCredentialsFromConnector(): Promise<TelnyxCredentials | null> {
   if (!REPLIT_CONNECTORS_HOSTNAME || !X_REPLIT_TOKEN) return null;
@@ -103,8 +177,13 @@ async function fetchTelnyxCredentialsFromConnector(): Promise<TelnyxCredentials 
       (typeof (settings as { connectionId?: unknown }).connectionId === "string" &&
         (settings as { connectionId: string }).connectionId) ||
       undefined;
+    const publicKey =
+      (typeof settings.public_key === "string" && settings.public_key) ||
+      (typeof (settings as { publicKey?: unknown }).publicKey === "string" &&
+        (settings as { publicKey: string }).publicKey) ||
+      undefined;
     if (!apiKey || !fromNumber) return null;
-    return { apiKey, fromNumber, connectionId };
+    return { apiKey, fromNumber, connectionId, publicKey };
   } catch {
     return null;
   }
@@ -118,9 +197,23 @@ async function resolveTelnyxCredentials(): Promise<TelnyxCredentials | null> {
       apiKey: envKey,
       fromNumber: envFrom,
       connectionId: process.env.TELNYX_CONNECTION_ID?.trim() || undefined,
+      publicKey: process.env.TELNYX_PUBLIC_KEY?.trim() || undefined,
     };
   }
   return fetchTelnyxCredentialsFromConnector();
+}
+
+/**
+ * Resolve just the Ed25519 public key Telnyx uses for webhook signatures.
+ * Checks `TELNYX_PUBLIC_KEY` first, then the `telnyx` connector. Returns
+ * null when neither source is configured so the webhook route can
+ * fail-closed with a clear 503.
+ */
+export async function resolveTelnyxWebhookPublicKey(): Promise<string | null> {
+  const env = process.env.TELNYX_PUBLIC_KEY?.trim();
+  if (env) return env;
+  const creds = await fetchTelnyxCredentialsFromConnector();
+  return creds?.publicKey ?? null;
 }
 
 function notConfiguredProvider(): FaxProvider {

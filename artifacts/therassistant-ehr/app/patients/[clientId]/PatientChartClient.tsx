@@ -17,6 +17,18 @@ import {
   PREFERRED_LANGUAGE_FREE_TEXT_PREFIX,
 } from "@/lib/demographics/options";
 import CasesPanel from "./CasesPanel";
+import {
+  ENTRY_TYPES,
+  entryTypeLabel,
+  type EntryType,
+  type JournalEntry,
+} from "@/lib/portal/journal";
+
+type JournalHighlights = {
+  since: string | null;
+  total: number;
+  counts: Partial<Record<EntryType, number>>;
+};
 
 function splitPickerValue(
   raw: string | null | undefined,
@@ -422,6 +434,8 @@ export default function PatientChartClient({
     >
   >({});
   const [creditBusy, setCreditBusy] = useState<string | null>(null);
+  const [journalHighlights, setJournalHighlights] = useState<JournalHighlights | null>(null);
+  const [journalHighlightsLoading, setJournalHighlightsLoading] = useState(false);
   const organizationId = useMemo(
     () => resolveOrganizationId(initialOrganizationId),
     [initialOrganizationId],
@@ -970,7 +984,43 @@ export default function PatientChartClient({
       }
     }
 
+    async function loadJournalHighlights() {
+      if (!organizationId) return;
+      setJournalHighlightsLoading(true);
+      try {
+        const res = await fetch(
+          `/api/clients/${encodeURIComponent(clientId)}/journal?organizationId=${encodeURIComponent(organizationId)}&windowSinceLastSigned=1`,
+          { cache: "no-store" },
+        );
+        const json = (await res.json()) as {
+          success?: boolean;
+          since?: string | null;
+          entries?: JournalEntry[];
+        };
+        if (cancelled) return;
+        if (!res.ok || !json.success) {
+          setJournalHighlights({ since: null, total: 0, counts: {} });
+          return;
+        }
+        const entries = json.entries ?? [];
+        const counts: Partial<Record<EntryType, number>> = {};
+        for (const e of entries) {
+          counts[e.entryType] = (counts[e.entryType] ?? 0) + 1;
+        }
+        setJournalHighlights({
+          since: json.since ?? null,
+          total: entries.length,
+          counts,
+        });
+      } catch {
+        if (!cancelled) setJournalHighlights({ since: null, total: 0, counts: {} });
+      } finally {
+        if (!cancelled) setJournalHighlightsLoading(false);
+      }
+    }
+
     void loadPatient();
+    void loadJournalHighlights();
     void reloadDemoAudit();
     void reloadCredits();
     return () => {
@@ -1976,6 +2026,47 @@ export default function PatientChartClient({
                   })}
                 </tbody>
               </table>
+            )}
+          </section>
+
+          <section className="summary-block" aria-label="Between-session journal highlights">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <h3 style={{ margin: 0 }}>Between-session journal</h3>
+              <Link
+                href={`/clients/${patient.id}/journal${orgQ}`}
+                className="button button-secondary"
+                style={{ fontSize: 12, padding: "4px 10px" }}
+              >
+                Review journal
+              </Link>
+            </div>
+            {journalHighlightsLoading && !journalHighlights ? (
+              <p className="muted" style={{ margin: 0, fontSize: 13 }}>Loading journal highlights…</p>
+            ) : !journalHighlights || journalHighlights.total === 0 ? (
+              <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+                {journalHighlights?.since
+                  ? `No new entries since the last signed note (${formatDateTime(journalHighlights.since)}).`
+                  : "No journal entries yet."}
+              </p>
+            ) : (
+              <>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                  {journalHighlights.since
+                    ? `${journalHighlights.total} new entr${journalHighlights.total === 1 ? "y" : "ies"} since the last signed note (${formatDateTime(journalHighlights.since)}).`
+                    : `${journalHighlights.total} entr${journalHighlights.total === 1 ? "y" : "ies"} on file — no signed note yet.`}
+                </div>
+                <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {ENTRY_TYPES.filter((t) => (journalHighlights.counts[t] ?? 0) > 0).map((t) => (
+                    <li
+                      key={t}
+                      className="status"
+                      style={{ fontSize: 12, padding: "4px 10px", borderRadius: 999 }}
+                    >
+                      {entryTypeLabel(t)}: <strong>{journalHighlights.counts[t]}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </section>
         </div>

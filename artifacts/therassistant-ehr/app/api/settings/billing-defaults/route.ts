@@ -9,8 +9,15 @@ import {
 const BILLING_DEFAULTS_KEY = "billing.defaults";
 
 const AUTOROUTE_AUDIT_ACTION = "rejections_277ca_autoroute_updated";
-const AUTOROUTE_OBJECT_TYPE = "system_setting";
-const RECENT_AUTOROUTE_CHANGES_LIMIT = 20;
+const BILLING_DEFAULTS_AUDIT_ACTION = "billing_defaults_updated";
+const PAYER_STATUS_AUDIT_ACTION = "payer_status_auto_check_updated";
+const SETTING_OBJECT_TYPE = "system_setting";
+const RECENT_CHANGES_LIMIT = 20;
+const SETTINGS_AUDIT_ACTIONS = [
+  AUTOROUTE_AUDIT_ACTION,
+  BILLING_DEFAULTS_AUDIT_ACTION,
+  PAYER_STATUS_AUDIT_ACTION,
+];
 
 // Per-org payer-status auto-check overrides live in `organization_settings`,
 // one row per key (matches what `resolveAutoCheckConfig` reads).
@@ -26,6 +33,12 @@ const PAYER_STATUS_AUTOCHECK_DEFAULTS = {
   auto_recheck_interval_days: 2,
 };
 
+const PAYER_STATUS_FIELD_LABELS: Record<keyof typeof PAYER_STATUS_AUTOCHECK_DEFAULTS, string> = {
+  enabled: "Enable scheduled payer-status auto-checking",
+  auto_check_age_days: "Start auto-checking a claim after (days)",
+  auto_recheck_interval_days: "Re-check at most every (days)",
+};
+
 
 const DEFAULTS = {
   claim_frequency_code: "1",
@@ -36,6 +49,17 @@ const DEFAULTS = {
   claim_hold_days: 3,
   aging_bucket_rules: "30/60/90/120",
   auto_route_missing_info: true,
+};
+
+const BILLING_DEFAULTS_FIELD_LABELS: Record<keyof typeof DEFAULTS, string> = {
+  claim_frequency_code: "Claim Frequency Code",
+  default_pos: "Default Place of Service",
+  default_diagnosis_behavior: "Default Diagnosis Behavior",
+  default_procedure_charge_behavior: "Default Procedure Charge Behavior",
+  eligibility_recheck_days: "Eligibility Recheck Interval (days)",
+  claim_hold_days: "Claim Hold Period (days before submission)",
+  aging_bucket_rules: "Aging Bucket Rules",
+  auto_route_missing_info: "Auto-route claims with missing information to workqueue",
 };
 
 const AUTOROUTE_DEFAULTS = {
@@ -59,6 +83,18 @@ function pickBooleans<T extends Record<string, boolean>>(
     if (typeof raw[key] === "boolean") out[key] = raw[key] as boolean;
   }
   return out as T;
+}
+
+type ScalarValue = string | number | boolean | null;
+
+function normalizeScalar(v: unknown): ScalarValue {
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v;
+  if (v == null) return null;
+  return null;
+}
+
+function valuesEqual(a: ScalarValue, b: ScalarValue): boolean {
+  return a === b;
 }
 
 export async function GET(req: NextRequest) {
@@ -97,7 +133,7 @@ export async function GET(req: NextRequest) {
       ? (autorouteRow.setting_value as Record<string, unknown>)
       : {};
 
-  const recentAutorouteChanges = await loadRecentAutorouteChanges(
+  const recentSettingsChanges = await loadRecentSettingsChanges(
     supabase,
     organizationId,
   );
@@ -131,7 +167,12 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     billing_defaults: { ...DEFAULTS, ...storedDefaults },
     rejections_277ca_autoroute: pickBooleans(AUTOROUTE_DEFAULTS, storedAutoroute),
-    recent_autoroute_changes: recentAutorouteChanges,
+    // Kept for backwards compatibility with any clients still reading the
+    // 277CA-only list. New clients should read `recent_settings_changes`.
+    recent_autoroute_changes: recentSettingsChanges.filter(
+      (c) => c.action === AUTOROUTE_AUDIT_ACTION,
+    ),
+    recent_settings_changes: recentSettingsChanges,
     payer_status_auto_check: payerStatusAutoCheck,
   });
 }
@@ -203,8 +244,12 @@ export async function PUT(req: NextRequest) {
     updated_at: string;
     created_at: string;
   }> = [];
+  // Per-field payer-status values we intend to write (used for the audit diff
+  // after we've loaded the prior values from `organization_settings`).
+  const payerStatusIntended: Partial<typeof PAYER_STATUS_AUTOCHECK_DEFAULTS> = {};
   if (payerStatusBody) {
     if (typeof payerStatusBody.enabled === "boolean") {
+      payerStatusIntended.enabled = payerStatusBody.enabled;
       orgSettingUpserts.push({
         organization_id: organizationId,
         setting_key: PAYER_STATUS_AUTOCHECK_KEYS.enabled,
@@ -217,6 +262,7 @@ export async function PUT(req: NextRequest) {
     if (typeof ageRaw === "number" || typeof ageRaw === "string") {
       const n = Number(ageRaw);
       if (Number.isFinite(n) && n >= 0 && n <= 365) {
+        payerStatusIntended.auto_check_age_days = Math.floor(n);
         orgSettingUpserts.push({
           organization_id: organizationId,
           setting_key: PAYER_STATUS_AUTOCHECK_KEYS.ageDays,
@@ -230,6 +276,7 @@ export async function PUT(req: NextRequest) {
     if (typeof recheckRaw === "number" || typeof recheckRaw === "string") {
       const n = Number(recheckRaw);
       if (Number.isFinite(n) && n >= 1 && n <= 365) {
+        payerStatusIntended.auto_recheck_interval_days = Math.floor(n);
         orgSettingUpserts.push({
           organization_id: organizationId,
           setting_key: PAYER_STATUS_AUTOCHECK_KEYS.recheckIntervalDays,
@@ -241,7 +288,47 @@ export async function PUT(req: NextRequest) {
     }
   }
 
+  // Diff payload for the `billing.defaults` audit log: load the prior row so
+  // we can write one audit_logs row per changed field.
+  let billingDefaultsAuditPayload: {
+    before: Record<string, ScalarValue>;
+    after: Record<string, ScalarValue>;
+  } | null = null;
+
   if (Object.keys(updates).length > 0) {
+    const { data: priorRow, error: priorErr } = await supabase
+      .from("system_settings")
+      .select("setting_value")
+      .eq("organization_id", organizationId)
+      .eq("setting_key", BILLING_DEFAULTS_KEY)
+      .maybeSingle();
+    if (priorErr) {
+      console.error(
+        "[PUT /api/settings/billing-defaults] load prior billing defaults",
+        priorErr,
+      );
+      return NextResponse.json(
+        { error: "Failed to save billing defaults" },
+        { status: 500 },
+      );
+    }
+    const storedPrior =
+      priorRow?.setting_value && typeof priorRow.setting_value === "object" && !Array.isArray(priorRow.setting_value)
+        ? (priorRow.setting_value as Record<string, unknown>)
+        : {};
+    // The effective "before" value of each field is whatever was stored, or
+    // the system default if nothing was stored yet — same shape the GET
+    // endpoint returns to the client.
+    const before: Record<string, ScalarValue> = {};
+    const after: Record<string, ScalarValue> = {};
+    for (const key of allowedKeys) {
+      const priorRaw = key in storedPrior ? storedPrior[key] : (DEFAULTS as Record<string, unknown>)[key];
+      before[key] = normalizeScalar(priorRaw);
+      const newRaw = key in updates ? updates[key] : priorRaw;
+      after[key] = normalizeScalar(newRaw);
+    }
+    billingDefaultsAuditPayload = { before, after };
+
     upserts.push({
       organization_id: organizationId,
       setting_key: BILLING_DEFAULTS_KEY,
@@ -304,6 +391,45 @@ export async function PUT(req: NextRequest) {
     }
   }
 
+  // Diff payload for the payer-status auto-check audit log: load prior rows
+  // from `organization_settings` so we can write one audit_logs row per
+  // changed field.
+  let payerStatusAuditPayload: {
+    before: Record<string, ScalarValue>;
+    after: Record<string, ScalarValue>;
+  } | null = null;
+  if (orgSettingUpserts.length > 0) {
+    const { data: priorOrgRows, error: priorOrgErr } = await supabase
+      .from("organization_settings")
+      .select("setting_key,setting_value")
+      .eq("organization_id", organizationId)
+      .in("setting_key", Object.values(PAYER_STATUS_AUTOCHECK_KEYS));
+    if (priorOrgErr) {
+      console.warn(
+        "[PUT /api/settings/billing-defaults] load prior payer-status",
+        priorOrgErr,
+      );
+    }
+    const priorByKey = new Map<string, unknown>();
+    for (const row of (priorOrgRows ?? []) as Array<{ setting_key: string; setting_value: unknown }>) {
+      priorByKey.set(row.setting_key, row.setting_value);
+    }
+    const before: Record<string, ScalarValue> = {};
+    const after: Record<string, ScalarValue> = {};
+    const priorEnabled = coerceBool(priorByKey.get(PAYER_STATUS_AUTOCHECK_KEYS.enabled));
+    before.enabled = priorEnabled == null ? PAYER_STATUS_AUTOCHECK_DEFAULTS.enabled : priorEnabled;
+    after.enabled = payerStatusIntended.enabled ?? before.enabled;
+    const priorAge = coerceNonNegInt(priorByKey.get(PAYER_STATUS_AUTOCHECK_KEYS.ageDays));
+    before.auto_check_age_days = priorAge == null ? PAYER_STATUS_AUTOCHECK_DEFAULTS.auto_check_age_days : priorAge;
+    after.auto_check_age_days = payerStatusIntended.auto_check_age_days ?? before.auto_check_age_days;
+    const priorRecheck = coerceNonNegInt(priorByKey.get(PAYER_STATUS_AUTOCHECK_KEYS.recheckIntervalDays));
+    before.auto_recheck_interval_days = priorRecheck == null || priorRecheck === 0
+      ? PAYER_STATUS_AUTOCHECK_DEFAULTS.auto_recheck_interval_days
+      : priorRecheck;
+    after.auto_recheck_interval_days = payerStatusIntended.auto_recheck_interval_days ?? before.auto_recheck_interval_days;
+    payerStatusAuditPayload = { before, after };
+  }
+
   if (upserts.length > 0) {
     const { error } = await supabase
       .from("system_settings")
@@ -338,6 +464,38 @@ export async function PUT(req: NextRequest) {
     });
   }
 
+  if (billingDefaultsAuditPayload) {
+    await writeSettingsAuditLogs({
+      supabase,
+      organizationId,
+      userId: guard.userId,
+      userRole: guard.roles[0] ?? null,
+      action: BILLING_DEFAULTS_AUDIT_ACTION,
+      settingKey: BILLING_DEFAULTS_KEY,
+      fieldLabels: BILLING_DEFAULTS_FIELD_LABELS as Record<string, string>,
+      summaryPrefix: "Billing defaults",
+      before: billingDefaultsAuditPayload.before,
+      after: billingDefaultsAuditPayload.after,
+    });
+  }
+
+  if (payerStatusAuditPayload) {
+    await writeSettingsAuditLogs({
+      supabase,
+      organizationId,
+      userId: guard.userId,
+      userRole: guard.roles[0] ?? null,
+      action: PAYER_STATUS_AUDIT_ACTION,
+      // Multiple `organization_settings` keys map to this one logical group;
+      // record the group name in event_metadata for traceability.
+      settingKey: "payer_status.auto_check",
+      fieldLabels: PAYER_STATUS_FIELD_LABELS as Record<string, string>,
+      summaryPrefix: "Payer status auto-check",
+      before: payerStatusAuditPayload.before,
+      after: payerStatusAuditPayload.after,
+    });
+  }
+
   return NextResponse.json({ success: true });
 }
 
@@ -363,7 +521,7 @@ async function writeAutorouteAuditLogs(params: {
       user_id: userId,
       user_role: userRole,
       action: AUTOROUTE_AUDIT_ACTION,
-      object_type: AUTOROUTE_OBJECT_TYPE,
+      object_type: SETTING_OBJECT_TYPE,
       object_id: null,
       before_value: { [key]: priorValue },
       after_value: { [key]: newValue },
@@ -388,35 +546,96 @@ async function writeAutorouteAuditLogs(params: {
   }
 }
 
+function formatScalarForSummary(v: ScalarValue): string {
+  if (v === null) return "—";
+  if (typeof v === "boolean") return v ? "On" : "Off";
+  return String(v);
+}
+
+async function writeSettingsAuditLogs(params: {
+  supabase: AdminClient;
+  organizationId: string;
+  userId: string | null;
+  userRole: string | null;
+  action: string;
+  settingKey: string;
+  fieldLabels: Record<string, string>;
+  summaryPrefix: string;
+  before: Record<string, ScalarValue>;
+  after: Record<string, ScalarValue>;
+}): Promise<void> {
+  const {
+    supabase, organizationId, userId, userRole, action, settingKey,
+    fieldLabels, summaryPrefix, before, after,
+  } = params;
+  const rows: Array<Record<string, unknown>> = [];
+  for (const key of Object.keys(after)) {
+    const priorValue = before[key] ?? null;
+    const newValue = after[key];
+    if (valuesEqual(priorValue, newValue)) continue;
+    const label = fieldLabels[key] ?? key;
+    rows.push({
+      organization_id: organizationId,
+      user_id: userId,
+      user_role: userRole,
+      action,
+      object_type: SETTING_OBJECT_TYPE,
+      object_id: null,
+      before_value: { [key]: priorValue },
+      after_value: { [key]: newValue },
+      event_type: action,
+      event_summary:
+        `${summaryPrefix}: ${label} changed from ${formatScalarForSummary(priorValue)} to ${formatScalarForSummary(newValue)}`,
+      event_metadata: {
+        setting_key: settingKey,
+        field: key,
+        field_label: label,
+      },
+    });
+  }
+  if (rows.length === 0) return;
+  const { error } = await supabase.from("audit_logs").insert(rows as never);
+  if (error) {
+    console.error(
+      "[PUT /api/settings/billing-defaults] audit_logs insert failed",
+      error.message,
+    );
+  }
+}
+
 export interface AutorouteAuditChange {
   id: string;
   created_at: string;
+  action: string;
+  setting_key: string | null;
   field: string;
   field_label: string;
-  before_value: boolean | null;
-  after_value: boolean | null;
+  before_value: ScalarValue;
+  after_value: ScalarValue;
   user_id: string | null;
   user_role: string | null;
   actor_label: string | null;
 }
 
-async function loadRecentAutorouteChanges(
+export type SettingsAuditChange = AutorouteAuditChange;
+
+async function loadRecentSettingsChanges(
   supabase: AdminClient,
   organizationId: string,
-): Promise<AutorouteAuditChange[]> {
+): Promise<SettingsAuditChange[]> {
   const { data, error } = await supabase
     .from("audit_logs")
     .select(
       "id, created_at, action, before_value, after_value, event_metadata, user_id, user_role",
     )
     .eq("organization_id", organizationId)
-    .eq("action", AUTOROUTE_AUDIT_ACTION)
+    .in("action", SETTINGS_AUDIT_ACTIONS)
     .order("created_at", { ascending: false })
-    .limit(RECENT_AUTOROUTE_CHANGES_LIMIT);
+    .limit(RECENT_CHANGES_LIMIT);
 
   if (error) {
     console.error(
-      "[GET /api/settings/billing-defaults] recent autoroute changes",
+      "[GET /api/settings/billing-defaults] recent settings changes",
       error,
     );
     return [];
@@ -460,6 +679,7 @@ async function loadRecentAutorouteChanges(
     const r = raw as {
       id: string;
       created_at: string;
+      action: string;
       before_value: Record<string, unknown> | null;
       after_value: Record<string, unknown> | null;
       event_metadata: Record<string, unknown> | null;
@@ -471,19 +691,25 @@ async function loadRecentAutorouteChanges(
       typeof meta.field === "string"
         ? meta.field
         : Object.keys(r.before_value ?? r.after_value ?? {})[0] ?? "";
+    const fallbackLabel =
+      AUTOROUTE_FIELD_LABELS[field as keyof typeof AUTOROUTE_DEFAULTS]
+      ?? BILLING_DEFAULTS_FIELD_LABELS[field as keyof typeof DEFAULTS]
+      ?? PAYER_STATUS_FIELD_LABELS[field as keyof typeof PAYER_STATUS_AUTOCHECK_DEFAULTS]
+      ?? field;
     const fieldLabel =
-      typeof meta.field_label === "string"
-        ? meta.field_label
-        : AUTOROUTE_FIELD_LABELS[field as keyof typeof AUTOROUTE_DEFAULTS] ?? field;
-    const beforeVal = r.before_value?.[field];
-    const afterVal = r.after_value?.[field];
+      typeof meta.field_label === "string" ? meta.field_label : fallbackLabel;
+    const settingKey = typeof meta.setting_key === "string" ? meta.setting_key : null;
+    const beforeVal = normalizeScalar(r.before_value?.[field]);
+    const afterVal = normalizeScalar(r.after_value?.[field]);
     return {
       id: r.id,
       created_at: r.created_at,
+      action: r.action,
+      setting_key: settingKey,
       field,
       field_label: fieldLabel,
-      before_value: typeof beforeVal === "boolean" ? beforeVal : null,
-      after_value: typeof afterVal === "boolean" ? afterVal : null,
+      before_value: beforeVal,
+      after_value: afterVal,
       user_id: r.user_id,
       user_role: r.user_role,
       actor_label: r.user_id ? actorByUserId.get(r.user_id) ?? null : null,

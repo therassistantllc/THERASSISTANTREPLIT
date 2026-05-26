@@ -21,17 +21,31 @@ type Rejections277CaAutoroute = {
   route_invalid_provider: boolean;
 };
 
-type AutorouteChange = {
+type SettingsChange = {
   id: string;
   created_at: string;
+  action: string;
+  setting_key: string | null;
   field: string;
   field_label: string;
-  before_value: boolean | null;
-  after_value: boolean | null;
+  before_value: string | number | boolean | null;
+  after_value: string | number | boolean | null;
   user_id: string | null;
   user_role: string | null;
   actor_label: string | null;
 };
+
+const ACTION_GROUP_LABELS: Record<string, string> = {
+  billing_defaults_updated: "Billing defaults",
+  rejections_277ca_autoroute_updated: "277CA auto-routing",
+  payer_status_auto_check_updated: "Payer status auto-check",
+};
+
+function formatChangeValue(v: SettingsChange["before_value"]): string {
+  if (v === null) return "—";
+  if (typeof v === "boolean") return v ? "On" : "Off";
+  return String(v);
+}
 
 type PayerStatusAutoCheck = {
   enabled: boolean;
@@ -80,7 +94,7 @@ export default function BillingDefaultsClient() {
   const organizationId = useMemo(() => getOrganizationId(), []);
   const [form, setForm] = useState<BillingDefaults>(INITIAL);
   const [autoroute, setAutoroute] = useState<Rejections277CaAutoroute>(INITIAL_AUTOROUTE);
-  const [recentChanges, setRecentChanges] = useState<AutorouteChange[]>([]);
+  const [recentChanges, setRecentChanges] = useState<SettingsChange[]>([]);
   const [payerAutoCheck, setPayerAutoCheck] = useState<PayerStatusAutoCheck>(INITIAL_PAYER_AUTOCHECK);
   const [autoCheckHeartbeat, setAutoCheckHeartbeat] = useState<AutoCheckHeartbeat | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,7 +109,8 @@ export default function BillingDefaultsClient() {
     const json = (await r.json()) as {
       billing_defaults?: BillingDefaults;
       rejections_277ca_autoroute?: Rejections277CaAutoroute;
-      recent_autoroute_changes?: AutorouteChange[];
+      recent_autoroute_changes?: SettingsChange[];
+      recent_settings_changes?: SettingsChange[];
       payer_status_auto_check?: PayerStatusAutoCheck;
     };
     if (json.billing_defaults) setForm((prev) => ({ ...prev, ...json.billing_defaults }));
@@ -105,7 +120,12 @@ export default function BillingDefaultsClient() {
     if (json.payer_status_auto_check) {
       setPayerAutoCheck((prev) => ({ ...prev, ...json.payer_status_auto_check }));
     }
-    setRecentChanges(Array.isArray(json.recent_autoroute_changes) ? json.recent_autoroute_changes : []);
+    const recent = Array.isArray(json.recent_settings_changes)
+      ? json.recent_settings_changes
+      : Array.isArray(json.recent_autoroute_changes)
+        ? json.recent_autoroute_changes
+        : [];
+    setRecentChanges(recent);
   }, [organizationId]);
 
   const loadAutoCheckHeartbeat = useCallback(async () => {
@@ -344,46 +364,6 @@ export default function BillingDefaultsClient() {
               </label>
             </div>
 
-            <div style={{ marginTop: "var(--space-5)" }}>
-              <h3 style={{ marginBottom: "var(--space-2)" }}>Recent changes</h3>
-              <p style={{ color: "var(--text-secondary)", fontSize: "var(--text-sm)", marginBottom: "var(--space-3)" }}>
-                Audit trail of who flipped these toggles and when. Shows the last {recentChanges.length || "20"} edits.
-              </p>
-              {recentChanges.length === 0 ? (
-                <div className="empty-state" style={{ padding: "var(--space-3)" }}>
-                  No changes recorded yet for this organization.
-                </div>
-              ) : (
-                <ol style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-                  {recentChanges.map((change) => {
-                    const actor = change.actor_label
-                      ?? (change.user_id ? `User ${change.user_id.slice(0, 8)}` : "Unknown user");
-                    const role = change.user_role ? ` (${change.user_role})` : "";
-                    const beforeStr = change.before_value === null ? "—" : change.before_value ? "On" : "Off";
-                    const afterStr = change.after_value === null ? "—" : change.after_value ? "On" : "Off";
-                    return (
-                      <li
-                        key={change.id}
-                        style={{
-                          padding: "var(--space-3)",
-                          background: "var(--surface-subtle, #f8fafc)",
-                          borderRadius: "var(--radius-md, 6px)",
-                          fontSize: "var(--text-sm)",
-                        }}
-                      >
-                        <div style={{ fontWeight: 600 }}>{change.field_label}</div>
-                        <div>
-                          <code>{beforeStr}</code> → <code>{afterStr}</code>
-                        </div>
-                        <div style={{ color: "var(--text-secondary)", marginTop: "var(--space-1)" }}>
-                          {formatChangeTimestamp(change.created_at)} · {actor}{role}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </div>
           </section>
 
           <section className="panel form-panel">
@@ -477,6 +457,54 @@ export default function BillingDefaultsClient() {
                 </label>
               </div>
             </div>
+          </section>
+
+          <section className="panel form-panel">
+            <h2>Recent settings changes</h2>
+            <p style={{ color: "var(--text-secondary)", fontSize: "var(--text-sm)", marginBottom: "var(--space-3)" }}>
+              Audit trail of who changed any field on this page and when.
+              Covers claim defaults, timing &amp; aging, workqueue automation,
+              277CA auto-routing, and payer-status auto-check. Shows the last{" "}
+              {recentChanges.length || "20"} edits.
+            </p>
+            {recentChanges.length === 0 ? (
+              <div className="empty-state" style={{ padding: "var(--space-3)" }}>
+                No changes recorded yet for this organization.
+              </div>
+            ) : (
+              <ol style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+                {recentChanges.map((change) => {
+                  const actor = change.actor_label
+                    ?? (change.user_id ? `User ${change.user_id.slice(0, 8)}` : "Unknown user");
+                  const role = change.user_role ? ` (${change.user_role})` : "";
+                  const beforeStr = formatChangeValue(change.before_value);
+                  const afterStr = formatChangeValue(change.after_value);
+                  const group = ACTION_GROUP_LABELS[change.action] ?? change.action;
+                  return (
+                    <li
+                      key={change.id}
+                      style={{
+                        padding: "var(--space-3)",
+                        background: "var(--surface-subtle, #f8fafc)",
+                        borderRadius: "var(--radius-md, 6px)",
+                        fontSize: "var(--text-sm)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-2)" }}>
+                        <div style={{ fontWeight: 600 }}>{change.field_label}</div>
+                        <div style={{ color: "var(--text-secondary)", fontSize: "var(--text-xs, 12px)" }}>{group}</div>
+                      </div>
+                      <div>
+                        <code>{beforeStr}</code> → <code>{afterStr}</code>
+                      </div>
+                      <div style={{ color: "var(--text-secondary)", marginTop: "var(--space-1)" }}>
+                        {formatChangeTimestamp(change.created_at)} · {actor}{role}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
           </section>
 
           <div style={{ padding: "0 var(--space-6) var(--space-6)" }}>

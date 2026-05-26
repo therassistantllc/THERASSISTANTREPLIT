@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     let serviceLineAllocations:
       | Array<{
           serviceLineId: string;
-          chargeAmount?: number;
+          chargeAmount: number;
           paidAmount: number;
           adjustmentAmount: number;
           patientResponsibilityAmount: number;

@@ -42,7 +42,7 @@ export async function loadActivePayerRules(
       rule: String(r.rule ?? ""),
       action: r.action === "block" ? "block" : "warn",
     }))
-    .filter((r: ActivePayerRule) => r.id.length > 0);
+    .filter((r) => (r as { id: string }).id.length > 0) as ActivePayerRule[];
 }
 
 export function payerRuleToFinding(

@@ -258,8 +258,8 @@ export async function PATCH(
       const priorValue = existingRow[column] ?? null;
       const nextValue = update[column] ?? null;
       if (priorValue !== nextValue) {
-        before[column] = priorValue;
-        after[column] = nextValue;
+        before[column] = priorValue != null ? String(priorValue) : null;
+        after[column] = nextValue != null ? String(nextValue) : null;
       }
     }
 

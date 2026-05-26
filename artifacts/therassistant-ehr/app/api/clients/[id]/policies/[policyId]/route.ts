@@ -251,8 +251,8 @@ export async function PATCH(
     // (skip no-op writes where the new value equals the stored one). Write
     // audit FIRST so a failure refuses the mutation, matching the
     // demographics pattern (HIPAA — no silent un-audited PHI edits).
-    const before: Record<string, unknown> = {};
-    const after: Record<string, unknown> = {};
+    const before: Record<string, string | null> = {};
+    const after: Record<string, string | null> = {};
     const existingRow = existing as Record<string, unknown>;
     for (const column of Object.keys(update)) {
       const priorValue = existingRow[column] ?? null;

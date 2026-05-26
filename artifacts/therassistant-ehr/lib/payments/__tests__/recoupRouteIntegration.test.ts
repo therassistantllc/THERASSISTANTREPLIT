@@ -147,11 +147,12 @@ test("happy path: posts a recoupment and echoes the engine result with 200", asy
 
   // Route must thread the parsed composite id + body through to recordRecoupment.
   assert.ok(lastRecoupCall);
-  assert.equal(lastRecoupCall?.organizationId, ORG);
-  assert.deepEqual(lastRecoupCall?.target, { kind: "era_835", id: ERA_ID });
-  assert.equal(lastRecoupCall?.amount, 25);
-  assert.equal(lastRecoupCall?.reason, "Payer takeback per remit");
-  assert.equal(lastRecoupCall?.reasonCode, "WO");
+  const lastCall = lastRecoupCall as RecoupCall;
+  assert.equal(lastCall?.organizationId, ORG);
+  assert.deepEqual(lastCall?.target, { kind: "era_835", id: ERA_ID });
+  assert.equal(lastCall?.amount, 25);
+  assert.equal(lastCall?.reason, "Payer takeback per remit");
+  assert.equal(lastCall?.reasonCode, "WO");
 });
 
 test("over-cap rejection: amount-field error must return 409 (not 500)", async () => {

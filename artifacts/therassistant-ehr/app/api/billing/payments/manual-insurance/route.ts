@@ -119,7 +119,7 @@ export async function POST(request: Request) {
       }
       serviceLineAllocations = (body.serviceLineAllocations as Array<Record<string, unknown>>).map((a) => ({
         serviceLineId: String(a.serviceLineId ?? "").trim(),
-        chargeAmount: a.chargeAmount != null ? toAmount(a.chargeAmount) : undefined,
+        chargeAmount: a.chargeAmount != null ? toAmount(a.chargeAmount) : 0,
         paidAmount: toAmount(a.paidAmount),
         adjustmentAmount: toAmount(a.adjustmentAmount),
         patientResponsibilityAmount: toAmount(a.patientResponsibilityAmount),

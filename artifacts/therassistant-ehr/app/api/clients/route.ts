@@ -272,7 +272,7 @@ export async function GET(request: Request) {
     // Batch the operational queries in parallel. Each is wrapped so a single
     // table failure (missing column, view not yet migrated, etc.) degrades the
     // affected signal to empty instead of crashing the entire roster.
-    async function safeQuery(label: string, runner: () => Promise<{ data: unknown; error: unknown }>): Promise<Row[]> {
+    async function safeQuery(label: string, runner: () => PromiseLike<{ data: unknown; error: unknown }>): Promise<Row[]> {
       try {
         const { data, error: queryError } = await runner();
         if (queryError) {

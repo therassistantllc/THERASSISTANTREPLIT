@@ -144,16 +144,6 @@ type GenerationErrorPointer = {
   message: string;
 };
 
-type GenerationErrorFieldDetail = {
-  code: "validation_failed" | "infrastructure_error";
-  message: string;
-  claimId?: string;
-  loop?: string;
-  segment?: string;
-  field?: string;
-  errors?: GenerationErrorPointer[];
-};
-
 type GenerationErrorBatch = {
   batchId: string;
   batchNumber: string;

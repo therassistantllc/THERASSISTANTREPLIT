@@ -402,7 +402,13 @@ export class AvailityRealtimeAdapter implements CoreEligibilityAdapter {
    * `runEligibility(Eligibility270Input)`; this shim will reject any input
    * that cannot be promoted into a valid 270.
    */
-  async runEligibility270(input: EligibilityRequestInput) {
+  async runEligibility270(input: EligibilityRequestInput): Promise<{
+    rawRequest: string;
+    rawResponse: string;
+    normalized: EligibilityResponseNormalized;
+    controlNumber: string;
+    correlationId: string;
+  }> {
     throw new Error(
       "AvailityRealtimeAdapter.runEligibility270 (legacy EligibilityRequestInput) is no longer " +
         "supported — call runEligibility(Eligibility270Input) with subscriber DOB and provider NPI.",

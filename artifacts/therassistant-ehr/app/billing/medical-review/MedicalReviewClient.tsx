@@ -658,30 +658,6 @@ export default function MedicalReviewClient() {
     [organizationId, refreshContext],
   );
 
-  const removeDocument = useCallback(
-    async (row: MedicalReviewRow, documentId: string, label: string) => {
-      if (typeof window !== "undefined" && !window.confirm(`Remove "${label}" from this claim?`)) return;
-      setRemovingDocId(documentId);
-      try {
-        const params = new URLSearchParams({ organizationId });
-        const res = await fetch(
-          `/api/billing/claims/${row.claimId}/documents/${documentId}?${params.toString()}`,
-          { method: "DELETE" },
-        );
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || json?.success === false) throw new Error(json?.error ?? "Remove failed");
-        refreshContext(row.claimId);
-        setRows((prev) => prev.map((r) => r.claimId === row.claimId ? { ...r, lastActionAt: new Date().toISOString() } : r));
-        setToast("Document removed");
-      } catch (e) {
-        setToast(e instanceof Error ? e.message : "Remove failed");
-      } finally {
-        setRemovingDocId(null);
-      }
-    },
-    [organizationId, refreshContext],
-  );
-
   const startEditDocument = useCallback(
     (doc: { id: string; title: string; documentType: string | null }) => {
       setEditingDocId(doc.id);

@@ -92,9 +92,8 @@ export async function processRefundRequest(
       reason: String(body.reason ?? "").trim(),
       stripeRefundId: body.stripeRefundId ?? null,
       alreadyIssued: body.alreadyIssued === true,
-      dryRun: body.dryRun === true,
-      actor,
       dryRun: Boolean(body.dryRun),
+      actor,
     },
     deps.supabase ?? undefined,
   );

@@ -68,9 +68,10 @@ export interface RowAction<TRow> {
 export interface PrimaryAction {
   id: string;
   label: ReactNode;
-  onClick: () => void;
+  onClick?: () => void;
   variant?: "default" | "primary" | "danger" | "success";
   disabled?: boolean;
+  render?: () => ReactNode;
 }
 
 export interface DetailTab {
@@ -787,17 +788,21 @@ export default function WorkqueueShell<TRow>(props: WorkqueueShellProps<TRow>) {
             </div>
             {detailActions && detailActions.length > 0 && selectedRowId ? (
               <div className={styles.detailActions}>
-                {detailActions.map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    className={buttonClass(a.variant)}
-                    onClick={a.onClick}
-                    disabled={a.disabled}
-                  >
-                    {a.label}
-                  </button>
-                ))}
+                {detailActions.map((a) =>
+                  a.render ? (
+                    <div key={a.id}>{a.render()}</div>
+                  ) : (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className={buttonClass(a.variant)}
+                      onClick={a.onClick}
+                      disabled={a.disabled}
+                    >
+                      {a.label}
+                    </button>
+                  )
+                )}
               </div>
             ) : null}
           </aside>

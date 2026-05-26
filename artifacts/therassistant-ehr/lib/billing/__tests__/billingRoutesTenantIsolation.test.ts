@@ -162,7 +162,7 @@ let currentStaff: StaffStub | null = null;
 // `node --test` runs with NODE_ENV unset → falsy → !== "development" → 401.
 // We belt-and-brace it explicitly here.
 if (process.env.NODE_ENV === "development") {
-  process.env.NODE_ENV = "test";
+  (process.env as Record<string, string>).NODE_ENV = "test";
 }
 
 // Mock the leaf auth module by absolute file URL. This catches both the

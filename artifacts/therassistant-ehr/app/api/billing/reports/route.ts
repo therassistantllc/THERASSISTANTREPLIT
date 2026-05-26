@@ -377,7 +377,7 @@ export async function GET(request: Request) {
       claimAppointmentFilter = (apptRows ?? []).map((r: { id: string }) => r.id);
     }
 
-    function scopeClaims<T extends { in: (col: string, values: string[]) => T }>(query: T): T {
+    function scopeClaims<T extends { in: (col: string, values: string[]) => any }>(query: T): T {
       if (claimAppointmentFilter === null) return query;
       if (claimAppointmentFilter.length === 0) return query.in("id", ["00000000-0000-0000-0000-000000000000"]);
       return query.in("appointment_id", claimAppointmentFilter);

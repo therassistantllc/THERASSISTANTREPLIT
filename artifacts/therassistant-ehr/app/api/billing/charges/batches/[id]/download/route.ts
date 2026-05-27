@@ -13,7 +13,7 @@ async function loadBatch(params: { orgId: string; batchId: string }) {
   const supabase = createServerSupabaseAdminClient();
   if (!supabase) throw new Error("Database connection not available");
 
-  const { data, error } = await (supabase as unknown as { from: (table: string) => any })
+  const { data, error } = await supabase
     .from("claim_837p_batches")
     .select("id, batch_number, batch_source, generated_file_name, generated_file_content, batch_status")
     .eq("organization_id", params.orgId)

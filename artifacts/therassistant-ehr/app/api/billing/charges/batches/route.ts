@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     const clinicianOnly = isClinicianScoped(guard.roles ?? []);
     const providerId = clinicianOnly && guard.userId ? await getProviderIdForUser(guard.userId, guard.organizationId) : null;
 
-    const batchQuery = (supabase as unknown as { from: (table: string) => any })
+    const batchQuery = supabase
       .from("claim_837p_batches")
       .select(
         "id, batch_number, batch_status, claim_count, total_charge_amount, generated_file_name, submitted_at, created_at, updated_at, payer_profile_id, billing_provider_tax_id",
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
 
     const batchIds = batches.map((b) => text(b.id)).filter(Boolean);
 
-    const { data: linkRows, error: linkError } = await (supabase as unknown as { from: (table: string) => any })
+    const { data: linkRows, error: linkError } = await supabase
       .from("claim_837p_batch_claims")
       .select("batch_id, professional_claim_id")
       .eq("organization_id", guard.organizationId)
@@ -73,7 +73,7 @@ export async function GET(request: Request) {
     const claimIds = [...new Set(((linkRows ?? []) as DbRow[]).map((r) => text(r.professional_claim_id)).filter(Boolean))];
 
     const { data: claimRows } = claimIds.length
-      ? await (supabase as unknown as { from: (table: string) => any })
+        ? await supabase
           .from("professional_claims")
           .select("id, claim_number, claim_status, total_charge, payer_profile_id, appointment_id")
           .eq("organization_id", guard.organizationId)
@@ -85,14 +85,14 @@ export async function GET(request: Request) {
     const appointmentIds = [...new Set(claims.map((c) => text(c.appointment_id)).filter(Boolean))];
 
     const { data: appointmentRows } = appointmentIds.length
-      ? await (supabase as unknown as { from: (table: string) => any })
+        ? await supabase
           .from("appointments")
           .select("id, provider_id, provider_location_id")
           .eq("organization_id", guard.organizationId)
           .in("id", appointmentIds)
       : { data: [] as DbRow[] };
 
-    const { data: payerRows } = await (supabase as unknown as { from: (table: string) => any })
+    const { data: payerRows } = await supabase
       .from("payer_profiles")
       .select("id, payer_name")
       .eq("organization_id", guard.organizationId)

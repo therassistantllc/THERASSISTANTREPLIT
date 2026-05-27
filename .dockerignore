@@ -2,6 +2,11 @@ node_modules
 **/node_modules
 .next
 **/.next
+artifacts/*
+!artifacts/therassistant-ehr/
+!artifacts/therassistant-ehr/**
+lib
+scripts
 dist
 **/dist
 .git

@@ -12,12 +12,10 @@ WORKDIR /workspace
 FROM base AS deps
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-COPY artifacts ./artifacts
-COPY lib ./lib
-COPY scripts ./scripts
+COPY artifacts/therassistant-ehr ./artifacts/therassistant-ehr
 COPY tsconfig.base.json tsconfig.json replit.md ./
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --filter @workspace/therassistant-ehr...
 
 FROM deps AS build
 

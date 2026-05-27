@@ -41,4 +41,4 @@ COPY --from=build /workspace/artifacts/therassistant-ehr/public ./public
 
 EXPOSE 8080
 
-CMD ["node", "server.js"]
+CMD ["node", "artifacts/therassistant-ehr/server.js"]

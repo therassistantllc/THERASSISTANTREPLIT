@@ -5,6 +5,7 @@ ENV PATH=$PNPM_HOME:$PATH
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN corepack enable
+RUN corepack prepare pnpm@10.32.1 --activate
 
 WORKDIR /workspace
 
@@ -29,6 +30,7 @@ ENV PORT=8080
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN corepack enable
+RUN corepack prepare pnpm@10.32.1 --activate
 
 WORKDIR /workspace
 

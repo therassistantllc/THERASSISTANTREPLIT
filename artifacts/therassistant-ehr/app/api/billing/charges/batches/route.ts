@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     const clinicianOnly = isClinicianScoped(guard.roles ?? []);
     const providerId = clinicianOnly && guard.userId ? await getProviderIdForUser(guard.userId, guard.organizationId) : null;
 
-    let batchQuery = (supabase as unknown as { from: (table: string) => any })
+    const batchQuery = (supabase as unknown as { from: (table: string) => any })
       .from("claim_837p_batches")
       .select(
         "id, batch_number, batch_status, claim_count, total_charge_amount, generated_file_name, submitted_at, created_at, updated_at, payer_profile_id, billing_provider_tax_id",

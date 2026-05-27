@@ -1,3 +1,4 @@
+// File: artifacts/therassistant-ehr/next.config.ts
 import type { NextConfig } from "next";
 
 /**
@@ -18,7 +19,6 @@ import type { NextConfig } from "next";
  * per-claim drill-in for the new workspace, not a legacy queue).
  */
 const claimRedirects: Array<{ from: string; tab: string; filter?: string }> = [
-  // ── Needs Attention ──────────────────────────────────────────────
   { from: "/billing/charge-capture", tab: "needs_attention" },
   { from: "/billing/documentation-pending", tab: "needs_attention" },
   { from: "/billing/eligibility-issues", tab: "needs_attention" },
@@ -37,13 +37,13 @@ const claimRedirects: Array<{ from: string; tab: string; filter?: string }> = [
   { from: "/billing/fax-queue", tab: "needs_attention" },
   { from: "/billing/adjustments-review", tab: "needs_attention" },
   { from: "/billing/blocked-claims", tab: "needs_attention" },
-  // ── Submitted ────────────────────────────────────────────────────
+
   { from: "/billing/837p-batches", tab: "submitted" },
   { from: "/billing/batches", tab: "submitted" },
   { from: "/billing/submitted-claims", tab: "submitted" },
   { from: "/billing/payer-received", tab: "submitted", filter: "awaiting_payer" },
   { from: "/billing/transmission-failures", tab: "submitted" },
-  // ── Denials ──────────────────────────────────────────────────────
+
   { from: "/billing/denials", tab: "denials" },
   { from: "/billing/denials-by-carc", tab: "denials", filter: "by_carc" },
   { from: "/billing/denials-by-rarc", tab: "denials", filter: "by_rarc" },
@@ -54,13 +54,13 @@ const claimRedirects: Array<{ from: string; tab: string; filter?: string }> = [
   { from: "/billing/aging", tab: "denials" },
   { from: "/billing/payer-rejections", tab: "denials" },
   { from: "/billing/underpayments", tab: "denials", filter: "underpayments" },
-  // ── Follow-Up ────────────────────────────────────────────────────
+
   { from: "/billing/appeals", tab: "follow_up", filter: "appeals" },
   { from: "/billing/corrected-claims", tab: "follow_up", filter: "corrected" },
   { from: "/billing/resubmissions", tab: "follow_up", filter: "resubmissions" },
   { from: "/billing/cob-issues", tab: "follow_up", filter: "cob" },
   { from: "/billing/secondary-billing", tab: "follow_up", filter: "secondary" },
-  // ── Resolutions (patient-balance + write-off class) ──────────────
+
   { from: "/billing/patient-responsibility", tab: "resolutions", filter: "patient_resp" },
   { from: "/billing/patient-billing", tab: "resolutions", filter: "patient_resp" },
   { from: "/billing/bad-debt-review", tab: "resolutions", filter: "bad_debt" },
@@ -71,6 +71,9 @@ const claimRedirects: Array<{ from: string; tab: string; filter?: string }> = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  experimental: {
+    webpackMemoryOptimizations: true,
+  },
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -94,4 +97,3 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
-

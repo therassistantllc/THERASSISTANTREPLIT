@@ -18,7 +18,7 @@ COPY tsconfig.base.json tsconfig.json replit.md ./
 RUN pnpm config set ignore-scripts false \
  && pnpm install --frozen-lockfile --filter @workspace/therassistant-ehr...
 
- FROM deps AS build
+FROM deps AS build
 
 ENV NODE_OPTIONS=--max-old-space-size=6144
 RUN pnpm -C artifacts/therassistant-ehr build
@@ -29,10 +29,7 @@ ENV NODE_ENV=production
 ENV PORT=8080
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN corepack enable
-RUN corepack prepare pnpm@10.32.1 --activate
-
-WORKDIR /workspace/artifacts/therassistant-ehr
+WORKDIR /app
 
 COPY --from=build /workspace/artifacts/therassistant-ehr/.next/standalone ./
 COPY --from=build /workspace/artifacts/therassistant-ehr/.next/static ./.next/static

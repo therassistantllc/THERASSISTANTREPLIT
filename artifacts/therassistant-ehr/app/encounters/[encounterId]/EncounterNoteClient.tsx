@@ -121,10 +121,8 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
     if (params.get("edit") === "1" && isSigned) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setAmending(true);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMessage("Editing signed note. Click Save Amendment when done.");
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAutoEditApplied(true);
   }, [autoEditApplied, loading, summary, isSigned]);
   // "finalized" = signed AND not currently being amended. Editor + Save/Sign

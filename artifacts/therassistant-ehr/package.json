@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack --port ${PORT:-22803}",
+    "dev": "next dev --webpack --port ${PORT:-8080}",
     "build": "next build --webpack",
-    "start": "next start --port ${PORT:-22803}",
+    "start": "next start --port ${PORT:-8080}",
     "lint": "eslint && knip",
     "dead-code": "knip",
     "typecheck": "tsc --noEmit",

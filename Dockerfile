@@ -20,7 +20,21 @@ RUN pnpm config set ignore-scripts false \
  && pnpm config set onlyBuiltDependencies sharp \
  && pnpm install --frozen-lockfile --filter @workspace/therassistant-ehr...
 
-# ... (previous stages)
+FROM deps AS build
+
+WORKDIR /workspace
+
+ENV NODE_ENV=production
+ENV NODE_OPTIONS=--max-old-space-size=4096
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_DISABLE_ESLINT=1
+ENV NEXT_PRIVATE_BUILD_WORKER=1
+
+RUN set -eux; \
+	pnpm --filter @workspace/therassistant-ehr... run build || \
+	(echo "First build attempt failed, clearing Next cache and retrying once" && \
+	 rm -rf /workspace/artifacts/therassistant-ehr/.next/cache && \
+	 pnpm --filter @workspace/therassistant-ehr... run build)
 
 FROM node:24-slim AS runner
 

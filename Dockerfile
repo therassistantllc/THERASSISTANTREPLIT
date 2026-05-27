@@ -19,8 +19,7 @@ RUN pnpm install --frozen-lockfile --filter @workspace/therassistant-ehr...
 
 FROM deps AS build
 
-ENV NODE_OPTIONS=--max-old-space-size=1536
-
+ENV NODE_OPTIONS=--max-old-space-size=6144
 RUN pnpm -C artifacts/therassistant-ehr build
 
 FROM node:24-slim AS runner

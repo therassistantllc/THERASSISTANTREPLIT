@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack --port ${PORT:-22803}",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start --port ${PORT:-22803}",
     "lint": "eslint && knip",
     "dead-code": "knip",

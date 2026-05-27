@@ -409,8 +409,15 @@ export default function EraWorksheetClient() {
 
   /* ── Add Patient callback ───────────────────────────────────────── */
   function handlePatientCreated(rowId: string, patientId: string, patientName: string) {
+    // Update ALL rows with the same patient name (normalize for comparison)
+    const normalizedName = patientName.trim().toLowerCase();
     setRows((prev) =>
-      prev.map((r) => (r.rowId === rowId ? { ...r, patientId, patientName, patientFound: true } : r)),
+      prev.map((r) => {
+        const rowNormalized = (r.patientName ?? "").trim().toLowerCase();
+        return rowNormalized === normalizedName
+          ? { ...r, patientId, patientName, patientFound: true }
+          : r;
+      }),
     );
     setAddPatientRowId(null);
   }

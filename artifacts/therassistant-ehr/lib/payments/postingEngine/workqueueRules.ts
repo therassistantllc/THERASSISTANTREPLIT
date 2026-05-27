@@ -47,6 +47,7 @@ const DENIAL_CARC_CODES = new Set([
   "167", // Diagnosis not covered
   "197", // Pre-cert/authorization absent
   "204", // Service not covered by patient's benefit plan
+  "236", // Duplicate claim/service
 ]);
 
 /** CARC codes that flag the claim for appeal. */

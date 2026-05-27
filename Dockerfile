@@ -20,12 +20,7 @@ RUN pnpm config set ignore-scripts false \
  && pnpm config set onlyBuiltDependencies sharp \
  && pnpm install --frozen-lockfile --filter @workspace/therassistant-ehr...
 
-FROM deps AS build
-
-ENV NODE_ENV=production
-ENV NODE_OPTIONS=--max-old-space-size=2048
-
-RUN pnpm -C artifacts/therassistant-ehr build
+# ... (previous stages)
 
 FROM node:24-slim AS runner
 
@@ -35,10 +30,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 WORKDIR /app
 
+# Copy the standalone output
 COPY --from=build /workspace/artifacts/therassistant-ehr/.next/standalone ./
-COPY --from=build /workspace/artifacts/therassistant-ehr/.next/static ./.next/static
-COPY --from=build /workspace/artifacts/therassistant-ehr/public ./public
+COPY --from=build /workspace/artifacts/therassistant-ehr/.next/static ./artifacts/therassistant-ehr/.next/static
+COPY --from=build /workspace/artifacts/therassistant-ehr/public ./artifacts/therassistant-ehr/public
 
 EXPOSE 8080
 
+# The standalone server.js is located within the workspace subfolder
 CMD ["node", "artifacts/therassistant-ehr/server.js"]

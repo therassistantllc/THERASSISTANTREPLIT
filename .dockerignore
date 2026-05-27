@@ -5,6 +5,17 @@ node_modules
 artifacts/*
 !artifacts/therassistant-ehr/
 !artifacts/therassistant-ehr/**
+artifacts/therassistant-ehr/.next
+artifacts/therassistant-ehr/node_modules
+artifacts/therassistant-ehr/tsconfig.tsbuildinfo
+artifacts/therassistant-ehr/.replit-artifact
+artifacts/therassistant-ehr/supabase
+artifacts/therassistant-ehr/scripts
+artifacts/therassistant-ehr/schema.sql
+artifacts/therassistant-ehr/test-*
+artifacts/therassistant-ehr/**/*.test.*
+artifacts/therassistant-ehr/**/__tests__
+artifacts/therassistant-ehr/*.md
 lib
 scripts
 dist

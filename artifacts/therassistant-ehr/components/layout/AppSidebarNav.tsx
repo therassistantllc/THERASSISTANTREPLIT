@@ -258,6 +258,7 @@ export default function AppSidebarNav() {
       <NavLink href="/inbox" icon={<TasksIcon />} label="Inbox" prefixes={["/inbox"]} pathname={pathname} />
       <NavLink href="/chat" icon={<ChatIcon />} label="Chat" prefixes={["/chat"]} pathname={pathname} />
       <NavLink href="/mailroom" icon={<InboxIcon />} label="Mailroom" prefixes={["/mailroom"]} pathname={pathname} />
+      <NavLink href="/billing/charges" icon={<DollarIcon />} label="Charges" prefixes={["/billing/charges"]} pathname={pathname} />
 
       {/* ── BILLING ──────────────────────────────────────────── */}
       <div className={styles.navSectionSpacer} />

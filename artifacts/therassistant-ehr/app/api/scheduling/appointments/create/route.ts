@@ -247,7 +247,7 @@ export async function POST(request: Request) {
       void teleToken;
 
       // Best-effort: auto-create the telehealth meeting at booking time
-      // so the patient confirmation/reminder can include the real join URL.
+      // so the client confirmation/reminder can include the real join URL.
       // Booking succeeds even if this step fails — we fall back to the
       // legacy static URL stored on the appointment.
       let autoMeetingJoinUrl: string | null = null;
@@ -312,7 +312,7 @@ export async function POST(request: Request) {
         // Prefer the per-meeting join URL that the telehealth adapter just
         // produced; fall back to the legacy static URL only when no
         // per-appointment link is available. Reminder dispatchers should
-        // read this from the payload so the patient receives the link
+        // read this from the payload so the client receives the link
         // that matches the booked appointment.
         const reminderJoinUrl =
           serviceLocation === "telehealth" ? autoMeetingJoinUrl ?? teleUrl ?? null : null;

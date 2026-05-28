@@ -41,7 +41,7 @@ export const CARC_DESCRIPTIONS: Record<string, string> = {
   "151": "Information from another provider was not provided or was insufficient",
   "167": "This (these) diagnosis(es) is (are) not covered",
   "197": "Precertification / authorization / notification absent",
-  "204": "This service/equipment/drug is not covered under the patient's benefit plan",
+  "204": "This service/equipment/drug is not covered under the client's benefit plan",
   "253": "Sequestration — reduction in federal payment",
 };
 
@@ -55,16 +55,16 @@ export function describeCarc(code: string): string {
 // Per-CARC playbook strings used by the detail panel.
 export const CARC_CORRECTION_TEMPLATES: Record<string, string> = {
   "16": "Verify member ID, DOB, and required loops (2010BA/BB). Re-bill once data is complete.",
-  "22": "Confirm primary/secondary order. Update COB on the patient and resubmit to the correct payer first.",
+  "22": "Confirm primary/secondary order. Update COB on the client and resubmit to the correct payer first.",
   "29": "Gather proof of timely original submission (clearinghouse 277CA) and file a timely-filing appeal.",
   "50": "Attach medical-necessity documentation (notes, LCD/NCD citation) and submit appeal.",
-  "96": "Validate service is a covered benefit under the patient's plan; if covered, dispute with EOB and CPT.",
+  "96": "Validate service is a covered benefit under the client's plan; if covered, dispute with EOB and CPT.",
   "97": "Review NCCI edits and modifiers (25/59/XE/XS). If clinically distinct, appeal with documentation.",
-  "109": "Identify the correct payer / payer ID and resubmit. Update the patient's payer profile.",
+  "109": "Identify the correct payer / payer ID and resubmit. Update the client's payer profile.",
   "151": "Send the missing provider records to the payer and resubmit a corrected claim.",
   "167": "Verify the diagnosis pointer order and ICD-10 code. Submit a corrected claim (frequency code 7).",
   "197": "Obtain retro authorization or attach medical necessity to support absence-of-auth appeal.",
-  "204": "Confirm benefits and bill the patient (or alternate payer) for the non-covered service.",
+  "204": "Confirm benefits and bill the client (or alternate payer) for the non-covered service.",
 };
 
 export function correctionTemplateFor(code: string): string {
@@ -161,7 +161,7 @@ export async function GET(request: Request) {
     ];
 
     const [
-      { data: patients },
+      { data: clients },
       { data: payerProfiles },
       { data: serviceLines },
       { data: workqueueItems },
@@ -219,7 +219,7 @@ export async function GET(request: Request) {
     ]);
 
     const patientById = new Map<string, DbRow>(
-      ((patients as DbRow[]) ?? []).map((p) => [text(p.id), p]),
+      ((clients as DbRow[]) ?? []).map((p) => [text(p.id), p]),
     );
     const payerProfileById = new Map<string, DbRow>(
       ((payerProfiles as DbRow[]) ?? []).map((p) => [text(p.id), p]),
@@ -265,7 +265,7 @@ export async function GET(request: Request) {
       const rarcCodesEra: string[] = Array.isArray(era?.rarc_codes) ? era!.rarc_codes : [];
       const primaryRarc = text(wq?.rarc_code) || text(rarcCodesEra[0] ?? "") || null;
 
-      const patient = patientById.get(text(claim.patient_id));
+      const client = patientById.get(text(claim.patient_id));
       const payerProfile = payerProfileById.get(text(claim.payer_profile_id));
       const lines = serviceLinesByClaim.get(claimId) ?? [];
       const serviceDate = lines.length > 0 ? text(lines[0].service_date_from) || null : null;
@@ -279,10 +279,10 @@ export async function GET(request: Request) {
         claimId,
         claimNumber: text(claim.claim_number) || claimId.slice(0, 8),
         clientId: text(claim.patient_id),
-        clientName: patient
-          ? [patient.first_name, patient.last_name].map(text).filter(Boolean).join(" ") ||
-            "Unknown patient"
-          : "Unknown patient",
+        clientName: client
+          ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ") ||
+            "Unknown client"
+          : "Unknown client",
         serviceDate,
         payer: text(payerProfile?.payer_name) || "Unknown payer",
         payerProfileId: text(claim.payer_profile_id),

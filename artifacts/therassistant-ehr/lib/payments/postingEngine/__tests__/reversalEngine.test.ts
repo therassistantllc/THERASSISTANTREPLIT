@@ -613,7 +613,7 @@ describe("reversePostedPayment — ERA workqueue sweep schema (Task #178)", () =
   });
 });
 
-describe("reversePostedPayment — patient refund initiation (fail-closed)", () => {
+describe("reversePostedPayment — client refund initiation (fail-closed)", () => {
   it("rolls the reversal back when the auto-refund insert fails", async () => {
     const fake = makeFakeSupabase({
       client_payments: [
@@ -654,7 +654,7 @@ describe("reversePostedPayment — patient refund initiation (fail-closed)", () 
     }) as typeof origFrom;
 
     const r = await reversePostedPayment(
-      { organizationId: ORG, target: { kind: "client_payment", id: "cp-fc-1" }, reason: "patient dispute", actor: ACTOR },
+      { organizationId: ORG, target: { kind: "client_payment", id: "cp-fc-1" }, reason: "client dispute", actor: ACTOR },
       fake.client,
     );
     assert.equal(r.ok, false, "reversal must fail when refund init fails");
@@ -691,7 +691,7 @@ describe("reversePostedPayment — auto-refund workqueue schema", () => {
       {
         organizationId: ORG,
         target: { kind: "client_payment", id: "cp-wq-1" },
-        reason: "patient dispute",
+        reason: "client dispute",
         actor: ACTOR,
       },
       fake.client,
@@ -885,14 +885,14 @@ describe("cancelPendingRefund (Task #169)", () => {
     assert.equal(row.archived_at, null);
   });
 
-  it("refuses to cancel a patient refund", async () => {
+  it("refuses to cancel a client refund", async () => {
     const refundId = "dddddddd-dddd-dddd-dddd-dddddddddddd";
     const fake = makeFakeSupabase({
       payment_refunds: [
         {
           id: refundId,
           organization_id: ORG,
-          refund_type: "patient",
+          refund_type: "client",
           amount: 50,
           refund_status: "pending",
           source_client_payment_id: "cp-1",
@@ -1076,7 +1076,7 @@ describe("reversePostedPayment — dry-run preview", () => {
     assert.equal(fake.tables.audit_logs.length, 0);
   });
 
-  it("client_payment dry-run previews auto patient-refund initiation and invoice delta", async () => {
+  it("client_payment dry-run previews auto client-refund initiation and invoice delta", async () => {
     const fake = makeFakeSupabase({
       client_payments: [
         {
@@ -1366,7 +1366,7 @@ describe("recordRecoupment", () => {
 });
 
 describe("recordInsuranceRefund / recordPatientRefund", () => {
-  it("blocks patient refund against non-client_payment source", async () => {
+  it("blocks client refund against non-client_payment source", async () => {
     const fake = makeFakeSupabase({
       era_claim_payments: [
         {
@@ -1448,7 +1448,7 @@ describe("recordInsuranceRefund / recordPatientRefund", () => {
     assert.equal(ctx.payment_refund_id, fake.tables.payment_refunds[0].id);
   });
 
-  it("records issued patient refund with stripe_refund_id", async () => {
+  it("records issued client refund with stripe_refund_id", async () => {
     const fake = makeFakeSupabase({
       client_payments: [
         {
@@ -1469,7 +1469,7 @@ describe("recordInsuranceRefund / recordPatientRefund", () => {
         organizationId: ORG,
         target: { kind: "client_payment", id: "cp-2" },
         amount: 20,
-        reason: "Patient overpaid copay",
+        reason: "Client overpaid copay",
         stripeRefundId: "re_test_123",
         alreadyIssued: true,
         actor: ACTOR,
@@ -1574,7 +1574,7 @@ describe("recordInsuranceRefund / recordPatientRefund", () => {
     assert.equal(fake.tables.era_posting_ledger_entries.length, 0);
   });
 
-  it("dryRun preview reports invoice paid_amount delta for issued patient refund", async () => {
+  it("dryRun preview reports invoice paid_amount delta for issued client refund", async () => {
     const fake = makeFakeSupabase({
       client_payments: [
         {
@@ -1691,7 +1691,7 @@ describe("recordInsuranceRefund / recordPatientRefund", () => {
 import { commitPosting } from "../index";
 
 describe("commitPosting → refund dispatch", () => {
-  it("returns posted=true and a populated refund field after a successful patient refund", async () => {
+  it("returns posted=true and a populated refund field after a successful client refund", async () => {
     const fake = makeFakeSupabase({
       client_payments: [
         {
@@ -1717,7 +1717,7 @@ describe("commitPosting → refund dispatch", () => {
           type: "refund",
           target: { kind: "client_payment", id: "cp-disp-1" },
           amount: 30,
-          reason: "patient overpaid",
+          reason: "client overpaid",
         },
       },
       fake.client,
@@ -1737,7 +1737,7 @@ describe("commitPosting → refund dispatch", () => {
       (row) => row.id === r.refund!.refundId,
     ) as Record<string, unknown> | undefined;
     assert.ok(refundRow, "payment_refunds row must exist for the returned refundId");
-    assert.equal(refundRow!.refund_type, "patient");
+    assert.equal(refundRow!.refund_type, "client");
     assert.equal(Number(refundRow!.amount), 30);
     assert.equal(refundRow!.source_client_payment_id, "cp-disp-1");
   });

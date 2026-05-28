@@ -138,7 +138,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cli
       if (cErr) return NextResponse.json({ ok: false, error: cErr.message }, { status: 422 });
       if (!credit) return NextResponse.json({ ok: false, error: "Credit not found" }, { status: 404 });
       if (credit.client_id !== clientId) {
-        return NextResponse.json({ ok: false, error: "Credit belongs to a different patient" }, { status: 422 });
+        return NextResponse.json({ ok: false, error: "Credit belongs to a different client" }, { status: 422 });
       }
       const available = Math.round(Number(credit.balance_amount ?? 0) * 100) / 100;
       if (amount > available + 0.005) {

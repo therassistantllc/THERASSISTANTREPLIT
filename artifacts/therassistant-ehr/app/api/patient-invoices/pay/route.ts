@@ -23,9 +23,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: result.ok, result }, { status: result.ok ? 200 : 422 });
   } catch (error) {
-    console.error("Patient invoice payment API error:", error);
+    console.error("Client invoice payment API error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Patient invoice payment failed" },
+      { success: false, error: error instanceof Error ? error.message : "Client invoice payment failed" },
       { status: 500 },
     );
   }

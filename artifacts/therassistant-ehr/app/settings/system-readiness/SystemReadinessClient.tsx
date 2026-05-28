@@ -376,7 +376,7 @@ export default function SystemReadinessClient() {
                   className="button button-danger"
                   onClick={() => setShowClearConfirm(true)}
                   disabled={clearing || loading || seeding}
-                  title="Permanently delete every patient, appointment, encounter, claim, ERA, invoice, mailroom item, workqueue item, and chat record for this organization. Keeps providers, payers, code sets, and billing settings."
+                  title="Permanently delete every client, appointment, encounter, claim, ERA, invoice, mailroom item, workqueue item, and chat record for this organization. Keeps providers, payers, code sets, and billing settings."
                 >
                   Clear all demo data
                 </button>
@@ -422,7 +422,7 @@ export default function SystemReadinessClient() {
             )}
           </h2>
           <p style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", margin: "0 0 var(--space-3)" }}>
-            Synthetic claim — no PHI, never transmitted. Patient &quot;{simulation.syntheticClaim.patientName}&quot;,
+            Synthetic claim — no PHI, never transmitted. Client &quot;{simulation.syntheticClaim.patientName}&quot;,
             DOB {simulation.syntheticClaim.patientDob}, member {simulation.syntheticClaim.memberId}, service date{" "}
             {simulation.syntheticClaim.serviceDate}, CPT {simulation.syntheticClaim.cpt ?? "—"}, dx{" "}
             {simulation.syntheticClaim.diagnosisCode}.

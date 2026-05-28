@@ -7,14 +7,21 @@ type EnvCheck = {
 
 function getEnvChecks(): EnvCheck[] {
   return [
-    { name: "NEXT_PUBLIC_SUPABASE_URL", present: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) },
+    {
+      name: "NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL",
+      present: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL),
+    },
     {
       name: "SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY",
       present: Boolean(process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
     },
     {
-      name: "SUPABASE_SERVICE_ROLE_KEY",
-      present: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+      name: "SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE or SUPABASE_SECRET_KEY",
+      present: Boolean(
+        process.env.SUPABASE_SERVICE_ROLE_KEY
+          || process.env.SUPABASE_SERVICE_ROLE
+          || process.env.SUPABASE_SECRET_KEY,
+      ),
     },
   ];
 }

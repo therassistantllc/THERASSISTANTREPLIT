@@ -495,7 +495,7 @@ export default function SubmittedClaimsClient() {
       { id: "practice", label: "Practice", kind: "select", options: practiceOptions },
       { id: "clinician", label: "Clinician", kind: "select", options: clinicianOptions },
       { id: "payer", label: "Payer", kind: "select", options: payerOptions },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },
       { id: "status", label: "Claim status", kind: "select", options: statusOptions },

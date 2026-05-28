@@ -368,7 +368,7 @@ export function validateAvaility837PClaim(
     pushWarning(
       warnings,
       "parties.patient_is_subscriber",
-      "Patient loop 2010CA will be generated because the patient differs from the subscriber.",
+      "Client loop 2010CA will be generated because the client differs from the subscriber.",
       "2010CA",
     );
   }

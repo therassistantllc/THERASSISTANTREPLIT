@@ -269,7 +269,7 @@ export async function buildSecondary837PBatch(args: {
     return { ok: false, error: "Secondary insurance payer profile not found" };
 
   // Parties snapshot rewritten for the SECONDARY submission — keep billing
-  // provider, patient demographics, and provider/facility blocks; swap the
+  // provider, client demographics, and provider/facility blocks; swap the
   // subscriber + payer to point at the secondary policy.
   const secondaryMemberId =
     asString(secondarySub.member_id) || asString(secondaryPolicy.policy_number);

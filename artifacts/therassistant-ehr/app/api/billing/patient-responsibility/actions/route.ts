@@ -122,14 +122,14 @@ export async function POST(request: Request) {
       case "create_invoice": {
         if (!clientId) {
           return NextResponse.json(
-            { success: false, error: "ERA has no responsible patient" },
+            { success: false, error: "ERA has no responsible client" },
             { status: 422 },
           );
         }
         const amount = Math.round(Math.max(0, Number(body.amount ?? prAmount)) * 100) / 100;
         if (!Number.isFinite(amount) || amount <= 0) {
           return NextResponse.json(
-            { success: false, error: "Patient responsibility amount is zero" },
+            { success: false, error: "Client responsibility amount is zero" },
             { status: 422 },
           );
         }
@@ -175,7 +175,7 @@ export async function POST(request: Request) {
           organizationId, userId,
           action: "patient_resp_invoice_created",
           claimId, clientId,
-          summary: note || `Created patient invoice ${invoiceNumber} for $${amount.toFixed(2)}`,
+          summary: note || `Created client invoice ${invoiceNumber} for $${amount.toFixed(2)}`,
           metadata: { eraClaimPaymentId: eraId, invoiceId: String(invoice.id), amount, invoiceNumber },
         });
         if (!audit.ok) {
@@ -230,7 +230,7 @@ export async function POST(request: Request) {
           summary: note || `Statement sent for invoice ${invoiceId}`,
           metadata: { eraClaimPaymentId: eraId, invoiceId },
         });
-        // Task #602: auto-charge enrolled patients on statement send.
+        // Task #602: auto-charge enrolled clients on statement send.
         const autopayResult = await attemptAutopayForInvoice({
           organizationId,
           patientInvoiceId: invoiceId,
@@ -251,7 +251,7 @@ export async function POST(request: Request) {
       case "charge_card": {
         if (!clientId) {
           return NextResponse.json(
-            { success: false, error: "ERA has no responsible patient" },
+            { success: false, error: "ERA has no responsible client" },
             { status: 422 },
           );
         }
@@ -449,7 +449,7 @@ export async function POST(request: Request) {
           organizationId, userId,
           action: "patient_resp_hold",
           claimId, clientId,
-          summary: note || "Patient billing placed on hold",
+          summary: note || "Client billing placed on hold",
           metadata: { eraClaimPaymentId: eraId, reason: body.adjustmentReason ?? null },
         });
         if (!audit.ok) return NextResponse.json({ success: false, error: audit.error }, { status: 500 });
@@ -461,7 +461,7 @@ export async function POST(request: Request) {
           organizationId, userId,
           action: "patient_resp_hold_released",
           claimId, clientId,
-          summary: note || "Patient billing hold released",
+          summary: note || "Client billing hold released",
           metadata: { eraClaimPaymentId: eraId },
         });
         if (!audit.ok) return NextResponse.json({ success: false, error: audit.error }, { status: 500 });

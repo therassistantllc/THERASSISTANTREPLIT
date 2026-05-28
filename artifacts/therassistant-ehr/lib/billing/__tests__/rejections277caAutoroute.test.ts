@@ -25,7 +25,7 @@ describe("classifyRejection277CaFromStcEntries", () => {
     assert.equal(tab, "invalid_member");
   });
 
-  it("routes patient-entity (QC) STC entries to invalid_member", () => {
+  it("routes client-entity (QC) STC entries to invalid_member", () => {
     const tab = classifyRejection277CaFromStcEntries([
       { category: "A7", status: "21", entity: "QC" },
     ]);

@@ -8,7 +8,7 @@
  *   1. Exact match on payer_claim_control_number  (CLP07 ↔ PCN)
  *   2. Exact match on internal claim_number       (CLP01 ↔ claim_number)
  *   3. Exact match on patient_account_number      (CLP01/PCN ↔ patient_account_number)
- *   4. Probable match: payer + DOS overlap + total_charge ± $0.50 + patient last name fuzzy
+ *   4. Probable match: payer + DOS overlap + total_charge ± $0.50 + client last name fuzzy
  *
  * Returns confidence in [0,1] and the strategy that produced the match.
  *
@@ -54,7 +54,7 @@ export interface AssistedMatchInput {
   /** Service date(s) from the SVC*DTM*472 segments if known. */
   serviceDateFrom: string | null;
   serviceDateTo: string | null;
-  /** Patient last name from NM1*QC (when present). */
+  /** Client last name from NM1*QC (when present). */
   patientLastName: string | null;
 }
 
@@ -254,7 +254,7 @@ export async function findCandidatesForEraClaimPayment(
         .maybeSingle();
       if (clientRow && fuzzyLastNameMatch((clientRow as ClientRow).last_name, input.patientLastName)) {
         confidence += 0.15;
-        reasons.push(`Patient last name "${input.patientLastName}" matches`);
+        reasons.push(`Client last name "${input.patientLastName}" matches`);
       }
     }
 
@@ -375,7 +375,7 @@ export function scoreProbableMatch(
     fuzzyLastNameMatch(candidate.patientLastName, input.patientLastName)
   ) {
     confidence += 0.15;
-    reasons.push("Patient last name match");
+    reasons.push("Client last name match");
   }
 
   return { confidence: Math.min(confidence, 0.94), reasons };

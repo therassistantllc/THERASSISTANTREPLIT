@@ -17,7 +17,7 @@ export const DESTINATION_TO_ENTITY: Record<
   Exclude<FilingDestination, "practice_documents">,
   MailroomSearchType
 > = {
-  patient_chart: "patient",
+  patient_chart: "client",
   claim: "claim",
   encounter: "encounter",
 };

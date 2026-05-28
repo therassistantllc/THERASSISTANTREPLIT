@@ -1,7 +1,7 @@
 /**
  * Workflow Actions
  * 
- * Core workflow functions that power the patient journey:
+ * Core workflow functions that power the client journey:
  * Appointment → Encounter → Note → Claim → Submission → Payment
  * 
  * These functions can be used in:
@@ -179,7 +179,7 @@ async function createClaim(
     .maybeSingle();
 
   if (insuranceError) throw new Error(`Failed to fetch insurance: ${insuranceError.message}`);
-  if (!insurance) throw new Error("No active insurance found for patient");
+  if (!insurance) throw new Error("No active insurance found for client");
 
   const serviceDate = encounter.service_date || new Date().toISOString().split("T")[0];
 
@@ -317,8 +317,8 @@ export async function executeCompleteWorkflow(
     organizationId,
     encounterId: encounter.id,
     status: "signed",
-    subjective: "Patient reports improved symptoms.",
-    objective: "Patient appears stable.",
+    subjective: "Client reports improved symptoms.",
+    objective: "Client appears stable.",
     assessment: "Condition improving.",
     plan: "Continue current treatment.",
   });

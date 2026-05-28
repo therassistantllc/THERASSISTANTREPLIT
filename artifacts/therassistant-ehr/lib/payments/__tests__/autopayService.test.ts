@@ -340,7 +340,7 @@ test("autopay on + Stripe declined → failed payment row + failure audit", asyn
   assert.equal(ctx.error_code, "card_declined");
 });
 
-test("Task #736: emails the patient with decline copy on plain card decline", async () => {
+test("Task #736: emails the client with decline copy on plain card decline", async () => {
   seedInvoiceAndClient({ autopay: true });
   chargeOutcome = {
     ok: false,
@@ -372,7 +372,7 @@ test("Task #736: emails the patient with decline copy on plain card decline", as
   assert.equal(md.failure_kind, "card_declined");
 });
 
-test("Task #736: emails the patient with 3DS copy on authentication_required", async () => {
+test("Task #736: emails the client with 3DS copy on authentication_required", async () => {
   seedInvoiceAndClient({ autopay: true });
   chargeOutcome = {
     ok: false,
@@ -411,7 +411,7 @@ test("Task #736: throttles a second failure email within the cooldown window", a
   );
 });
 
-test("Task #736: skips the email when the patient has no email on file", async () => {
+test("Task #736: skips the email when the client has no email on file", async () => {
   seedInvoiceAndClient({ autopay: true });
   // Strip the email after seeding.
   (tables.clients![0] as Row).email = null;
@@ -629,7 +629,7 @@ test("retry: skips when the latest event is a success (already recovered)", asyn
   assert.equal(r.decisions[0].outcome, "skipped_recovered");
 });
 
-test("retry: skips silently when patient has turned autopay off", async () => {
+test("retry: skips silently when client has turned autopay off", async () => {
   seedRetryFixtures({ autopay: false });
   seedAuditEvents([{ type: "failed", at: hoursAgo(48) }]);
   const r = await retryEligibleAutopayFailures({
@@ -638,7 +638,7 @@ test("retry: skips silently when patient has turned autopay off", async () => {
   });
   assert.equal(r.decisions[0].outcome, "skipped_autopay_off");
   // Must not emit another failed audit or failed payment row when the
-  // patient opted out — that is the explicit Task #669 acceptance bar.
+  // client opted out — that is the explicit Task #669 acceptance bar.
   assert.equal(
     inserted.filter(
       (i) =>

@@ -110,7 +110,7 @@ export async function POST(request: Request) {
         const client = c.clients as unknown as Record<string, unknown> | null;
         const patientName = client
           ? [client.first_name, client.last_name].filter(Boolean).join(" ")
-          : "Unknown patient";
+          : "Unknown client";
 
         return {
           id: uuid(),
@@ -122,7 +122,7 @@ export async function POST(request: Request) {
           priority: "medium",
           title: `Provider approval needed — ${patientName}`,
           description:
-            `Claim ${c.claim_number ?? c.id} | Patient responsibility: $${Number(c.patient_responsibility_amount ?? 0).toFixed(2)}` +
+            `Claim ${c.claim_number ?? c.id} | Client responsibility: $${Number(c.patient_responsibility_amount ?? 0).toFixed(2)}` +
             (billingComment ? ` | Note: ${billingComment}` : ""),
           claim_id: c.id,
           client_id: (client as Record<string, unknown> | null)?.id?.toString() ?? null,

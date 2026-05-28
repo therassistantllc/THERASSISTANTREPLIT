@@ -1,6 +1,6 @@
 {
   "name": "PHQ-9",
-  "description": "Patient Health Questionnaire-9 — depression screening (0-27).",
+  "description": "Client Health Questionnaire-9 — depression screening (0-27).",
   "loinc": "44261-6",
   "root": {
     "id": "9c800000-0000-4000-8000-000000000000",

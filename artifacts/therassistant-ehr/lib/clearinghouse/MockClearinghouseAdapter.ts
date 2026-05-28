@@ -166,7 +166,7 @@ export class MockClearinghouseAdapter implements ClearinghouseAdapter, CoreEligi
 
   async runClaimStatus276(input: ClaimStatusRequestInput) {
     const controlNumber = buildControlNumber(input.claimId);
-    const correlationId = buildCorrelationId(`${input.claimId}-${input.patientId ?? "patient"}`);
+    const correlationId = buildCorrelationId(`${input.claimId}-${input.patientId ?? "client"}`);
     const status = mockClaimStatus(input);
 
     const normalized: ClaimStatusResponseNormalized = {

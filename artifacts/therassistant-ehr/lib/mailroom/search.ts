@@ -7,10 +7,10 @@
  * with a fake supabase client (see lib/mailroom/__tests__/search.test.ts).
  */
 
-export type MailroomSearchType = "patient" | "claim" | "encounter";
+export type MailroomSearchType = "client" | "claim" | "encounter";
 
 export const MAILROOM_SEARCH_TYPES: readonly MailroomSearchType[] = [
-  "patient",
+  "client",
   "claim",
   "encounter",
 ] as const;
@@ -51,7 +51,7 @@ type SupabaseLike = {
   from: (table: string) => any;
 };
 
-async function searchPatients(
+async function searchClients(
   supabase: SupabaseLike,
   organizationId: string,
   q: string,
@@ -132,7 +132,7 @@ async function searchClaims(
   return claims.map((row) => {
     const claimNumber =
       text(row.claim_number) || text(row.patient_account_number) || text(row.id).slice(0, 8);
-    const patientName = fullName(clientMap.get(text(row.patient_id))) || "Unknown patient";
+    const patientName = fullName(clientMap.get(text(row.patient_id))) || "Unknown client";
     const payerName = payerMap.get(text(row.payer_profile_id)) || "Unknown payer";
     const dosFrom = text(row.date_of_service_from);
     const dosTo = text(row.date_of_service_to);
@@ -215,7 +215,7 @@ async function searchEncounters(
 
   return encounters.map((row) => {
     const date = text(row.service_date) || text(row.started_at).slice(0, 10);
-    const patientName = fullName(clientMap.get(text(row.client_id))) || "Unknown patient";
+    const patientName = fullName(clientMap.get(text(row.client_id))) || "Unknown client";
     const providerName = providerMap.get(text(row.provider_id)) || "Unassigned provider";
     return {
       id: text(row.id),
@@ -232,7 +232,7 @@ export async function searchMailroomEntities(
   q: string,
   limit: number,
 ): Promise<MailroomSearchResult[]> {
-  if (type === "patient") return searchPatients(supabase, organizationId, q, limit);
+  if (type === "client") return searchClients(supabase, organizationId, q, limit);
   if (type === "claim") return searchClaims(supabase, organizationId, q, limit);
   return searchEncounters(supabase, organizationId, q, limit);
 }

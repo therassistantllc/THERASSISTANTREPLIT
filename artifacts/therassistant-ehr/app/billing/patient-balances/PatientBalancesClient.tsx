@@ -312,7 +312,7 @@ export default function PatientBalancesClient() {
       else setError(balJson.error ?? "Failed to load balances");
       if (provJson.success) setProviders(provJson.providers ?? []);
     } catch {
-      setError("Network error loading patient balances");
+      setError("Network error loading client balances");
     } finally {
       setLoading(false);
     }
@@ -385,7 +385,7 @@ export default function PatientBalancesClient() {
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
-      setToast(`Statements queued for ${ids.length} patient(s)`);
+      setToast(`Statements queued for ${ids.length} client(s)`);
       setSelectedIds(new Set());
     } catch (e) {
       setToast(`Error: ${e instanceof Error ? e.message : "Unknown error"}`);
@@ -398,7 +398,7 @@ export default function PatientBalancesClient() {
     const ids = selectedRows.filter((r) => r.hasCardOnFile).map((r) => r.claimId);
     const noCard = selectedRows.filter((r) => !r.hasCardOnFile).length;
     if (!ids.length) {
-      setToast(noCard > 0 ? `None of the ${noCard} selected patients have a card on file` : "No claims selected");
+      setToast(noCard > 0 ? `None of the ${noCard} selected clients have a card on file` : "No claims selected");
       return;
     }
     setBulkBusy("cards");
@@ -437,7 +437,7 @@ export default function PatientBalancesClient() {
 
   async function handleRowCharge(row: BalanceRow) {
     if (!row.hasCardOnFile) {
-      setToast("No card on file for this patient");
+      setToast("No card on file for this client");
       return;
     }
     try {
@@ -473,10 +473,10 @@ export default function PatientBalancesClient() {
       >
         <div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--navy)" }}>
-            Patient Balances
+            Client Balances
           </h1>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
-            Collect patient responsibility — charge cards, send statements, or route for approval.
+            Collect client responsibility — charge cards, send statements, or route for approval.
           </p>
         </div>
 
@@ -549,8 +549,8 @@ export default function PatientBalancesClient() {
           {[
             { label: "Open Balances", val: totals.count.toString(), sub: "claims" },
             { label: "Total Charges", val: fmt$(totals.charge), sub: "billed" },
-            { label: "Patient Responsibility", val: fmt$(totals.responsibility), sub: "outstanding" },
-            { label: "Cards on File", val: totals.withCard.toString(), sub: `of ${totals.count} patients` },
+            { label: "Client Responsibility", val: fmt$(totals.responsibility), sub: "outstanding" },
+            { label: "Cards on File", val: totals.withCard.toString(), sub: `of ${totals.count} clients` },
           ].map((s) => (
             <div
               key={s.label}
@@ -578,7 +578,7 @@ export default function PatientBalancesClient() {
       <div style={{ padding: "16px 28px 0", display: "flex", gap: 10, alignItems: "center" }}>
         <input
           type="text"
-          placeholder="Search patient, claim #, payer, provider…"
+          placeholder="Search client, claim #, payer, provider…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{
@@ -617,7 +617,7 @@ export default function PatientBalancesClient() {
       <div style={{ padding: "12px 28px 0" }}>
         {loading ? (
           <div style={{ textAlign: "center", padding: "60px 0", color: "var(--muted)", fontSize: 14 }}>
-            Loading patient balances…
+            Loading client balances…
           </div>
         ) : error ? (
           <div style={{ textAlign: "center", padding: "40px 0", color: "var(--danger)", fontSize: 13 }}>
@@ -636,7 +636,7 @@ export default function PatientBalancesClient() {
             }}
           >
             {rows.length === 0
-              ? "No open patient balances found."
+              ? "No open client balances found."
               : "No results match your search."}
           </div>
         ) : (
@@ -680,7 +680,7 @@ export default function PatientBalancesClient() {
                       style={{ cursor: "pointer" }}
                     />
                   </th>
-                  <th style={thStyle}>Patient Name</th>
+                  <th style={thStyle}>Client Name</th>
                   <th style={thStyle}>Date of Service</th>
                   <th style={thStyle}>Provider</th>
                   <th style={thStyle}>CPT/HCPCS</th>

@@ -7,7 +7,7 @@ export function buildMock270Request(input: EligibilityRequestInput, controlNumbe
     `GS*HS*THERASSISTANT*MOCKCLEARING*20240101*1200*${controlNumber}*X*005010X279A1~`,
     `ST*270*${controlNumber}*005010X279A1~`,
     `BHT*0022*13*${correlationId}*20240101*1200~`,
-    `NM1*IL*1*${(input.patientName ?? "PATIENT").replace(/\s+/g, "*")}****MI*${input.memberId ?? "UNKNOWN"}~`,
+    `NM1*IL*1*${(input.patientName ?? "CLIENT").replace(/\s+/g, "*")}****MI*${input.memberId ?? "UNKNOWN"}~`,
     `REF*1L*${input.payerId ?? "UNKNOWN"}~`,
     `EQ*${input.serviceTypeCode ?? "98"}~`,
     `SE*7*${controlNumber}~`,

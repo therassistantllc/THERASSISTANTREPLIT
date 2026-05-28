@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 
-export type EntityType = "patient" | "claim" | "encounter";
+export type EntityType = "client" | "claim" | "encounter";
 
 export type EntityResult = {
   id: string;
@@ -20,9 +20,9 @@ type EntityPickerProps = {
 };
 
 const TYPE_LABELS: Record<EntityType, string> = {
-  patient: "Search patients by name…",
+  client: "Search clients by name…",
   claim: "Search claims by number or account…",
-  encounter: "Search encounters by patient name…",
+  encounter: "Search encounters by client name…",
 };
 
 export default function EntityPicker({ entityType, organizationId, value, onChange, placeholder, disabled }: EntityPickerProps) {

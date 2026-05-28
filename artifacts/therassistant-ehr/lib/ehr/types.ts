@@ -7,7 +7,7 @@ type BillingStatus = "hold" | "ready" | "scrubbed" | "claim_created" | "submitte
 type ClaimStatus = "draft" | "ready" | "submitted" | "accepted" | "rejected" | "denied" | "paid" | "appealed" | "voided";
 
 interface PatientChartSummary {
-  patient: Record<string, unknown>;
+  client: Record<string, unknown>;
   documents: Record<string, unknown>[];
   policies: Record<string, unknown>[];
   billingTransactions: Record<string, unknown>[];

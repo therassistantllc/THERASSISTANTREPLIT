@@ -30,16 +30,16 @@ export type ClientImportMapping = Record<CanonicalClientImportField, string | nu
 const HEADER_MATCHERS: Record<CanonicalClientImportField, string[]> = {
   source_client_id: [
     "source client id",
-    "source patient id",
+    "source client id",
     "ehr client id",
     "external client id",
     "external id",
-    "patient id",
+    "client id",
     "client id",
     "mrn",
   ],
-  first_name: ["first name", "client first name", "patient first name", "fname", "given name"],
-  last_name: ["last name", "client last name", "patient last name", "lname", "surname", "family name"],
+  first_name: ["first name", "client first name", "client first name", "fname", "given name"],
+  last_name: ["last name", "client last name", "client last name", "lname", "surname", "family name"],
   date_of_birth: ["dob", "date of birth", "birth date", "birthday"],
   email: ["email", "email address", "e-mail"],
   phone: ["phone", "mobile phone", "primary phone", "cell", "cell phone", "phone number"],
@@ -59,7 +59,7 @@ const HEADER_MATCHERS: Record<CanonicalClientImportField, string[]> = {
   emergency_contact_name: ["emergency contact", "emergency contact name"],
   emergency_contact_phone: ["emergency contact phone", "emergency phone"],
   assigned_clinician_name: ["assigned clinician", "clinician", "provider", "therapist"],
-  status: ["status", "client status", "patient status", "active"],
+  status: ["status", "client status", "client status", "active"],
 };
 
 function normalizeHeader(value: string): string {

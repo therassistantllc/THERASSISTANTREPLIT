@@ -421,7 +421,7 @@ export async function POST(
     ]);
     // Keep the legacy `card_photo` field populated with the front (or
     // back if only the back was provided) so existing readers in the
-    // patient chart don't lose data.
+    // client chart don't lose data.
     const storedCard = storedCardFront ?? storedCardBack;
 
     // If the client said "yes, I have other coverage" AND we have at

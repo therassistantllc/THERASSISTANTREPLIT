@@ -130,15 +130,15 @@ function BillToPatientModal({
         }}
       >
         <h3 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 700, color: "var(--navy)" }}>
-          Bill to Patient
+          Bill to Client
         </h3>
         <p style={{ margin: "0 0 6px", fontSize: 13, color: "var(--text)" }}>
           Move <strong>{row.claimNumber}</strong> for <strong>{row.clientName}</strong> to the
-          Patient Balances queue.
+          Client Balances queue.
         </p>
         <p style={{ margin: "0 0 18px", fontSize: 12, color: "var(--muted)" }}>
-          Patient responsibility: <strong>{fmt$(row.patientResponsibility > 0 ? row.patientResponsibility : row.totalCharge)}</strong>
-          . The claim status will change to <em>patient responsibility</em>.
+          Client responsibility: <strong>{fmt$(row.patientResponsibility > 0 ? row.patientResponsibility : row.totalCharge)}</strong>
+          . The claim status will change to <em>client responsibility</em>.
         </p>
 
         {error && (
@@ -167,7 +167,7 @@ function BillToPatientModal({
               cursor: busy ? "not-allowed" : "pointer",
             }}
           >
-            {busy ? "Moving…" : "Bill to Patient"}
+            {busy ? "Moving…" : "Bill to Client"}
           </button>
         </div>
       </div>
@@ -302,7 +302,7 @@ export default function DenialsClient() {
           Denials
         </h1>
         <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>
-          Claims denied by payer — correct, appeal, or bill to patient.
+          Claims denied by payer — correct, appeal, or bill to client.
         </p>
       </div>
 
@@ -333,7 +333,7 @@ export default function DenialsClient() {
       <div style={{ padding: "16px 28px 0", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <input
           type="text"
-          placeholder="Search patient, claim #, payer, CARC…"
+          placeholder="Search client, claim #, payer, CARC…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{
@@ -440,7 +440,7 @@ export default function DenialsClient() {
               </colgroup>
               <thead>
                 <tr style={{ background: "#fef2f2", borderBottom: "1px solid var(--line)" }}>
-                  <th style={thStyle}>Patient Name</th>
+                  <th style={thStyle}>Client Name</th>
                   <th style={thStyle}>Date of Service</th>
                   <th style={thStyle}>Provider</th>
                   <th style={thStyle}>CPT/HCPCS</th>
@@ -560,7 +560,7 @@ export default function DenialsClient() {
                           <button
                             onClick={() => setBillModal(row)}
                             style={actionBtn("#7a5000")}
-                            title="Bill the denied amount to the patient"
+                            title="Bill the denied amount to the client"
                           >
                             Bill Pt
                           </button>
@@ -582,7 +582,7 @@ export default function DenialsClient() {
           onClose={() => setBillModal(null)}
           onDone={() => {
             setBillModal(null);
-            setToast(`${billModal.clientName}'s claim moved to Patient Balances`);
+            setToast(`${billModal.clientName}'s claim moved to Client Balances`);
             load();
           }}
         />

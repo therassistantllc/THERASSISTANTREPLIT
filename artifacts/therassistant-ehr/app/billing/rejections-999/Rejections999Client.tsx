@@ -570,7 +570,7 @@ export default function Rejections999Client() {
       { id: "practice", label: "Practice", kind: "text", placeholder: "Search…" },
       { id: "clinician", label: "Clinician", kind: "text", placeholder: "Search…" },
       { id: "payer", label: "Payer", kind: "select", options: payers },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },
       {

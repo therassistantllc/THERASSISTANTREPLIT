@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Destinations that route the document into a specific row (patient chart,
+    // Destinations that route the document into a specific row (client chart,
     // claim, or encounter) MUST carry a target_id. `practice_documents` is the
     // only destination that legitimately has no target. The UI enforces this
     // via canFileDocument; the API enforces it here so a hand-rolled POST

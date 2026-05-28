@@ -148,7 +148,7 @@ export async function POST(
         );
 
         // Up-front validation pass: every matched claim must belong to this
-        // org, have a patient linkage, and a positive applied_amount. Bail
+        // org, have a client linkage, and a positive applied_amount. Bail
         // before any engine call so we never half-post a check or mark it
         // "posted" with zero ledger impact.
         const missingClient = matchList
@@ -158,7 +158,7 @@ export async function POST(
           return NextResponse.json(
             {
               success: false,
-              error: `Cannot post: claim(s) ${missingClient.join(", ")} have no patient linkage.`,
+              error: `Cannot post: claim(s) ${missingClient.join(", ")} have no client linkage.`,
             },
             { status: 400 },
           );
@@ -180,7 +180,7 @@ export async function POST(
         // for this check is tagged with this deterministic marker. If a row
         // with this (org, eob_reference, claim_id) already exists, the
         // engine has already produced its ledger entries / claim-status
-        // flip / patient invoice for that (check, claim) — skip so a
+        // flip / client invoice for that (check, claim) — skip so a
         // re-press of "Post payment" doesn't double-post.
         const eobMarker = `paper_check:${checkId}`;
         const { data: alreadyPosted, error: dupErr } = await (supabase as any)
@@ -232,7 +232,7 @@ export async function POST(
               // Billers split each matched line into Paid + Adj + PR at
               // match time. Hand all three to the engine so its balance
               // check (paid + adj + pr == charge) passes and the engine
-              // can spawn the PR invoice for residual patient
+              // can spawn the PR invoice for residual client
               // responsibility itself — same behaviour as the manual-EOB
               // posting form. The recognised charge is the sum so a
               // partial payment on a larger claim still balances.

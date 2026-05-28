@@ -67,8 +67,8 @@ function readInitialProviderFilterFromUrl(): string {
 type MePayload = { providerId?: string | null; staffId?: string | null };
 
 function patientName(c: WorkqueueClientInfo) {
-  if (!c) return "No patient linked";
-  return [c.firstName, c.lastName].filter(Boolean).join(" ") || "Patient";
+  if (!c) return "No client linked";
+  return [c.firstName, c.lastName].filter(Boolean).join(" ") || "Client";
 }
 
 function formatDate(value: string) {

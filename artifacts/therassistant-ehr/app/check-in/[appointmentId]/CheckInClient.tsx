@@ -115,7 +115,7 @@ export default function CheckInClient({ appointmentId }: { appointmentId: string
     <main className="app-shell">
       <section className="hero-panel">
         <div>
-          <p className="eyebrow">Patient Check-In</p>
+          <p className="eyebrow">Client Check-In</p>
           <h1>Pre-session update</h1>
           <p className="hero-copy">Share what has changed since your last visit. Your answers become part of the clinical context your clinician reviews.</p>
         </div>

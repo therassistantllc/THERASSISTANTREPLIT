@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     const baseUrl = baseUrlOf(request);
     const { searchParams } = new URL(request.url);
 
-    const patient = safeTerm(stripRefPrefix(searchParams.get("patient"), "Patient"));
+    const client = safeTerm(stripRefPrefix(searchParams.get("client"), "Client"));
     const practitioner = safeTerm(stripRefPrefix(searchParams.get("practitioner"), "Practitioner"));
     const status = safeTerm(searchParams.get("status") || "");
     const date = (searchParams.get("date") || "").trim();
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
       .order("scheduled_start_at", { ascending: false })
       .range(offset, offset + count - 1);
 
-    if (patient) query = query.eq("client_id", patient);
+    if (client) query = query.eq("client_id", client);
     if (practitioner) query = query.eq("provider_id", practitioner);
     if (status) query = query.eq("appointment_status", status);
     if (date) {

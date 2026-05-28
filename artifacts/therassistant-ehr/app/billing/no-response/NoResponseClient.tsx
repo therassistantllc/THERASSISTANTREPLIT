@@ -870,7 +870,7 @@ async function runClaimStatus(
   organizationId: string,
 ): Promise<{ success: boolean; error?: string }> {
   if (!row.patient_id) {
-    return { success: false, error: "Missing patient on claim" };
+    return { success: false, error: "Missing client on claim" };
   }
   const res = await fetch("/api/clearinghouse/availity/claim-status", {
     method: "POST",
@@ -1019,7 +1019,7 @@ export default function NoResponseClient() {
       { id: "practice", label: "Practice", kind: "select", options: practices.map((p) => ({ value: p.id, label: p.name })) },
       { id: "clinician", label: "Clinician", kind: "select", options: clinicians.map((c) => ({ value: c.id, label: c.displayName })) },
       { id: "payer", label: "Payer", kind: "select", options: payerOptions },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },
       {

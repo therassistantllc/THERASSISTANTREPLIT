@@ -4,7 +4,7 @@
  * Sister helper to `lib/billing/requireBillingAccess` — the latter is
  * pinned to billing-capable users (VIEW_BILLING by default). This one
  * is for every OTHER `app/api/**` route that accepts an
- * `organizationId` from the request: settings, patients/clients,
+ * `organizationId` from the request: settings, clients/clients,
  * scheduling, mailroom, workqueue, chat, eligibility, etc.
  *
  * It does three things:

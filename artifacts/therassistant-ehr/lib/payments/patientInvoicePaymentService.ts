@@ -78,7 +78,7 @@ export async function recordPatientInvoicePayment(
       paymentId: null,
       invoiceStatus: null,
       balanceAmount: null,
-      errors: [{ field: "patient_invoices", message: "Patient invoice not found" }],
+      errors: [{ field: "patient_invoices", message: "Client invoice not found" }],
     };
   }
 
@@ -191,7 +191,7 @@ export async function markPatientInvoiceSent(input: PatientInvoiceActionInput): 
       paymentId: null,
       invoiceStatus: null,
       balanceAmount: null,
-      errors: [{ field: "patient_invoices", message: "Patient invoice not found" }],
+      errors: [{ field: "patient_invoices", message: "Client invoice not found" }],
     };
   }
 
@@ -254,7 +254,7 @@ export async function voidPatientInvoice(input: PatientInvoiceActionInput): Prom
       paymentId: null,
       invoiceStatus: null,
       balanceAmount: null,
-      errors: [{ field: "patient_invoices", message: "Patient invoice not found" }],
+      errors: [{ field: "patient_invoices", message: "Client invoice not found" }],
     };
   }
 

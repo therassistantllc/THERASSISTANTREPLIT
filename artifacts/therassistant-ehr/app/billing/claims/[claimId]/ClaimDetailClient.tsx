@@ -97,7 +97,7 @@ export default function ClaimDetailClient({ claimId }: { claimId: string }) {
   const runClaimStatus = useCallback(async () => {
     if (!claim?.id) return;
     if (!claim.patient_id) {
-      setRunError("Missing patient on claim");
+      setRunError("Missing client on claim");
       setRunInfo(null);
       return;
     }
@@ -144,7 +144,7 @@ export default function ClaimDetailClient({ claimId }: { claimId: string }) {
               className="button button-secondary"
               href={`/patients/${claim.patient_id}/claims${orgQ}`}
             >
-              Back to patient claims
+              Back to client claims
             </Link>
           ) : null}
         </div>
@@ -176,7 +176,7 @@ export default function ClaimDetailClient({ claimId }: { claimId: string }) {
             </div>
             <div>
               <div className="muted" style={{ fontSize: 12 }}>
-                Patient
+                Client
               </div>
               <div>
                 {claim.patient_id ? (

@@ -8,10 +8,10 @@ function clean(value: unknown) {
 }
 
 function patientName(client: DbRow | null | undefined) {
-  if (!client) return "Patient";
+  if (!client) return "Client";
   const first = typeof client.first_name === "string" ? client.first_name : "";
   const last = typeof client.last_name === "string" ? client.last_name : "";
-  return [first, last].filter(Boolean).join(" ") || "Patient";
+  return [first, last].filter(Boolean).join(" ") || "Client";
 }
 
 export async function POST(request: Request) {
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const appointmentId = clean(body.appointmentId) || null;
     const encounterId = clean(body.encounterId) || null;
     const title = clean(body.title) || "Clinician routed billing question";
-    const description = clean(body.description) || "Clinician routed this patient to billing/admin review.";
+    const description = clean(body.description) || "Clinician routed this client to billing/admin review.";
     const priority = clean(body.priority) || "medium";
     const workType = clean(body.workType) || "clinician_routed_billing_review";
 

@@ -412,7 +412,7 @@ export async function GET(request: Request) {
         .lt("updated_at", periodEnd) as unknown as { in: (c: string, v: string[]) => unknown },
     ) as unknown as { count: number | null };
 
-    // Patient payments are not directly tied to a provider; when a clinician is
+    // Client payments are not directly tied to a provider; when a clinician is
     // selected, return 0 instead of practice-wide totals to keep the KPI honest.
     const { data: payments } = providerId
       ? { data: [] as Array<{ id: string; amount: number | string | null }> }

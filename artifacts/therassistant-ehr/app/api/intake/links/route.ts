@@ -123,7 +123,7 @@ export async function POST(request: Request) {
     const expiresAt = (row.expires_at as string | null) ?? null;
 
     // For emailed links we require a configured canonical URL — we won't put a
-    // host derived from request headers into outbound patient mail. For
+    // host derived from request headers into outbound client mail. For
     // clipboard the worst case is staff sees a localhost URL, so a header
     // fallback is acceptable there.
     const canonicalBase = resolveCanonicalBaseUrl();

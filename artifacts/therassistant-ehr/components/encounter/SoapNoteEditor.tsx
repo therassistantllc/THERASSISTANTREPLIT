@@ -57,7 +57,7 @@ Follow-up:
 
 Referrals:
 
-Patient Education:
+Client Education:
 
 Safety Planning:`,
 };
@@ -115,7 +115,7 @@ export default function SoapNoteEditor({ data, onChange, disabled = false }: Pro
           <textarea
             value={data.subjective || ""}
             onChange={(e) => onChange({ ...data, subjective: e.target.value })}
-            placeholder="Document the session from patient perspective..."
+            placeholder="Document the session from client perspective..."
             disabled={disabled}
             style={{ minHeight: "120px" }}
           />
@@ -235,7 +235,7 @@ export default function SoapNoteEditor({ data, onChange, disabled = false }: Pro
           <textarea
             value={data.plan || ""}
             onChange={(e) => onChange({ ...data, plan: e.target.value })}
-            placeholder="Outline the treatment plan, follow-up, and patient instructions..."
+            placeholder="Outline the treatment plan, follow-up, and client instructions..."
             disabled={disabled}
             style={{ minHeight: "120px" }}
           />

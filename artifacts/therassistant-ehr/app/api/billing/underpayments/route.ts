@@ -13,7 +13,7 @@
  *                         match required dropping them (suggests the payer
  *                         didn't honor a modifier uplift)
  *   partial_payment     — paid < allowed (insurance left money on the table
- *                         that isn't patient responsibility)
+ *                         that isn't client responsibility)
  *
  * Rows previously marked accepted via the action endpoint are filtered out by
  * matching a claim_notes marker of the form
@@ -350,7 +350,7 @@ export async function GET(request: Request) {
       ((claims as DbRow[]) ?? []).map((c) => [text(c.id), c]),
     );
 
-    // Patient / payer joins (payer comes from batch OR claim).
+    // Client / payer joins (payer comes from batch OR claim).
     const patientIds = [
       ...new Set(
         Array.from(claimById.values())
@@ -378,7 +378,7 @@ export async function GET(request: Request) {
     ];
 
     const [
-      { data: patients },
+      { data: clients },
       { data: payers },
       { data: contracts },
       { data: appointments },
@@ -414,7 +414,7 @@ export async function GET(request: Request) {
     ]);
 
     const patientById = new Map<string, DbRow>(
-      ((patients as DbRow[]) ?? []).map((p) => [text(p.id), p]),
+      ((clients as DbRow[]) ?? []).map((p) => [text(p.id), p]),
     );
     const payerById = new Map<string, DbRow>(
       ((payers as DbRow[]) ?? []).map((p) => [text(p.id), p]),
@@ -523,17 +523,17 @@ export async function GET(request: Request) {
       // Filter: payer
       if (filters.payer && payerId !== filters.payer) continue;
 
-      const patient = claim ? patientById.get(text(claim.patient_id)) ?? null : null;
+      const client = claim ? patientById.get(text(claim.patient_id)) ?? null : null;
       const appt = claim ? appointmentById.get(text(claim.appointment_id)) ?? null : null;
       const clinician =
         (appt ? providerName.get(text(appt.provider_id)) : null) || "—";
 
       // Filter: practice / clinician / client
-      if (filters.practice && text(patient?.location_id) !== filters.practice) continue;
+      if (filters.practice && text(client?.location_id) !== filters.practice) continue;
       if (filters.clinician && clinician !== filters.clinician) continue;
       if (filters.client) {
-        const name = patient
-          ? `${text(patient.first_name)} ${text(patient.last_name)}`.toLowerCase()
+        const name = client
+          ? `${text(client.first_name)} ${text(client.last_name)}`.toLowerCase()
           : "";
         if (!name.includes(filters.client.toLowerCase())) continue;
       }
@@ -543,8 +543,8 @@ export async function GET(request: Request) {
       }
       if (filters.status && text(claim?.claim_status) !== filters.status) continue;
 
-      const clientName = patient
-        ? [text(patient.first_name), text(patient.last_name)]
+      const clientName = client
+        ? [text(client.first_name), text(client.last_name)]
             .filter(Boolean)
             .join(" ") || "Unknown client"
         : "Unknown client";

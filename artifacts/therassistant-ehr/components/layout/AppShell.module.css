@@ -322,7 +322,7 @@
   overflow: auto;
 }
 
-/* ── Patient sticky group (banner + tab nav) ─────────────────────────────── */
+/* ── Client sticky group (banner + tab nav) ─────────────────────────────── */
 .patientStickyGroup {
   position: sticky;
   top: 44px;
@@ -330,7 +330,7 @@
   background: #ffffff;
 }
 
-/* ── Patient context banner ──────────────────────────────────────────────── */
+/* ── Client context banner ──────────────────────────────────────────────── */
 .patientBanner {
   display: flex;
   align-items: center;
@@ -366,7 +366,7 @@
   border-bottom: 1px solid #d0d8e2;
 }
 
-/* ── Patient tab nav ─────────────────────────────────────────────────────── */
+/* ── Client tab nav ─────────────────────────────────────────────────────── */
 .patientTabs {
   display: flex;
   gap: 0;

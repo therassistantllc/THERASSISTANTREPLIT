@@ -199,7 +199,7 @@ export async function GET(request: Request) {
     ];
 
     const [
-      { data: patients },
+      { data: clients },
       { data: payerProfiles },
       { data: serviceLines },
       { data: parties },
@@ -262,7 +262,7 @@ export async function GET(request: Request) {
     ]);
 
     const patientById = new Map<string, DbRow>(
-      ((patients as DbRow[]) ?? []).map((p) => [text(p.id), p]),
+      ((clients as DbRow[]) ?? []).map((p) => [text(p.id), p]),
     );
     const payerProfileById = new Map<string, DbRow>(
       ((payerProfiles as DbRow[]) ?? []).map((p) => [text(p.id), p]),
@@ -379,7 +379,7 @@ export async function GET(request: Request) {
 
     let rows: Row[] = mergedClaims.map((claim) => {
       const claimId = text(claim.id);
-      const patient = patientById.get(text(claim.patient_id));
+      const client = patientById.get(text(claim.patient_id));
       const payerProfile = payerProfileById.get(text(claim.payer_profile_id));
       const party = partiesByClaim.get(claimId);
       const lines = linesByClaim.get(claimId) ?? [];
@@ -402,8 +402,8 @@ export async function GET(request: Request) {
       const writeOff = money(claim.write_off_amount);
       const denied = Math.max(0, Math.round((totalCharge - writeOff) * 100) / 100);
 
-      const patientName = patient
-        ? [patient.first_name, patient.last_name].map(text).filter(Boolean).join(" ")
+      const patientName = client
+        ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ")
         : party
           ? [
               party.patient_first_name || party.subscriber_first_name,
@@ -412,7 +412,7 @@ export async function GET(request: Request) {
               .map(text)
               .filter(Boolean)
               .join(" ")
-          : "Unknown patient";
+          : "Unknown client";
 
       const appeal = latestAppealByClaim.get(claimId);
       const status: string = appeal ? text(appeal.status) : "draft_needed";

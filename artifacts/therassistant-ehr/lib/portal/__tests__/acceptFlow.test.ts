@@ -4,7 +4,7 @@
  * Pins the contract between `/portal/{token}` and `/portal/home`:
  *  - a pending invite + accept action sets the session cookie, flips
  *    portal_invites.status to 'accepted' and clients.portal_status to
- *    'active', and the home page then renders the patient's data.
+ *    'active', and the home page then renders the client's data.
  *  - a revoked invite renders the revoked error page and NEVER sets a
  *    session cookie.
  *  - an expired invite renders the expired error page and NEVER sets a
@@ -207,7 +207,7 @@ async function renderHomePage(): Promise<ReactNodeLike> {
   return Page();
 }
 
-test("accept flow: pending invite -> session cookie + home page renders patient data", async () => {
+test("accept flow: pending invite -> session cookie + home page renders client data", async () => {
   resetState();
   state.inviteRow = {
     id: INVITE_ID,
@@ -220,7 +220,7 @@ test("accept flow: pending invite -> session cookie + home page renders patient 
   state.clientRow = {
     id: CLIENT_ID,
     first_name: "Alice",
-    last_name: "Patient",
+    last_name: "Client",
     preferred_name: null,
     portal_status: "pending",
   };
@@ -268,10 +268,10 @@ test("accept flow: pending invite -> session cookie + home page renders patient 
   assert.ok(cookie, "expected ta_portal_session cookie to be set after accept");
   assert.ok(cookie!.includes("."), "session cookie must be a payload.sig token");
 
-  // Home page now picks up the session and renders the patient's name.
+  // Home page now picks up the session and renders the client's name.
   const home = await renderHomePage();
   const text = collectText(home);
-  assert.match(text, /Hi,\s+Alice/, "home page must greet the signed-in patient by name");
+  assert.match(text, /Hi,\s+Alice/, "home page must greet the signed-in client by name");
   assert.match(text, /Test Practice/, "home page must show the practice name");
   // No redirect to /portal/signed-out happened on the home render.
   assert.equal(
@@ -294,7 +294,7 @@ test("revoked invite: renders revoked error page and does NOT set a session cook
   state.clientRow = {
     id: CLIENT_ID,
     first_name: "Alice",
-    last_name: "Patient",
+    last_name: "Client",
     preferred_name: null,
     portal_status: "pending",
   };
@@ -330,7 +330,7 @@ test("expired invite: renders expired error page and does NOT set a session cook
   state.clientRow = {
     id: CLIENT_ID,
     first_name: "Alice",
-    last_name: "Patient",
+    last_name: "Client",
     preferred_name: null,
     portal_status: "pending",
   };

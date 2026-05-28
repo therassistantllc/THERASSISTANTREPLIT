@@ -89,7 +89,7 @@ export function emitClaimCobLoops(primary: CobPrimaryData): string[] {
 
   // AMT*D — primary payer paid amount (CLP04 on the 835).
   segments.push(buildSegment(["AMT", "D", formatMoney(Number(primary.payer_paid_amount ?? 0))]));
-  // AMT*F2 — patient responsibility amount (CLP05 on the 835).
+  // AMT*F2 — client responsibility amount (CLP05 on the 835).
   segments.push(
     buildSegment([
       "AMT",

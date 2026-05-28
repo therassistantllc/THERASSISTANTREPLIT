@@ -1,11 +1,11 @@
-// CAQH CORE Single Patient Attribution Rule vEB.1.0 §4.2–§4.3 —
+// CAQH CORE Single Client Attribution Rule vEB.1.0 §4.2–§4.3 —
 // routing layer.
 //
 // When a 271 is attributed to a dependent (not the subscriber the user
 // requested the check for), we try to route persistence to the matching
-// dependent patient record so benefits aren't cross-attributed. If no
+// dependent client record so benefits aren't cross-attributed. If no
 // unique match exists in the org, we keep persistence on the requested
-// patient and record an "unresolved" routing state so the UI can flag it.
+// client and record an "unresolved" routing state so the UI can flag it.
 
 import type { AttributionDecision } from "@/lib/edi/availity270/attribution";
 
@@ -15,10 +15,10 @@ type AttributionRoutingUnresolvedReason =
   | "missing_dependent_identity";
 
 export interface AttributionRoutingDecision {
-  /** Patient row id the eligibility_check should be stored against. */
+  /** Client row id the eligibility_check should be stored against. */
   routedClientId: string;
-  /** True when routedClientId === requested patient id (no rerouting). */
-  routedToRequestedPatient: boolean;
+  /** True when routedClientId === requested client id (no rerouting). */
+  routedToRequestedClient: boolean;
   /** True when target was dependent but we could not safely route. */
   unresolved: boolean;
   unresolvedReason: AttributionRoutingUnresolvedReason | null;
@@ -40,13 +40,13 @@ export type DependentLookupFn = (input: DependentLookupInput) => Promise<string[
  *
  * Routing rules:
  *  - If attribution.target is "subscriber" → always store against the
- *    requested patient (the subscriber's own chart).
+ *    requested client (the subscriber's own chart).
  *  - If attribution.target is "dependent" and the decision matches the
- *    requested patient → the requested patient IS the dependent. Store
- *    against the requested patient.
+ *    requested client → the requested client IS the dependent. Store
+ *    against the requested client.
  *  - If attribution.target is "dependent" and decision does NOT match,
  *    look up the dependent by org + name + dob. Exactly one match →
- *    reroute. Zero or multiple matches → keep on requested patient and
+ *    reroute. Zero or multiple matches → keep on requested client and
  *    mark unresolved so the UI surfaces a warning.
  */
 export async function resolveAttributionRouting(args: {
@@ -62,7 +62,7 @@ export async function resolveAttributionRouting(args: {
   if (!decision) {
     return {
       routedClientId: requestedClientId,
-      routedToRequestedPatient: true,
+      routedToRequestedClient: true,
       unresolved: false,
       unresolvedReason: null,
       candidateIds: [],
@@ -72,19 +72,19 @@ export async function resolveAttributionRouting(args: {
   if (decision.target !== "dependent") {
     return {
       routedClientId: requestedClientId,
-      routedToRequestedPatient: true,
+      routedToRequestedClient: true,
       unresolved: false,
       unresolvedReason: null,
       candidateIds: [],
     };
   }
 
-  // Dependent-target with identity that matches the requested patient
+  // Dependent-target with identity that matches the requested client
   // (the user already opened the dependent's chart) — no rerouting.
-  if (decision.matchesRequestedPatient) {
+  if (decision.matchesRequestedClient) {
     return {
       routedClientId: requestedClientId,
-      routedToRequestedPatient: true,
+      routedToRequestedClient: true,
       unresolved: false,
       unresolvedReason: null,
       candidateIds: [],
@@ -96,7 +96,7 @@ export async function resolveAttributionRouting(args: {
   if (!parsedDependent || (!parsedDependent.lastName && !parsedDependent.dob)) {
     return {
       routedClientId: requestedClientId,
-      routedToRequestedPatient: true,
+      routedToRequestedClient: true,
       unresolved: true,
       unresolvedReason: "missing_dependent_identity",
       candidateIds: [],
@@ -113,7 +113,7 @@ export async function resolveAttributionRouting(args: {
   if (candidates.length === 1) {
     return {
       routedClientId: candidates[0],
-      routedToRequestedPatient: candidates[0] === requestedClientId,
+      routedToRequestedClient: candidates[0] === requestedClientId,
       unresolved: false,
       unresolvedReason: null,
       candidateIds: candidates,
@@ -122,7 +122,7 @@ export async function resolveAttributionRouting(args: {
 
   return {
     routedClientId: requestedClientId,
-    routedToRequestedPatient: true,
+    routedToRequestedClient: true,
     unresolved: true,
     unresolvedReason: candidates.length === 0 ? "no_dependent_match" : "ambiguous_dependent_match",
     candidateIds: candidates,

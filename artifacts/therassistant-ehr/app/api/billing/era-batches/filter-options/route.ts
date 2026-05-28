@@ -3,7 +3,7 @@
  *
  * Returns the suggestion sets that back the typeahead filters on the ERA
  * import workqueue:
- *   - patients:   active clients in the org (id + display name)
+ *   - clients:   active clients in the org (id + display name)
  *   - clinicians: distinct rendering providers seen on the org's claims
  *                 (from claim_parties_snapshot via professional_claims)
  *   - practices:  distinct place_of_service codes used on the org's claims
@@ -36,7 +36,7 @@ type PartyRow = {
 
 function clientName(row: ClientRow): string {
   // Keep the suggestion label aligned with how the list endpoint renders
-  // `BatchListItem.patients` ("first_name last_name") so the client-side
+  // `BatchListItem.clients` ("first_name last_name") so the client-side
   // filter pass in EraImportClient lines up exactly with what the picker
   // emits. If we ever add disambiguators (preferred name, DOB, …) they
   // must be added on both sides in lockstep.
@@ -65,7 +65,7 @@ export async function GET(request: Request) {
     }
     await requireAuthenticatedPaymentPoster(organizationId);
 
-    // Patients: every active client in the org. The roster is small enough
+    // Clients: every active client in the org. The roster is small enough
     // (clients API caps at 250) that we can ship them all to the client and
     // let the browser filter as the biller types — no server round-trip per
     // keystroke.
@@ -82,7 +82,7 @@ export async function GET(request: Request) {
         { status: 500 },
       );
     }
-    const patients = ((clientsRes.data ?? []) as ClientRow[])
+    const clients = ((clientsRes.data ?? []) as ClientRow[])
       .map((row) => ({ id: row.id, name: clientName(row) }))
       .filter((p) => p.name && p.name !== "Unnamed client");
 
@@ -150,7 +150,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       organizationId,
-      patients,
+      clients,
       clinicians,
       practices,
     });

@@ -31,7 +31,7 @@ const KPIS = [
 const SUB_NAV = [
   { name: "No Response", count: 47, active: true },
   { name: "Denials", count: 12 },
-  { name: "Patient Responsibility", count: 23 },
+  { name: "Client Responsibility", count: 23 },
   { name: "Write-offs", count: 4 },
   { name: "Submitted", count: 156 },
   { name: "Recently Posted", count: 18 },
@@ -39,13 +39,13 @@ const SUB_NAV = [
 ];
 
 const CLAIMS = [
-  { id: "CLM-20281", patient: "Sarah Jenkins", dob: "1985-04-12", dos: "2023-10-15", payer: "Aetna", billed: "$150.00", daysOut: 42, status: "No Response", lastAction: "Followed up 14d ago", assignee: "JS", urgent: false },
-  { id: "CLM-20282", patient: "Michael Chang", dob: "1978-11-23", dos: "2023-09-02", payer: "BCBS", billed: "$200.00", daysOut: 95, status: "No Response", lastAction: "Call dropped", assignee: "JS", urgent: true },
-  { id: "CLM-20283", patient: "Emma Watson", dob: "1992-02-18", dos: "2023-10-20", payer: "Cigna", billed: "$150.00", daysOut: 37, status: "No Response", lastAction: "Submitted", assignee: "AW", urgent: false },
-  { id: "CLM-20284", patient: "David Rodriguez", dob: "1980-07-05", dos: "2023-11-01", payer: "UHC", billed: "$175.00", daysOut: 26, status: "No Response", lastAction: "Submitted", assignee: "JS", urgent: false },
-  { id: "CLM-20285", patient: "Lisa Kudrow", dob: "1965-09-14", dos: "2023-08-15", payer: "Medicare", billed: "$120.00", daysOut: 102, status: "No Response", lastAction: "Appealed", assignee: "AW", urgent: true },
-  { id: "CLM-20286", patient: "Tom Holland", dob: "1996-06-01", dos: "2023-10-25", payer: "Aetna", billed: "$150.00", daysOut: 32, status: "No Response", lastAction: "Submitted", assignee: "JS", urgent: false },
-  { id: "CLM-20287", patient: "Zendaya Coleman", dob: "1996-09-01", dos: "2023-10-28", payer: "BCBS", billed: "$200.00", daysOut: 29, status: "No Response", lastAction: "Submitted", assignee: "AW", urgent: false },
+  { id: "CLM-20281", client: "Sarah Jenkins", dob: "1985-04-12", dos: "2023-10-15", payer: "Aetna", billed: "$150.00", daysOut: 42, status: "No Response", lastAction: "Followed up 14d ago", assignee: "JS", urgent: false },
+  { id: "CLM-20282", client: "Michael Chang", dob: "1978-11-23", dos: "2023-09-02", payer: "BCBS", billed: "$200.00", daysOut: 95, status: "No Response", lastAction: "Call dropped", assignee: "JS", urgent: true },
+  { id: "CLM-20283", client: "Emma Watson", dob: "1992-02-18", dos: "2023-10-20", payer: "Cigna", billed: "$150.00", daysOut: 37, status: "No Response", lastAction: "Submitted", assignee: "AW", urgent: false },
+  { id: "CLM-20284", client: "David Rodriguez", dob: "1980-07-05", dos: "2023-11-01", payer: "UHC", billed: "$175.00", daysOut: 26, status: "No Response", lastAction: "Submitted", assignee: "JS", urgent: false },
+  { id: "CLM-20285", client: "Lisa Kudrow", dob: "1965-09-14", dos: "2023-08-15", payer: "Medicare", billed: "$120.00", daysOut: 102, status: "No Response", lastAction: "Appealed", assignee: "AW", urgent: true },
+  { id: "CLM-20286", client: "Tom Holland", dob: "1996-06-01", dos: "2023-10-25", payer: "Aetna", billed: "$150.00", daysOut: 32, status: "No Response", lastAction: "Submitted", assignee: "JS", urgent: false },
+  { id: "CLM-20287", client: "Zendaya Coleman", dob: "1996-09-01", dos: "2023-10-28", payer: "BCBS", billed: "$200.00", daysOut: 29, status: "No Response", lastAction: "Submitted", assignee: "AW", urgent: false },
 ];
 
 export default function Unified() {
@@ -63,7 +63,7 @@ export default function Unified() {
             <LayoutDashboard size={18} className="nav-icon" /> Dashboard
           </div>
           <div className="nav-item">
-            <Users size={18} className="nav-icon" /> Patients
+            <Users size={18} className="nav-icon" /> Clients
           </div>
           <div className="nav-item">
             <Calendar size={18} className="nav-icon" /> Schedule
@@ -162,7 +162,7 @@ export default function Unified() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Patient</th>
+                  <th>Client</th>
                   <th>Claim #</th>
                   <th>DOS</th>
                   <th>Payer</th>
@@ -181,7 +181,7 @@ export default function Unified() {
                       onClick={() => setSelectedClaim(selectedClaim === claim.id ? "" : claim.id)}
                     >
                       <td>
-                        <div style={{ fontWeight: 500 }}>{claim.patient}</div>
+                        <div style={{ fontWeight: 500 }}>{claim.client}</div>
                         <div style={{ fontSize: '11px', color: 'var(--ehr-text-muted)' }}>DOB: {claim.dob}</div>
                       </td>
                       <td style={{ fontFamily: 'monospace' }}>{claim.id}</td>

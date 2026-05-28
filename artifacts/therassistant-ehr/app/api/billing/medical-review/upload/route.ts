@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as unknown as { from: (t: string) => any };
 
-    // Verify claim exists in the caller's org, and capture patient/encounter.
+    // Verify claim exists in the caller's org, and capture client/encounter.
     const { data: claim, error: claimErr } = await sb
       .from("professional_claims")
       .select("id, patient_id, appointment_id, encounter_id")

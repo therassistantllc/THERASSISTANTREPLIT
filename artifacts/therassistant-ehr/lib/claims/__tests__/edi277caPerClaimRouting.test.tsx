@@ -19,14 +19,14 @@ const insertedWorkqueueRows: WorkqueueRow[] = [];
 const CLAIM_ROWS = [
   {
     id: "claim-member",
-    patient_id: "patient-1",
+    patient_id: "client-1",
     claim_number: "CLM-001",
     patient_account_number: "PAT-MEM",
     claim_status: "rejected_payer",
   },
   {
     id: "claim-provider",
-    patient_id: "patient-2",
+    patient_id: "client-2",
     claim_number: "CLM-002",
     patient_account_number: "PAT-PRV",
     claim_status: "rejected_payer",

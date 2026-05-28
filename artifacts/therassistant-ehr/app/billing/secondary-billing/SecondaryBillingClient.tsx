@@ -375,7 +375,7 @@ export default function SecondaryBillingClient() {
       },
       {
         id: "patient_resp",
-        header: "Patient responsibility",
+        header: "Client responsibility",
         align: "right",
         cell: (r) => formatMoney(r.patient_responsibility),
       },
@@ -596,7 +596,7 @@ export default function SecondaryBillingClient() {
                 {labeledItem("ERA total charge", formatMoney(row.era.total_charge))}
                 {labeledItem("Payer paid", formatMoney(row.era.payer_paid))}
                 {labeledItem(
-                  "Patient responsibility",
+                  "Client responsibility",
                   formatMoney(row.era.patient_responsibility),
                 )}
                 {labeledItem(
@@ -725,7 +725,7 @@ export default function SecondaryBillingClient() {
             {labeledItem("Total charge", formatMoney(row.total_charge))}
             {labeledItem("Primary paid", formatMoney(row.primary_paid))}
             {labeledItem(
-              "Patient responsibility",
+              "Client responsibility",
               formatMoney(row.patient_responsibility),
             )}
             {labeledItem(

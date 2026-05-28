@@ -5,10 +5,10 @@
  * platform's Connect application. Handles three event types:
  *
  *   - account.updated              → refresh provider connect status
- *   - payment_intent.succeeded     → auto-post copay to patient ledger
+ *   - payment_intent.succeeded     → auto-post copay to client ledger
  *   - payment_intent.payment_failed → workqueue review row
  *
- * Verification mirrors the existing patient-card stripe-webhook handler
+ * Verification mirrors the existing client-card stripe-webhook handler
  * (HMAC-SHA256 of `${t}.${rawBody}` with STRIPE_CONNECT_WEBHOOK_SECRET).
  * Idempotency on copay posting is provided by the existing unique index
  * on (organization_id, payment_method='stripe', external_payment_id).

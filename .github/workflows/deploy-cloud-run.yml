@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    paths:
+      - Dockerfile
+      - artifacts/therassistant-ehr/**
+      - .github/workflows/deploy-cloud-run.yml
   workflow_dispatch:
 
 permissions:
@@ -15,6 +19,8 @@ env:
   REGION: ${{ vars.CLOUD_RUN_REGION || 'us-central1' }}
   GAR_LOCATION: ${{ vars.GAR_LOCATION || 'us-central1' }}
   GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY || 'therassistant' }}
+  MIN_INSTANCES: ${{ vars.CLOUD_RUN_MIN_INSTANCES || '0' }}
+  MAX_INSTANCES: ${{ vars.CLOUD_RUN_MAX_INSTANCES || '3' }}
 
 concurrency:
   group: deploy-cloud-run-${{ github.ref }}
@@ -74,4 +80,6 @@ jobs:
             --image "${IMAGE_URI}" \
             --region "${REGION}" \
             --platform managed \
+            --min-instances "${MIN_INSTANCES}" \
+            --max-instances "${MAX_INSTANCES}" \
             --allow-unauthenticated

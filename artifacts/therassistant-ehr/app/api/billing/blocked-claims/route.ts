@@ -43,7 +43,7 @@ function text(value: unknown): string {
 
 function fullName(first: unknown, last: unknown): string {
   const parts = [text(first), text(last)].filter(Boolean);
-  return parts.join(" ") || "Unknown patient";
+  return parts.join(" ") || "Unknown client";
 }
 
 export async function GET(request: Request) {
@@ -164,7 +164,7 @@ export async function GET(request: Request) {
     const items = validated
       .map(({ claim, report, error }) => {
         const claimId = text(claim.id);
-        const patient = patientById.get(text(claim.patient_id));
+        const client = patientById.get(text(claim.patient_id));
         const payer = payerById.get(text(claim.payer_profile_id));
         const dates = datesByClaim.get(claimId) ?? { from: null, to: null };
 
@@ -180,8 +180,8 @@ export async function GET(request: Request) {
           payerName: text(payer?.payer_name) || "No payer attached",
           payerProfileId: text(claim.payer_profile_id) || null,
           patientId: text(claim.patient_id) || null,
-          patientName: fullName(patient?.first_name, patient?.last_name),
-          patientDob: (patient?.date_of_birth as string | null) ?? null,
+          patientName: fullName(client?.first_name, client?.last_name),
+          patientDob: (client?.date_of_birth as string | null) ?? null,
           serviceDateFrom: dates.from,
           serviceDateTo: dates.to,
           totalChargeAmount: Number(claim.total_charge ?? 0) || 0,

@@ -1,7 +1,7 @@
 /**
  * GET /api/billing/patient-billing
  *
- * "Patient Billing" workqueue: self-pay balances after insurance has
+ * "Client Billing" workqueue: self-pay balances after insurance has
  * processed. Returns one row per client (the guarantor), aggregating
  * across that client's open patient_invoices.
  *
@@ -182,7 +182,7 @@ export async function GET(request: Request) {
     const filterCarcRarc = (searchParams.get("carcRarc") ?? "").trim().toUpperCase();
     const filterAutopayFailed = (searchParams.get("autopayFailed") ?? "").trim();
 
-    // ── Pull open patient invoices for this org ────────────────────
+    // ── Pull open client invoices for this org ────────────────────
     const { data: invoiceRows, error: invErr } = await (supabase as any)
       .from("patient_invoices")
       .select(
@@ -798,14 +798,14 @@ export async function GET(request: Request) {
       summary,
     });
   } catch (error) {
-    console.error("Patient Billing API error:", error);
+    console.error("Client Billing API error:", error);
     return NextResponse.json(
       {
         success: false,
         error:
           error instanceof Error
             ? error.message
-            : "Failed to load patient-billing worklist",
+            : "Failed to load client-billing worklist",
       },
       { status: 500 },
     );

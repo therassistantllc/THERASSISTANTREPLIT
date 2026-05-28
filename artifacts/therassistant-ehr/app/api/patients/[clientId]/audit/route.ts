@@ -94,7 +94,7 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? "50") || 50, 1), 200);
 
-    // Pull every audit row tied to this patient across the chart-tracked
+    // Pull every audit row tied to this client across the chart-tracked
     // object types (demographics, insurance policy, case). The route filters
     // by patient_id which is set on every row we write, so policy/case rows
     // surface here even though their object_type is not 'client'.

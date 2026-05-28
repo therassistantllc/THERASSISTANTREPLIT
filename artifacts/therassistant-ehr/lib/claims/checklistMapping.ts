@@ -40,7 +40,7 @@ export type GenerationErrorFieldDetail = {
  * by the Ready-to-Generate "837P field checklist" tab so other pages can
  * surface the same wording without re-rendering the whole checklist. */
 export const CHECKLIST_ROW_LABEL: Record<ChecklistRowId, string> = {
-  ref: "CLM01 — Patient account / claim ref",
+  ref: "CLM01 — Client account / claim ref",
   amt: "CLM02 — Total charge > 0",
   pos: "CLM05 — Place of service",
   dx: "HI — At least one ICD-10 diagnosis",

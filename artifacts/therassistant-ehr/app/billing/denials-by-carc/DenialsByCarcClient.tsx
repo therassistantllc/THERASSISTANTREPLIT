@@ -285,7 +285,7 @@ export default function DenialsByCarcClient() {
 
   const filters: FilterDef[] = useMemo(
     () => [
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "payer", label: "Payer", kind: "select", options: payerOptions },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },

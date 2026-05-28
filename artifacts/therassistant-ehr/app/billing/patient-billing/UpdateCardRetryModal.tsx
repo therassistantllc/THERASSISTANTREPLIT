@@ -4,7 +4,7 @@
  * Update-card-and-retry modal (Task #737).
  *
  * Mounts a Stripe.js card element bound to a SetupIntent created on the
- * patient's connected Stripe account, lets the biller paste in a new
+ * client's connected Stripe account, lets the biller paste in a new
  * card, and on confirm:
  *   1. POSTs the resulting payment_method id to
  *      /api/billing/patient-billing/:id/update-card-retry with

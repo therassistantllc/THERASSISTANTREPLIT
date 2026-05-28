@@ -19,7 +19,7 @@
  *     (refund_type='insurance'), opens a workqueue item for the AR team
  *     to issue the payer-refund check.
  *   - recordPatientRefund    — inserts a payment_refunds row
- *     (refund_type='patient') linked to the originating client_payment.
+ *     (refund_type='client') linked to the originating client_payment.
  *     Stripe issuance is left to the dedicated Stripe webhook/task (#114);
  *     callers may pass a pre-issued stripeRefundId for reconciliation.
  *
@@ -81,7 +81,7 @@ export interface ReversalPreview {
     newBalanceAmount: number;
     newStatus: string;
   } | null;
-  /** Auto-created pending patient refund (Stripe/card client_payment reversals only). */
+  /** Auto-created pending client refund (Stripe/card client_payment reversals only). */
   autoPatientRefund: {
     amount: number;
     stripeChargeId: string | null;
@@ -193,7 +193,7 @@ export interface RecordRefundInput {
   amount: number;
   reason: string;
   actor: PostingActor;
-  /** For patient refunds issued via Stripe — supply the refund id for reconciliation. */
+  /** For client refunds issued via Stripe — supply the refund id for reconciliation. */
   stripeRefundId?: string | null;
   /** When true, the refund is marked 'issued' immediately (e.g. Stripe call already succeeded). */
   alreadyIssued?: boolean;
@@ -212,7 +212,7 @@ export interface RecordRefundInput {
  */
 export interface RefundPreview {
   source: { kind: PostedPaymentKind; id: string; label: string };
-  refundType: "insurance" | "patient";
+  refundType: "insurance" | "client";
   amount: number;
   paymentTotalImpact: number;
   priorRefundTotal: number;
@@ -223,7 +223,7 @@ export interface RefundPreview {
   initialRefundStatus: "pending" | "issued";
   /**
    * Compensating negative ledger entry the engine would post (only when
-   * the refund ends 'issued' — insurance refunds always, patient refunds
+   * the refund ends 'issued' — insurance refunds always, client refunds
    * only if Stripe auto-issuance would succeed in the live call).
    */
   compensatingLedgerEntry: {
@@ -231,7 +231,7 @@ export interface RefundPreview {
     amount: number;
     description: string;
   } | null;
-  /** For patient refunds linked to an invoice: the would-be invoice delta. */
+  /** For client refunds linked to an invoice: the would-be invoice delta. */
   patientInvoice: {
     invoiceId: string;
     currentPaidAmount: number;
@@ -526,7 +526,7 @@ async function buildReversalPreview(
 
 async function buildRefundPreview(
   supabase: SupabaseAdmin,
-  refundType: "insurance" | "patient",
+  refundType: "insurance" | "client",
   input: RecordRefundInput,
   payment: LoadedPayment,
   amount: number,
@@ -543,7 +543,7 @@ async function buildRefundPreview(
   // Mirror the same gating the live path uses; no HTTP call is made here.
   let stripeRefund: RefundPreview["stripeRefund"] = null;
   let stripeWouldIssue = false;
-  if (refundType === "patient" && payment.kind === "client_payment") {
+  if (refundType === "client" && payment.kind === "client_payment") {
     if (input.alreadyIssued) {
       stripeRefund = {
         wouldFire: false,
@@ -607,7 +607,7 @@ async function buildRefundPreview(
 
   // ── Compensating ledger entry preview ─────────────────────────────────────
   // Insurance refund: writes when effective status is 'issued'.
-  // Patient refund: live code does NOT write a ledger entry directly; the
+  // Client refund: live code does NOT write a ledger entry directly; the
   // invoice paid_amount reduction is the financial record. Keep null.
   let compensatingLedgerEntry: RefundPreview["compensatingLedgerEntry"] = null;
   if (refundType === "insurance" && effectiveStatus === "issued" && amount > 0) {
@@ -618,10 +618,10 @@ async function buildRefundPreview(
     };
   }
 
-  // ── Patient invoice delta preview ─────────────────────────────────────────
+  // ── Client invoice delta preview ─────────────────────────────────────────
   let patientInvoice: RefundPreview["patientInvoice"] = null;
   if (
-    refundType === "patient" &&
+    refundType === "client" &&
     payment.kind === "client_payment" &&
     effectiveStatus === "issued"
   ) {
@@ -668,7 +668,7 @@ async function buildRefundPreview(
     title: wouldOpenWorkqueue
       ? refundType === "insurance"
         ? `Issue payer refund ${amount.toFixed(2)} on ${payment.rawSourceLabel}`
-        : `Issue patient refund ${amount.toFixed(2)} on ${payment.rawSourceLabel}`
+        : `Issue client refund ${amount.toFixed(2)} on ${payment.rawSourceLabel}`
       : null,
   };
 
@@ -883,11 +883,11 @@ export async function reversePostedPayment(
       .eq("organization_id", input.organizationId);
   }
 
-  // ── 3. Restore patient invoice balance for client_payment reversals ────────
+  // ── 3. Restore client invoice balance for client_payment reversals ────────
   // Also: when the underlying client payment was a Stripe charge, the
-  // reversal *requires* an outbound refund — patients can't just have a
+  // reversal *requires* an outbound refund — clients can't just have a
   // ledger correction; we must initiate the money-movement flow. We create a
-  // pending patient refund row + workqueue item so AR / Stripe-ops can issue.
+  // pending client refund row + workqueue item so AR / Stripe-ops can issue.
   if (payment.kind === "client_payment") {
     const { data: cp } = await supabase
       .from("client_payments")
@@ -899,21 +899,21 @@ export async function reversePostedPayment(
     const invId = (cpRow?.patient_invoice_id as string | null) ?? null;
     const amt = round2(Number((cpRow?.amount as number | undefined) ?? 0));
 
-    // Auto-create patient refund + workqueue if the original payment had
+    // Auto-create client refund + workqueue if the original payment had
     // outbound money movement (Stripe or any non-cash method). Cash/check
     // reversals are AR-paper only.
     const method = String(cpRow?.payment_method ?? "");
     const needsOutboundRefund = amt > 0 && (cpRow?.stripe_charge_id || method === "card" || method === "stripe");
     if (needsOutboundRefund) {
-      // Fail-closed: a patient reversal that did NOT successfully record a
+      // Fail-closed: a client reversal that did NOT successfully record a
       // refund-initiation obligation must roll the reversal back. Otherwise
-      // the patient is "owed money" but no system-of-record exists for AR.
+      // the client is "owed money" but no system-of-record exists for AR.
       const { data: refundRow, error: refundErr } = await supabase
         .from("payment_refunds")
         .insert({
           organization_id: input.organizationId,
           source_client_payment_id: payment.id,
-          refund_type: "patient",
+          refund_type: "client",
           amount: amt,
           reason: `Auto-initiated by reversal: ${input.reason}`,
           refund_status: "pending",
@@ -944,8 +944,8 @@ export async function reversePostedPayment(
         work_type: "patient_refund",
         status: "open",
         priority: "high",
-        title: `Issue patient refund $${amt.toFixed(2)} (reversal)`,
-        description: `Patient refund triggered by payment reversal. Stripe charge: ${String(cpRow?.stripe_charge_id ?? "n/a")}.`,
+        title: `Issue client refund $${amt.toFixed(2)} (reversal)`,
+        description: `Client refund triggered by payment reversal. Stripe charge: ${String(cpRow?.stripe_charge_id ?? "n/a")}.`,
         source_object_type: "payment_posting",
         source_object_id: refundId,
         client_id: (cpRow?.client_id as string | null) ?? payment.clientId,
@@ -1511,7 +1511,7 @@ export async function recordRecoupment(
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function recordRefundShared(
-  refundType: "insurance" | "patient",
+  refundType: "insurance" | "client",
   input: RecordRefundInput,
   injectedSupabase?: SupabaseAdmin,
 ): Promise<RecordRefundResult> {
@@ -1533,10 +1533,10 @@ async function recordRefundShared(
     result.errors.push({ field: "reason", message: "Refund reason is required." });
     return result;
   }
-  if (refundType === "patient" && input.target.kind !== "client_payment") {
+  if (refundType === "client" && input.target.kind !== "client_payment") {
     result.errors.push({
       field: "target.kind",
-      message: "Patient refunds must reference a client_payment source.",
+      message: "Client refunds must reference a client_payment source.",
     });
     return result;
   }
@@ -1610,7 +1610,7 @@ async function recordRefundShared(
   // ── Dry-run preview ───────────────────────────────────────────────────────
   // All validation (amount > 0, refund-type vs source-kind, cap check) has
   // already run above. Build the preview from already-loaded state plus a
-  // small extra read for the patient invoice / Stripe charge metadata.
+  // small extra read for the client invoice / Stripe charge metadata.
   if (input.dryRun) {
     return await buildRefundPreview(
       supabase,
@@ -1699,7 +1699,7 @@ async function recordRefundShared(
     return result;
   }
 
-  // ── Stripe refund issuance for patient/Stripe-origin refunds ──────────────
+  // ── Stripe refund issuance for client/Stripe-origin refunds ──────────────
   // If the original client_payment was a Stripe charge and STRIPE_SECRET_KEY
   // is available, attempt to issue the refund via the Stripe REST API now.
   // On success we mark the refund row as 'issued' and stamp stripe_refund_id;
@@ -1708,7 +1708,7 @@ async function recordRefundShared(
   // creation on Stripe error — the AR obligation is already persisted.
   let stripeIssuedNow = false;
   if (
-    refundType === "patient" &&
+    refundType === "client" &&
     payment.kind === "client_payment" &&
     refundStatus === "pending" &&
     !input.alreadyIssued
@@ -1790,7 +1790,7 @@ async function recordRefundShared(
     const title =
       refundType === "insurance"
         ? `Issue payer refund ${amount.toFixed(2)} on ${payment.rawSourceLabel}`
-        : `Issue patient refund ${amount.toFixed(2)} on ${payment.rawSourceLabel}`;
+        : `Issue client refund ${amount.toFixed(2)} on ${payment.rawSourceLabel}`;
     // Schema invariants (see .agents/memory/workqueue-items-schema.md):
     //   - column is `client_id`, NOT `patient_id` (dropped in
     //     20260505010000_enforce_client_schema_drift.sql).
@@ -1836,12 +1836,12 @@ async function recordRefundShared(
     }
   }
 
-  // ── Reduce patient invoice paid_amount when refunding a posted patient payment
+  // ── Reduce client invoice paid_amount when refunding a posted client payment
   // CRITICAL: key off the FINAL refund status (post-Stripe-issuance), not the
   // initial local `refundStatus` constant. Stripe auto-issuance can flip
   // pending→issued above and must trigger ledger reconciliation here.
   const effectiveStatus = result.refundStatus ?? refundStatus;
-  if (refundType === "patient" && payment.kind === "client_payment") {
+  if (refundType === "client" && payment.kind === "client_payment") {
     const { data: cp } = await supabase
       .from("client_payments")
       .select("patient_invoice_id")
@@ -1951,7 +1951,7 @@ async function recordRefundShared(
       source_kind: payment.kind,
       source_id: payment.id,
     },
-    summary: `${refundType === "insurance" ? "Insurance" : "Patient"} refund ${amount.toFixed(2)} ${refundStatus} on ${payment.rawSourceLabel}: ${input.reason}`,
+    summary: `${refundType === "insurance" ? "Insurance" : "Client"} refund ${amount.toFixed(2)} ${refundStatus} on ${payment.rawSourceLabel}: ${input.reason}`,
   });
   if (audit) result.auditLogIds.push(audit.id);
 
@@ -2201,7 +2201,7 @@ export async function cancelPendingRefund(
   const now = new Date().toISOString();
   // Concurrency-safe state flip: only succeeds while still pending+unarchived.
   // Filtering refund_type='insurance' here is what makes a same-id call
-  // against a patient refund return "not found" rather than silently mutate.
+  // against a client refund return "not found" rather than silently mutate.
   const { data: claimed, error: claimErr } = await supabase
     .from("payment_refunds")
     .update({
@@ -2291,12 +2291,12 @@ export function recordPatientRefund(
   input: RecordRefundInput,
   injectedSupabase?: SupabaseAdmin,
 ): Promise<RecordRefundResult> {
-  return recordRefundShared("patient", input, injectedSupabase);
+  return recordRefundShared("client", input, injectedSupabase);
 }
 
 /**
- * Two-step patient refund confirmation: moves a pending payment_refunds
- * row (refund_type='patient', sourced from a client_payment) to 'issued'
+ * Two-step client refund confirmation: moves a pending payment_refunds
+ * row (refund_type='client', sourced from a client_payment) to 'issued'
  * and reconciles the originating patient_invoice paid_amount/balance.
  *
  * Used by the Stripe webhook (Task #136) when a `charge.refunded` /
@@ -2307,7 +2307,7 @@ export function recordPatientRefund(
  * Concurrency-safe: the pending→issued flip is conditional, so concurrent
  * webhook re-deliveries collapse into a single state transition.
  * Fail-closed on the transition itself; the invoice paid_amount update
- * is best-effort (matches the inline patient-refund issuance path).
+ * is best-effort (matches the inline client-refund issuance path).
  */
 export interface ConfirmPatientRefundInput {
   organizationId: string;
@@ -2357,10 +2357,10 @@ export async function confirmPatientRefund(
     });
     return result;
   }
-  if (String(existingRow.refund_type) !== "patient") {
+  if (String(existingRow.refund_type) !== "client") {
     result.errors.push({
       field: "refund_type",
-      message: "confirmPatientRefund only applies to patient refunds.",
+      message: "confirmPatientRefund only applies to client refunds.",
     });
     return result;
   }
@@ -2405,8 +2405,8 @@ export async function confirmPatientRefund(
   const amount = round2(Number(row.amount ?? 0));
   const sourceCpId = (row.source_client_payment_id as string | null) ?? null;
 
-  // Best-effort patient invoice paid_amount reduction (mirrors the inline
-  // patient-refund issuance path in recordRefundShared so balances stay
+  // Best-effort client invoice paid_amount reduction (mirrors the inline
+  // client-refund issuance path in recordRefundShared so balances stay
   // accurate after webhook confirmation).
   if (sourceCpId && amount > 0) {
     const { data: cp } = await supabase
@@ -2456,7 +2456,7 @@ export async function confirmPatientRefund(
       amount,
       stripe_refund_id: input.stripeRefundId ?? null,
     },
-    summary: `Patient refund ${amount.toFixed(2)} confirmed by Stripe webhook.`,
+    summary: `Client refund ${amount.toFixed(2)} confirmed by Stripe webhook.`,
   });
 
   result.ok = true;

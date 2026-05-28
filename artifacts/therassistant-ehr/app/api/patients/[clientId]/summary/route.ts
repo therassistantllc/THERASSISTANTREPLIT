@@ -66,7 +66,7 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
         /emergency_contact_(name|phone)/i.test(errMessage);
       if (missingEmergency) {
         console.warn(
-          "[patient summary] emergency_contact_* columns missing; loading without them.",
+          "[client summary] emergency_contact_* columns missing; loading without them.",
         );
         const retry = await supabase
           .from("clients")
@@ -81,8 +81,8 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
     }
 
     if (clientError || !client) {
-      if (clientError) console.error("[patient summary] client lookup failed:", clientError);
-      return NextResponse.json({ success: false, error: "Patient not found" }, { status: 404 });
+      if (clientError) console.error("[client summary] client lookup failed:", clientError);
+      return NextResponse.json({ success: false, error: "Client not found" }, { status: 404 });
     }
 
     const { data: policiesRaw } = await supabase
@@ -167,7 +167,7 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
     return NextResponse.json({
       success: true,
       organizationId,
-      patient: {
+      client: {
         id: client.id,
         name: fullName(client),
         firstName: client.first_name ?? null,
@@ -201,9 +201,9 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
       workqueueItems: workqueueItems ?? [],
     });
   } catch (error) {
-    console.error("Patient summary API error:", error);
+    console.error("Client summary API error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Patient summary failed" },
+      { success: false, error: error instanceof Error ? error.message : "Client summary failed" },
       { status: 500 },
     );
   }

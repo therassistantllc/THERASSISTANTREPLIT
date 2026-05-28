@@ -2,8 +2,8 @@
  * GET /api/billing/refunds?organizationId=...&...filters
  *
  * Powers the Refund / Overpayment workqueue. Surfaces:
- *   - payment_refunds rows (insurance + patient refunds) → tabs
- *       "Payer Refunds", "Patient Refunds", "Refund Completed".
+ *   - payment_refunds rows (insurance + client refunds) → tabs
+ *       "Payer Refunds", "Client Refunds", "Refund Completed".
  *   - payment_recoupments rows → tab "Offset Requested".
  *   - era_claim_payments where the payer paid more than the claim's
  *     total charge and no refund row exists → tab "Credit Balance Review".
@@ -47,8 +47,8 @@ export interface RefundRow {
   clientId: string | null;
   clientName: string;
   payerProfileId: string | null;
-  payerOrPatient: string;
-  payerType: "payer" | "patient";
+  payerOrClient: string;
+  payerType: "payer" | "client";
   professionalClaimId: string | null;
   claimNumber: string | null;
   locationId: string | null;
@@ -404,12 +404,12 @@ export async function GET(request: Request) {
     // 1. payment_refunds
     for (const r of (refundsRaw as DbRow[]) ?? []) {
       const refundStatus = text(r.refund_status) || "pending";
-      const refundType = text(r.refund_type) as "patient" | "insurance";
+      const refundType = text(r.refund_type) as "client" | "insurance";
       const isCompleted =
         refundStatus === "issued" || refundStatus === "cancelled";
       const tab: RefundTab = isCompleted
         ? "refund_completed"
-        : refundType === "patient"
+        : refundType === "client"
           ? "patient_refunds"
           : "payer_refunds";
       const cid = text(r.client_id) || null;
@@ -425,8 +425,8 @@ export async function GET(request: Request) {
         status: refundStatus,
       });
       const cName = clientName(cid);
-      const payerOrPatient =
-        refundType === "patient" ? cName : payerName(pid);
+      const payerOrClient =
+        refundType === "client" ? cName : payerName(pid);
 
       rows.push({
         id: `refund:${text(r.id)}`,
@@ -438,8 +438,8 @@ export async function GET(request: Request) {
         clientId: cid,
         clientName: cName,
         payerProfileId: pid,
-        payerOrPatient,
-        payerType: refundType === "patient" ? "patient" : "payer",
+        payerOrClient,
+        payerType: refundType === "client" ? "client" : "payer",
         professionalClaimId: claimId,
         claimNumber: meta.number,
         creditAmount: amount,
@@ -484,7 +484,7 @@ export async function GET(request: Request) {
         clientId: cid,
         clientName: cName,
         payerProfileId: pid,
-        payerOrPatient: payerName(pid),
+        payerOrClient: payerName(pid),
         payerType: "payer",
         professionalClaimId: claimId,
         claimNumber: meta.number,
@@ -531,7 +531,7 @@ export async function GET(request: Request) {
         clientId: cid,
         clientName: cName,
         payerProfileId: pid,
-        payerOrPatient: payerName(pid),
+        payerOrClient: payerName(pid),
         payerType: "payer",
         professionalClaimId: claimId,
         claimNumber: meta.number,

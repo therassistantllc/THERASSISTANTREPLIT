@@ -172,7 +172,7 @@ function jsonRequest(body: unknown): Request {
 const defaultClient: Row = {
   id: CLIENT,
   organization_id: ORG_A,
-  email: "patient@example.com",
+  email: "client@example.com",
   first_name: "Pat",
   last_name: "Doe",
   preferred_name: null,

@@ -267,7 +267,7 @@ export interface EligibilityResponseNormalized {
     loop?: string | null;
   }>;
   /**
-   * Single Patient Attribution Rule vEB.1.0 §4.2–§4.3 — identifies
+   * Single Client Attribution Rule vEB.1.0 §4.2–§4.3 — identifies
    * whether the response carries content for the subscriber or for a
    * dependent under the subscriber's HL.
    */

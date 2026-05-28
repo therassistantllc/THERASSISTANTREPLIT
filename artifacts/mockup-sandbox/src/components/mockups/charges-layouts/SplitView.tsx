@@ -6,7 +6,7 @@ type ChargeStatus = 'ready' | 'unsigned' | 'missing_dx' | 'hold' | 'released';
 
 interface ChargeRow {
   id: string;
-  patient: string;
+  client: string;
   charge: number;
   status: ChargeStatus;
   cpt: string;
@@ -16,13 +16,13 @@ interface ChargeRow {
 
 // --- Mock Data ---
 const MOCK_CHARGES: ChargeRow[] = [
-  { id: '1', patient: 'Reyes, Marisol', charge: 175.00, status: 'missing_dx', cpt: '90837', dos: '10/24/2023', payer: 'Aetna PPO' },
-  { id: '2', patient: 'Chen, David', charge: 150.00, status: 'unsigned', cpt: '90834', dos: '10/24/2023', payer: 'BCBS Texas' },
-  { id: '3', patient: 'Smith, James', charge: 225.00, status: 'ready', cpt: '90791', dos: '10/23/2023', payer: 'Medicare' },
-  { id: '4', patient: 'Johnson, Emily', charge: 175.00, status: 'released', cpt: '90837', dos: '10/22/2023', payer: 'Cigna PPO' },
-  { id: '5', patient: 'Williams, Michael', charge: 150.00, status: 'hold', cpt: '90834', dos: '10/21/2023', payer: 'UnitedHealthcare' },
-  { id: '6', patient: 'Brown, Sarah', charge: 175.00, status: 'ready', cpt: '90837', dos: '10/21/2023', payer: 'Aetna HMO' },
-  { id: '7', patient: 'Davis, Robert', charge: 225.00, status: 'unsigned', cpt: '90791', dos: '10/20/2023', payer: 'BCBS Texas' },
+  { id: '1', client: 'Reyes, Marisol', charge: 175.00, status: 'missing_dx', cpt: '90837', dos: '10/24/2023', payer: 'Aetna PPO' },
+  { id: '2', client: 'Chen, David', charge: 150.00, status: 'unsigned', cpt: '90834', dos: '10/24/2023', payer: 'BCBS Texas' },
+  { id: '3', client: 'Smith, James', charge: 225.00, status: 'ready', cpt: '90791', dos: '10/23/2023', payer: 'Medicare' },
+  { id: '4', client: 'Johnson, Emily', charge: 175.00, status: 'released', cpt: '90837', dos: '10/22/2023', payer: 'Cigna PPO' },
+  { id: '5', client: 'Williams, Michael', charge: 150.00, status: 'hold', cpt: '90834', dos: '10/21/2023', payer: 'UnitedHealthcare' },
+  { id: '6', client: 'Brown, Sarah', charge: 175.00, status: 'ready', cpt: '90837', dos: '10/21/2023', payer: 'Aetna HMO' },
+  { id: '7', client: 'Davis, Robert', charge: 225.00, status: 'unsigned', cpt: '90791', dos: '10/20/2023', payer: 'BCBS Texas' },
 ];
 
 const STATUS_CONFIG: Record<ChargeStatus, { label: string; classes: string; icon: React.FC<any> }> = {
@@ -103,7 +103,7 @@ export function SplitView() {
             <Search className="absolute left-2.5 top-2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search patient, CPT..."
+              placeholder="Search client, CPT..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full h-8 pl-8 pr-3 bg-slate-50 border border-slate-200 rounded-md text-[13px] outline-none focus:bg-white focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 transition-all placeholder:text-slate-400"
@@ -126,7 +126,7 @@ export function SplitView() {
                 
                 <div className="flex justify-between items-start">
                   <span className={`font-semibold text-[14px] ${isActive ? 'text-indigo-900' : 'text-slate-800'}`}>
-                    {charge.patient}
+                    {charge.client}
                   </span>
                   <span className="font-semibold text-slate-700 text-[13px] tabular-nums">
                     ${charge.charge.toFixed(2)}
@@ -151,11 +151,11 @@ export function SplitView() {
       {/* RIGHT PANE: Detail Editor */}
       <main className="flex-1 flex flex-col min-w-0 bg-slate-50 relative">
         
-        {/* Sticky Patient Bar */}
+        {/* Sticky Client Bar */}
         <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-3 shadow-sm flex items-center gap-6 flex-wrap">
           <div className="flex-1 min-w-[200px]">
-            <Label>Patient</Label>
-            <div className="text-[15px] font-bold text-slate-900 leading-none mt-1">{selectedCharge.patient}</div>
+            <Label>Client</Label>
+            <div className="text-[15px] font-bold text-slate-900 leading-none mt-1">{selectedCharge.client}</div>
           </div>
           <div>
             <Label>DOB</Label>
@@ -339,9 +339,9 @@ export function SplitView() {
                 </div>
               </Section>
 
-              <Section title="Patient Payments (Memo)" className="h-full">
+              <Section title="Client Payments (Memo)" className="h-full">
                 <p className="text-[12px] text-slate-500 mb-4 leading-relaxed">
-                  Amounts expected from the patient based on their policy. These do not alter the claim total.
+                  Amounts expected from the client based on their policy. These do not alter the claim total.
                 </p>
                 <div className="grid grid-cols-2 gap-4">
                   <div>

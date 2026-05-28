@@ -3,18 +3,18 @@ import { useState, useMemo } from "react";
 
 /* ── Data ── */
 type PS = "ready" | "partial" | "exception" | "review" | "posted";
-type Method = "ERA" | "Patient" | "Check" | "Card" | "ACH";
-interface Pmt { id:string; source:string; eraId?:string; payer?:string; patient?:string; amount:number; method:Method; status:PS; date:string; exception?:string; }
+type Method = "ERA" | "Client" | "Check" | "Card" | "ACH";
+interface Pmt { id:string; source:string; eraId?:string; payer?:string; client?:string; amount:number; method:Method; status:PS; date:string; exception?:string; }
 
 const PAYMENTS: Pmt[] = [
   { id:"p1", source:"ERA #ERA-2026-0234", eraId:"ERA-2026-0234", payer:"BCBS Colorado",          amount:1248.22, method:"ERA",     status:"partial",    date:"05/19/2026", exception:"Payment amount exceeds remaining balance by $42.18" },
   { id:"p2", source:"ERA #ERA-2026-0235", eraId:"ERA-2026-0235", payer:"Aetna",                  amount:892.50,  method:"ERA",     status:"ready",      date:"05/19/2026" },
-  { id:"p3", source:"Patient – Dana Patel",                       patient:"Dana Patel",           amount:40.00,   method:"Card",    status:"posted",     date:"05/19/2026" },
-  { id:"p4", source:"Patient – James Rivera",                     patient:"James Rivera",         amount:0.00,    method:"Patient", status:"review",     date:"05/18/2026", exception:"Copay collected: $0 — verify Medicare advantage plan" },
+  { id:"p3", source:"Client – Dana Patel",                       client:"Dana Patel",           amount:40.00,   method:"Card",    status:"posted",     date:"05/19/2026" },
+  { id:"p4", source:"Client – James Rivera",                     client:"James Rivera",         amount:0.00,    method:"Client", status:"review",     date:"05/18/2026", exception:"Copay collected: $0 — verify Medicare advantage plan" },
   { id:"p5", source:"ERA #ERA-2026-0231", eraId:"ERA-2026-0231", payer:"Colorado Medicaid",      amount:2104.80, method:"ERA",     status:"posted",     date:"05/16/2026" },
   { id:"p6", source:"Check #44821",                                                               amount:618.00,  method:"Check",   status:"ready",      date:"05/15/2026" },
   { id:"p7", source:"ERA #ERA-2026-0229", eraId:"ERA-2026-0229", payer:"United Behavioral Health",amount:330.00, method:"ERA",     status:"exception",  date:"05/14/2026", exception:"Unmatched claim — no matching claim found in system" },
-  { id:"p8", source:"Patient – Sofia Martinez",                   patient:"Sofia Martinez",       amount:0.00,    method:"ACH",     status:"review",     date:"05/13/2026", exception:"ACH returned — insufficient funds" },
+  { id:"p8", source:"Client – Sofia Martinez",                   client:"Sofia Martinez",       amount:0.00,    method:"ACH",     status:"review",     date:"05/13/2026", exception:"ACH returned — insufficient funds" },
 ];
 
 const LEDGER = [
@@ -29,7 +29,7 @@ const TIMELINE = [
   { label:"Claim Submitted",             date:"04/25/2026", color:"#3B82F6" },
   { label:"ERA Received from BCBS",      date:"05/12/2026", color:"#059669" },
   { label:"Payment Partially Applied",   date:"05/19/2026", color:"#D97706" },
-  { label:"Patient Balance Created – $20", date:"05/19/2026", color:"#3B82F6" },
+  { label:"Client Balance Created – $20", date:"05/19/2026", color:"#3B82F6" },
   { label:"Statement Pending",           date:"—",          color:"#94A3B8" },
 ];
 
@@ -105,7 +105,7 @@ export function V1Hierarchy() {
               {/* Row bottom: status + meta at lower weight */}
               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                 <Pill status={p.status} />
-                <span style={{ fontSize:11, color:"#94A3B8" }}>{p.payer ?? p.patient ?? p.method} · {p.date}</span>
+                <span style={{ fontSize:11, color:"#94A3B8" }}>{p.payer ?? p.client ?? p.method} · {p.date}</span>
               </div>
             </div>
           );
@@ -176,7 +176,7 @@ export function V1Hierarchy() {
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, borderTop:"1px solid #F1F5F9", paddingTop:14 }}>
               {[
-                { label:"Payer / Patient", value: selected.payer ?? selected.patient ?? "—" },
+                { label:"Payer / Client", value: selected.payer ?? selected.client ?? "—" },
                 { label:"ERA #",           value: selected.eraId ?? "—" },
                 { label:"Received",        value: selected.date },
               ].map(f => (
@@ -236,7 +236,7 @@ export function V1Hierarchy() {
             {/* Post actions */}
             <div style={{ display:"flex", gap:8, flexWrap:"wrap", padding:"14px 16px", borderTop:"1px solid #F1F5F9" }}>
               <button style={{ height:34, padding:"0 18px", border:"none", borderRadius:8, fontSize:13, fontWeight:700, color:"#fff", background:"#3B82F6", cursor:"pointer" }}>Post Payment</button>
-              {["Split Payment","Transfer Balance","Write Off","Send to Patient Billing"].map(a => (
+              {["Split Payment","Transfer Balance","Write Off","Send to Client Billing"].map(a => (
                 <button key={a} style={{ height:34, padding:"0 14px", border:"1px solid #E2E8F0", borderRadius:8, fontSize:13, fontWeight:500, color:"#475569", background:"#fff", cursor:"pointer" }}>{a}</button>
               ))}
               <button style={{ height:34, padding:"0 14px", border:"1px solid #FCA5A5", borderRadius:8, fontSize:13, fontWeight:500, color:"#DC2626", background:"#fff", cursor:"pointer" }}>Create Refund</button>

@@ -87,7 +87,7 @@ export function validateEra835Posting(row: EraClaimPaymentRow): ValidationResult
       severity: "blocking",
       code: "negative_patient_responsibility",
       field: "clp05_patient_responsibility",
-      message: `Patient responsibility cannot be negative (received ${patientResp.toFixed(2)}).`,
+      message: `Client responsibility cannot be negative (received ${patientResp.toFixed(2)}).`,
     });
   }
 
@@ -103,7 +103,7 @@ export function validateEra835Posting(row: EraClaimPaymentRow): ValidationResult
       severity: "blocking",
       code: "balance_mismatch",
       field: "clp03_total_charge",
-      message: `Posting does not balance: payment ${insurancePayment.toFixed(2)} + adjustments ${casTotal.toFixed(2)} + patient ${patientResp.toFixed(2)} = ${expected.toFixed(2)}, but charge is ${actualCharge.toFixed(2)} (variance ${variance.toFixed(2)}).`,
+      message: `Posting does not balance: payment ${insurancePayment.toFixed(2)} + adjustments ${casTotal.toFixed(2)} + client ${patientResp.toFixed(2)} = ${expected.toFixed(2)}, but charge is ${actualCharge.toFixed(2)} (variance ${variance.toFixed(2)}).`,
     });
   } else if (Math.abs(variance) > POSTING_BALANCE_TOLERANCE) {
     // ½ cent .. 1 cent — warn (rounding noise).
@@ -122,7 +122,7 @@ export function validateEra835Posting(row: EraClaimPaymentRow): ValidationResult
       severity: "warning",
       code: "patient_resp_without_client",
       field: "client_id",
-      message: "Patient responsibility was reported but the claim is not linked to a patient; no patient invoice will be created.",
+      message: "Client responsibility was reported but the claim is not linked to a client; no client invoice will be created.",
     });
   }
 
@@ -154,13 +154,13 @@ export function validateEra835Posting(row: EraClaimPaymentRow): ValidationResult
     }
   }
 
-  // Denial-like signal: zero payment, nonzero adjustments, no patient resp.
+  // Denial-like signal: zero payment, nonzero adjustments, no client resp.
   if (insurancePayment === 0 && casTotal > 0 && patientResp === 0) {
     warning.push({
       severity: "warning",
       code: "likely_denial",
       field: "clp04_payment_amount",
-      message: "Zero payment with non-zero adjustments and no patient responsibility — this looks like a denial; route to denial workqueue after posting.",
+      message: "Zero payment with non-zero adjustments and no client responsibility — this looks like a denial; route to denial workqueue after posting.",
     });
   }
 

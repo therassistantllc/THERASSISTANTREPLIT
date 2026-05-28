@@ -27,7 +27,7 @@ function parseList(v: string | null): string[] | null {
 function parsePaymentSources(v: string | null): PaymentSource[] | null {
   const list = parseList(v);
   if (!list) return null;
-  const allowed: PaymentSource[] = ["era", "manual_insurance", "patient"];
+  const allowed: PaymentSource[] = ["era", "manual_insurance", "client"];
   return list.filter((s): s is PaymentSource =>
     (allowed as string[]).includes(s),
   );
@@ -65,7 +65,7 @@ export async function GET(req: Request) {
     providerNpi: searchParams.get("providerNpi"),
     clientId: searchParams.get("clientId"),
     paymentSource: parsePaymentSources(searchParams.get("paymentSource")),
-    paymentType: pt === "insurance" || pt === "patient" ? pt : null,
+    paymentType: pt === "insurance" || pt === "client" ? pt : null,
     postingStatus: parseList(searchParams.get("postingStatus")),
     depositDateFrom: searchParams.get("depositDateFrom"),
     depositDateTo: searchParams.get("depositDateTo"),

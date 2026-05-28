@@ -3,7 +3,7 @@
  *
  * GET — return basic header info for a single professional claim so the
  * claim detail page can render claim number, status, payer, totals, and
- * the linked patient/encounter without re-implementing the joins on the
+ * the linked client/encounter without re-implementing the joins on the
  * client. Scoped to the caller's organization.
  */
 import { NextResponse } from "next/server";

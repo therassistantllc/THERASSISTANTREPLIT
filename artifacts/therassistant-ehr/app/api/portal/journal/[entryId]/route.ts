@@ -49,7 +49,7 @@ export async function PATCH(
   if (error || !supabase) return NextResponse.json({ success: false, error }, { status: 500 });
   if (!entry) return NextResponse.json({ success: false, error: "Entry not found" }, { status: 404 });
   // Once a clinician has imported the entry it becomes part of the chart record
-  // and the patient can no longer edit it (matches task acceptance).
+  // and the client can no longer edit it (matches task acceptance).
   if (entry.imported_into_note_id) {
     return NextResponse.json(
       { success: false, error: "This entry has been reviewed and can no longer be edited." },

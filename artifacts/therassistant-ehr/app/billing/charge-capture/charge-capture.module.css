@@ -405,7 +405,7 @@
   min-width: 0;
 }
 
-/* Patient header bar */
+/* Client header bar */
 .patientBar {
   display: flex;
   flex-wrap: wrap;

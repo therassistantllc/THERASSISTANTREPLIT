@@ -321,7 +321,7 @@ export default function ClaimEditDashboardClient() {
                     className="button button-secondary"
                     href={`/clients/${item.patientId}`}
                   >
-                    Patient Chart
+                    Client Chart
                   </Link>
                 ) : null}
                 {item.payerProfileId ? (

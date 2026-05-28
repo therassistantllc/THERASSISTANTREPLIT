@@ -2,7 +2,7 @@ export type AppRole = "admin_biller" | "clinician" | "credentialing" | "owner_ex
 
 type ModuleKey =
   | "scheduling"
-  | "patients"
+  | "clients"
   | "billing"
   | "work_schedule"
   | "profile"
@@ -14,7 +14,7 @@ type ModuleKey =
 const moduleAccessByRole: Record<AppRole, Record<ModuleKey, boolean>> = {
   admin_biller: {
     scheduling: true,
-    patients: true,
+    clients: true,
     billing: true,
     work_schedule: true,
     profile: true,
@@ -25,7 +25,7 @@ const moduleAccessByRole: Record<AppRole, Record<ModuleKey, boolean>> = {
   },
   clinician: {
     scheduling: true,
-    patients: true,
+    clients: true,
     billing: true,
     work_schedule: false,
     profile: true,
@@ -36,7 +36,7 @@ const moduleAccessByRole: Record<AppRole, Record<ModuleKey, boolean>> = {
   },
   credentialing: {
     scheduling: true,
-    patients: true,
+    clients: true,
     billing: true,
     work_schedule: false,
     profile: true,
@@ -47,7 +47,7 @@ const moduleAccessByRole: Record<AppRole, Record<ModuleKey, boolean>> = {
   },
   owner_executive: {
     scheduling: true,
-    patients: true,
+    clients: true,
     billing: true,
     work_schedule: true,
     profile: true,
@@ -58,7 +58,7 @@ const moduleAccessByRole: Record<AppRole, Record<ModuleKey, boolean>> = {
   },
   support_read_only: {
     scheduling: true,
-    patients: true,
+    clients: true,
     billing: true,
     work_schedule: false,
     profile: true,

@@ -1096,7 +1096,7 @@ export default function PatientBillingClient() {
 
   return (
     <WorkqueueShell<Row>
-      title="Patient Billing"
+      title="Client Billing"
       description="Self-pay balances after insurance has processed — statements, payments, plans, and collections review."
       headerActions={headerActions}
       summary={summaryMetrics}

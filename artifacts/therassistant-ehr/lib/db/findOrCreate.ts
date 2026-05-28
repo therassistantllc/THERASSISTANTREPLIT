@@ -4,7 +4,7 @@
  * Task #148 fixed read-then-insert races on encounters / clinical notes
  * with a partial unique index + a domain-specific helper. Task #184 sweeps
  * the same pattern across the rest of the EHR: claim creation, payment
- * posting, ERA batch ingest, ledger entries, patient invoice creation.
+ * posting, ERA batch ingest, ledger entries, client invoice creation.
  *
  * Every site looked the same: SELECT existing → if missing INSERT. Two
  * near-simultaneous callers (double-click, retry after slow network,

@@ -34,10 +34,10 @@ export function composeCheckInSubjectiveBlock(input: {
   if (!label && !reflection) return "";
   const lines: string[] = [
     CHECK_IN_SUBJECTIVE_MARKER,
-    "(From patient's pre-session check-in)",
+    "(From client's pre-session check-in)",
   ];
   if (label) lines.push(`Focus for today: ${label}`);
-  if (reflection) lines.push(`Patient reflection: ${reflection}`);
+  if (reflection) lines.push(`Client reflection: ${reflection}`);
   lines.push(CHECK_IN_SUBJECTIVE_MARKER_END);
   return lines.join("\n");
 }

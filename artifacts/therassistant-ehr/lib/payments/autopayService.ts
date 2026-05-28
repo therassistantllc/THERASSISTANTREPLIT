@@ -5,13 +5,13 @@
  * the toggle into an actual recurring charge. Whenever a new
  * `patient_invoices` row is created (ERA PR transfer, denied-claim
  * payback, etc.) the caller invokes `attemptAutopayForInvoice` to run an
- * off-session Stripe charge against the patient's saved card.
+ * off-session Stripe charge against the client's saved card.
  *
  * Success path:
  *   - chargeSavedCardForInvoice posts the payment row and decrements the
  *     invoice balance (via recordPatientInvoicePayment).
  *   - We additionally emit a `patient_billing_autopay_succeeded` audit so
- *     the Patient Billing queue's communications timeline shows it.
+ *     the Client Billing queue's communications timeline shows it.
  *
  * Failure path:
  *   - We insert a `patient_invoice_payments` row with
@@ -76,7 +76,7 @@ interface InvoiceAutopayRow {
 
 const AUTOPAY_SUCCESS_EVT = "patient_billing_autopay_succeeded";
 const AUTOPAY_FAILURE_EVT = "patient_billing_autopay_failed";
-/** Task #736: stamped after we actually send the patient an email so
+/** Task #736: stamped after we actually send the client an email so
  *  repeated failures on a stuck card don't re-flood their inbox. */
 const AUTOPAY_FAILURE_EMAIL_EVT = "patient_billing_autopay_failure_email_sent";
 /** Throttle window between consecutive failure emails for the same
@@ -89,7 +89,7 @@ const AUTOPAY_RETRY_NOTICE_EVT = "patient_billing_autopay_retry_notice_sent";
 
 /**
  * Task #732. Right before the FINAL scheduled autopay retry runs, send
- * the patient a heads-up email so they can update their saved card
+ * the client a heads-up email so they can update their saved card
  * before we re-charge it (and before a biller has to chase them
  * manually).
  *
@@ -97,7 +97,7 @@ const AUTOPAY_RETRY_NOTICE_EVT = "patient_billing_autopay_retry_notice_sent";
  *   - Looks for an existing `patient_billing_autopay_retry_notice_sent`
  *     audit row for the same (invoice, attempt). If one exists we skip
  *     the send — so re-running the cron the same day, or running it
- *     after a transient failure, will not spam the patient.
+ *     after a transient failure, will not spam the client.
  *   - The audit row is written even when Resend isn't configured / the
  *     send fails, so a future cron pass does not retry the email and
  *     accidentally spam either. Failures are logged.
@@ -339,10 +339,10 @@ async function fileAutopayFailureWqItem(
 
     const isAuth = args.errorCode === "authentication_required";
     const headline = isAuth
-      ? "Autopay needs patient 3DS confirmation"
+      ? "Autopay needs client 3DS confirmation"
       : `Autopay card declined (${args.brand} •••• ${args.last4})`;
     const description = `Auto-charge of $${args.amount.toFixed(2)} failed: ${args.errorMessage}. ` +
-      `Patient can fix it from the portal, or you can update the card and retry from the Patient Billing queue.`;
+      `Client can fix it from the portal, or you can update the card and retry from the Client Billing queue.`;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any)
@@ -388,7 +388,7 @@ async function fileAutopayFailureWqItem(
 
 /**
  * Close any open `autopay_charge_failed` workqueue rows for an invoice.
- * Called when the patient self-serves a successful charge from the
+ * Called when the client self-serves a successful charge from the
  * portal, when the biller manually charges from the queue, or when the
  * stripe webhook posts a payment to the invoice. Best-effort, swallows
  * its own errors. Returns the number of rows closed.
@@ -449,7 +449,7 @@ export async function closeAutopayFailureWorkqueueItem(input: {
 }
 
 /**
- * Resolve the public base URL for portal deep-links emailed to patients.
+ * Resolve the public base URL for portal deep-links emailed to clients.
  * Mirrors the portal/home route's resolver — env first, REPLIT_DEV_DOMAIN
  * as a dev fallback, otherwise null (we just omit the prefix and the
  * link becomes relative, which is better than blasting `localhost`).
@@ -471,7 +471,7 @@ function buildPortalHomeUrl(): string {
 }
 
 /**
- * Look up the practice/organization display name for outbound patient
+ * Look up the practice/organization display name for outbound client
  * email. Best-effort — returns "your care team" if anything goes wrong
  * or the row isn't readable, so we never block the email send.
  */
@@ -495,7 +495,7 @@ async function fetchPracticeName(
 }
 
 /**
- * Throttle check (Task #736): true when we sent the patient a failure
+ * Throttle check (Task #736): true when we sent the client a failure
  * email for this invoice within the throttle window. Backed by an
  * audit_logs row we stamp on each successful send.
  */
@@ -533,7 +533,7 @@ async function recentFailureEmailExists(
 }
 
 /**
- * Send the patient-facing autopay failure email and stamp an audit row
+ * Send the client-facing autopay failure email and stamp an audit row
  * so the throttle window starts ticking. Best-effort and isolated —
  * never throws to the caller; the WQ row and audit trail are the
  * source of truth for "what happened".
@@ -604,7 +604,7 @@ async function notifyPatientOfAutopayFailure(
       patient_id: args.client.id,
       event_type: AUTOPAY_FAILURE_EMAIL_EVT,
       event_summary: sendResult.ok
-        ? `Emailed patient about failed autopay charge ($${args.amountDollars.toFixed(2)})`
+        ? `Emailed client about failed autopay charge ($${args.amountDollars.toFixed(2)})`
         : `Autopay failure email send failed: ${sendResult.error}`,
       event_metadata: {
         patient_invoice_id: args.invoiceId,
@@ -742,7 +742,7 @@ export async function attemptAutopayForInvoice(input: {
       attempted: false,
       ok: false,
       code: "skipped_invoice_missing",
-      message: "Patient invoice not found",
+      message: "Client invoice not found",
     };
   }
 
@@ -784,7 +784,7 @@ export async function attemptAutopayForInvoice(input: {
       attempted: false,
       ok: false,
       code: "skipped_client_missing",
-      message: "Patient not found",
+      message: "Client not found",
     };
   }
   if (!client.autopay_enabled) {
@@ -792,7 +792,7 @@ export async function attemptAutopayForInvoice(input: {
       attempted: false,
       ok: true,
       code: "skipped_autopay_off",
-      message: "Autopay is off for this patient",
+      message: "Autopay is off for this client",
     };
   }
   if (
@@ -883,7 +883,7 @@ export async function attemptAutopayForInvoice(input: {
     },
   });
   // Task #602/#674: file a workqueue row so a biller can chase it, and
-  // so the portal can detect the failure and prompt the patient to fix
+  // so the portal can detect the failure and prompt the client to fix
   // their card / complete 3DS without anyone in the office having to act.
   await fileAutopayFailureWqItem(supabase, {
     organizationId: input.organizationId,
@@ -895,7 +895,7 @@ export async function attemptAutopayForInvoice(input: {
     errorCode: outcome.code,
     errorMessage: outcome.message,
   });
-  // Task #736: also email the patient directly so they don't have to
+  // Task #736: also email the client directly so they don't have to
   // happen to log into the portal to learn the charge failed. Throttled
   // and best-effort — see notifyPatientOfAutopayFailure.
   await notifyPatientOfAutopayFailure(supabase, {
@@ -963,8 +963,8 @@ export interface AutopayRetrySummary {
  * a new audit event that resets the "last attempt at" timestamp.
  *
  * Skips, per Task #669:
- *   - patient turned autopay off  (clients.autopay_enabled = false)
- *   - patient removed the saved card (stripe_payment_method_id null)
+ *   - client turned autopay off  (clients.autopay_enabled = false)
+ *   - client removed the saved card (stripe_payment_method_id null)
  *   - invoice is already paid/voided or balance ≤ 0
  *   - the most recent autopay event is a success (already recovered)
  *   - the max retry count has been hit
@@ -1135,9 +1135,9 @@ export async function retryEligibleAutopayFailures(opts: {
       continue;
     }
 
-    // Re-check the invoice and patient state before charging again.
+    // Re-check the invoice and client state before charging again.
     // Task #669 explicitly requires that we do NOT keep emitting failed
-    // audits once the patient turned autopay off or removed their card —
+    // audits once the client turned autopay off or removed their card —
     // attemptAutopayForInvoice would otherwise write another failure row
     // for "no saved card on file", which the cron would then keep
     // retrying forever.
@@ -1196,7 +1196,7 @@ export async function retryEligibleAutopayFailures(opts: {
     }
 
     // Task #732: if this retry is the FINAL one in the schedule, send
-    // the patient a heads-up email first so they have a chance to
+    // the client a heads-up email first so they have a chance to
     // update their card before we re-charge it. Dedupe per (invoice,
     // upcoming attempt) lives inside sendFinalRetryNoticeIfNeeded.
     const upcomingAttemptNumber = attemptCountBefore + 1;

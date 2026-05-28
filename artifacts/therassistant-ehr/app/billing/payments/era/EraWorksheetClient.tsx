@@ -117,7 +117,7 @@ function AddPatientModal({ rowId, firstName, lastName, memberId, payerName, onCl
         }),
       });
       const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.error ?? "Failed to create patient");
+      if (!res.ok || !json.success) throw new Error(json.error ?? "Failed to create client");
       onCreated(rowId, json.id ?? json.clientId ?? json.client?.id, `${firstNameInput} ${lastNameInput}`.trim());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -137,14 +137,14 @@ function AddPatientModal({ rowId, firstName, lastName, memberId, payerName, onCl
       >
         <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--line)" }}>
           <h2 className="text-base font-semibold" style={{ color: "var(--navy)" }}>
-            Add Patient to System
+            Add Client to System
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           <p className="text-sm" style={{ color: "var(--muted)" }}>
-            This patient was not found in the system. Patient information from the ERA has been pre-filled below.
+            This client was not found in the system. Client information from the ERA has been pre-filled below.
           </p>
 
           {memberId && (
@@ -235,7 +235,7 @@ function AddPatientModal({ rowId, firstName, lastName, memberId, payerName, onCl
               className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold text-white"
               style={{ background: saving ? "var(--sage-mid)" : "var(--navy)", cursor: saving ? "not-allowed" : "pointer" }}
             >
-              {saving ? "Adding…" : "Add Patient"}
+              {saving ? "Adding…" : "Add Client"}
             </button>
           </div>
         </form>
@@ -410,9 +410,9 @@ export default function EraWorksheetClient() {
     setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, [key]: val } : r)));
   }
 
-  /* ── Add Patient callback ───────────────────────────────────────── */
+  /* ── Add Client callback ───────────────────────────────────────── */
   function handlePatientCreated(rowId: string, patientId: string, patientName: string) {
-    // Update ALL rows with the same patient name (normalize for comparison)
+    // Update ALL rows with the same client name (normalize for comparison)
     const normalizedName = patientName.trim().toLowerCase();
     setRows((prev) =>
       prev.map((r) => {
@@ -584,7 +584,7 @@ export default function EraWorksheetClient() {
             </p>
           )}
           <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-            Transactions have been added to the patients&apos; ledgers.
+            Transactions have been added to the clients&apos; ledgers.
           </p>
         </div>
         <div className="flex gap-3">
@@ -623,7 +623,7 @@ export default function EraWorksheetClient() {
 
   return (
     <div className="flex flex-col min-h-0">
-      {/* Add Patient Modal */}
+      {/* Add Client Modal */}
       {addPatientRowId !== null && (() => {
         const row = rows.find((r) => r.rowId === addPatientRowId);
         return (
@@ -702,7 +702,7 @@ export default function EraWorksheetClient() {
               <div /> {/* spacer */}
               <div /> {/* spacer */}
               <HeaderField
-                label="Total Patient Responsibility"
+                label="Total Client Responsibility"
                 value={fmt(header.totalPatientResponsibility)}
               />
             </div>
@@ -714,7 +714,7 @@ export default function EraWorksheetClient() {
           <BalanceBox balance={balance} header={header} rows={rows} />
         )}
 
-        {/* ── Unmatched patients warning ──────────────────────────── */}
+        {/* ── Unmatched clients warning ──────────────────────────── */}
         {unmatchedRows.length > 0 && (
           <div
             className="flex items-start gap-3 rounded-xl px-4 py-3 text-sm"
@@ -727,8 +727,8 @@ export default function EraWorksheetClient() {
             <span className="text-base mt-0.5">⚠</span>
             <span>
               <strong>{unmatchedRows.length}</strong> service line
-              {unmatchedRows.length !== 1 ? "s" : ""} could not be matched to an existing patient.
-              Use the <strong>Add Patient</strong> button in each row to create the patient record.
+              {unmatchedRows.length !== 1 ? "s" : ""} could not be matched to an existing client.
+              Use the <strong>Add Client</strong> button in each row to create the client record.
             </span>
           </div>
         )}
@@ -753,7 +753,7 @@ export default function EraWorksheetClient() {
             <thead>
               <tr style={{ background: "var(--background)", borderBottom: "1px solid var(--line)" }}>
                 {[
-                  "Patient Name",
+                  "Client Name",
                   "Date of Service",
                   "Provider Name",
                   "CPT / HCPCS",
@@ -761,7 +761,7 @@ export default function EraWorksheetClient() {
                   "Allowed Amount",
                   "Adj. Amount",
                   "CARC / RARC",
-                  "Patient Resp.",
+                  "Client Resp.",
                   "Amount Paid",
                   "",
                 ].map((h) => (
@@ -791,14 +791,14 @@ export default function EraWorksheetClient() {
                     background: !row.patientFound ? "#fffdf5" : "transparent",
                   }}
                 >
-                  {/* Patient Name */}
+                  {/* Client Name */}
                   <td className="px-2 py-1.5 min-w-[140px]">
                     <div className="flex items-center gap-1.5">
                       {!row.patientFound && (
                         <span
                           className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
                           style={{ background: "#f59e0b" }}
-                          title="Patient not matched"
+                          title="Client not matched"
                         />
                       )}
                       <TextCell
@@ -847,7 +847,7 @@ export default function EraWorksheetClient() {
                       onChange={(v) => updateRow(row.rowId, "carcRarc", v)}
                     />
                   </td>
-                  {/* Patient Responsibility */}
+                  {/* Client Responsibility */}
                   <td className="px-2 py-1.5 min-w-[100px]">
                     <NumberCell
                       value={row.patientResponsibility}
@@ -870,7 +870,7 @@ export default function EraWorksheetClient() {
                         style={{ background: "var(--sage-soft)", color: "var(--sage)" }}
                         onClick={() => setAddPatientRowId(row.rowId)}
                       >
-                        + Add Patient
+                        + Add Client
                       </button>
                     )}
                     {row.patientFound && row.patientId && (
@@ -1043,7 +1043,7 @@ function BalanceBox({
           color={c.text}
         />
         <BalanceItem
-          label="Patient Responsibility"
+          label="Client Responsibility"
           expected={header.totalPatientResponsibility}
           actual={sumPR}
           color={c.text}

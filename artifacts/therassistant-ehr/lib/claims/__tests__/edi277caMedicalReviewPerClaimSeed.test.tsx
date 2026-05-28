@@ -15,7 +15,7 @@ const ACK_ID = "ack-doc-req";
 const CLAIM_ROWS = [
   {
     id: "claim-doc",
-    patient_id: "patient-doc",
+    patient_id: "client-doc",
     appointment_id: "appt-doc",
     claim_number: "CLM-DOC",
     patient_account_number: "PAT-DOC",
@@ -23,7 +23,7 @@ const CLAIM_ROWS = [
   },
   {
     id: "claim-clean",
-    patient_id: "patient-clean",
+    patient_id: "client-clean",
     appointment_id: "appt-clean",
     claim_number: "CLM-CLEAN",
     patient_account_number: "PAT-CLEAN",
@@ -243,7 +243,7 @@ describe("intake277CAAcknowledgement — per-claim medical-review seeding", () =
     const row = insertedAuditRows[0];
     assert.equal(row.action, "medical_review_requested");
     assert.equal(row.claim_id, "claim-doc");
-    assert.equal(row.patient_id, "patient-doc");
+    assert.equal(row.patient_id, "client-doc");
     assert.equal(row.appointment_id, "appt-doc");
 
     const meta = row.event_metadata as Record<string, unknown>;

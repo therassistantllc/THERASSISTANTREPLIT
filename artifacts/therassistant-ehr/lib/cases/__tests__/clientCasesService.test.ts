@@ -28,11 +28,11 @@ test("CASE_TYPES covers all the documented coverage groupings", () => {
   }
 });
 
-test("patient-responsibility set is exactly self_pay + charity", () => {
+test("client-responsibility set is exactly self_pay + charity", () => {
   assert.deepEqual([...PATIENT_RESPONSIBILITY_CASE_TYPES].sort(), ["charity", "self_pay"]);
 });
 
-test("isPatientResponsibilityCaseType routes self-pay and charity to the patient", () => {
+test("isPatientResponsibilityCaseType routes self-pay and charity to the client", () => {
   assert.equal(isPatientResponsibilityCaseType("self_pay"), true);
   assert.equal(isPatientResponsibilityCaseType("charity"), true);
 });
@@ -42,7 +42,7 @@ test("isPatientResponsibilityCaseType keeps insurance cases on the claim path", 
     assert.equal(
       isPatientResponsibilityCaseType(t),
       false,
-      `${t} should not route to patient responsibility`,
+      `${t} should not route to client responsibility`,
     );
   }
 });

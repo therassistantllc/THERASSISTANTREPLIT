@@ -299,7 +299,7 @@ function seedHappyPath(): Seed {
         id: "doc-1",
         organization_id: ORG,
         file_name: "records.pdf",
-        title: "Patient records",
+        title: "Client records",
         mime_type: "application/pdf",
         storage_bucket: "mailroom-documents",
         storage_path: "claims/claim-1/records.pdf",

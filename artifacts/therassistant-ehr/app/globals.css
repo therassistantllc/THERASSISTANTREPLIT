@@ -684,7 +684,7 @@ textarea {
   border-bottom-color: var(--navy);
 }
 
-/* ── Context banner (patient / claim context header) ─ */
+/* ── Context banner (client / claim context header) ─ */
 .context-banner {
   display: flex;
   gap: 24px;
@@ -1458,7 +1458,7 @@ textarea {
   border: 1px solid var(--line);
 }
 
-/* ── Patient portal ──────────────────────────────── */
+/* ── Client portal ──────────────────────────────── */
 .portal-shell {
   max-width: 880px;
   margin: 0 auto;

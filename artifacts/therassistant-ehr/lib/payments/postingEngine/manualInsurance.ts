@@ -4,7 +4,7 @@
  * Posts a paper EOB / VCC / mailed-check / payer-portal insurance payment
  * against a professional claim. Mirrors the ERA 835 path:
  *   validation → insert insurance_manual_payments → write ledger rows
- *   → update claim balances → create patient invoice when PR > 0 → audit.
+ *   → update claim balances → create client invoice when PR > 0 → audit.
  *
  * Validation parallels validateEra835Posting at the claim grain:
  *   paid + adjustments + patient_resp must equal total_charge (±1¢).
@@ -101,7 +101,7 @@ export function validateManualInsurancePosting(
       severity: "blocking",
       code: "negative_patient_responsibility",
       field: "patientResponsibilityAmount",
-      message: `Patient responsibility cannot be negative.`,
+      message: `Client responsibility cannot be negative.`,
     });
   }
   if (paid === 0 && adj === 0 && pr === 0) {
@@ -109,7 +109,7 @@ export function validateManualInsurancePosting(
       severity: "blocking",
       code: "zero_total",
       field: "payerPaymentAmount",
-      message: "At least one of payment / adjustment / patient responsibility must be greater than zero.",
+      message: "At least one of payment / adjustment / client responsibility must be greater than zero.",
     });
   }
 
@@ -124,7 +124,7 @@ export function validateManualInsurancePosting(
       severity: "blocking",
       code: "balance_mismatch",
       field: "totalChargeAmount",
-      message: `Posting does not balance: payment ${paid.toFixed(2)} + adjustment ${adj.toFixed(2)} + patient ${pr.toFixed(2)} = ${expected.toFixed(2)}, but charge is ${charge.toFixed(2)} (variance ${variance.toFixed(2)}).`,
+      message: `Posting does not balance: payment ${paid.toFixed(2)} + adjustment ${adj.toFixed(2)} + client ${pr.toFixed(2)} = ${expected.toFixed(2)}, but charge is ${charge.toFixed(2)} (variance ${variance.toFixed(2)}).`,
     });
   } else if (charge > 0 && Math.abs(variance) > POSTING_BALANCE_TOLERANCE) {
     warning.push({
@@ -140,7 +140,7 @@ export function validateManualInsurancePosting(
       severity: "warning",
       code: "patient_resp_without_client",
       field: "clientId",
-      message: "Patient responsibility was entered but the claim is not linked to a patient; no invoice will be created.",
+      message: "Client responsibility was entered but the claim is not linked to a client; no invoice will be created.",
     });
   }
 
@@ -149,7 +149,7 @@ export function validateManualInsurancePosting(
       severity: "warning",
       code: "likely_denial",
       field: "payerPaymentAmount",
-      message: "Zero payment with non-zero adjustment and no patient responsibility — this looks like a denial.",
+      message: "Zero payment with non-zero adjustment and no client responsibility — this looks like a denial.",
     });
   }
 
@@ -358,7 +358,7 @@ export async function commitManualInsurancePosting(
             entryType: "patient_responsibility",
             amount: lpr,
             groupCode: "PR",
-            description: `Patient responsibility (line ${a.serviceLineId})`,
+            description: `Client responsibility (line ${a.serviceLineId})`,
           });
           result.effects.push({ entryType: "patient_responsibility", amount: lpr, groupCode: "PR", description: `Line ${a.serviceLineId} PR` });
         }
@@ -390,9 +390,9 @@ export async function commitManualInsurancePosting(
         entryType: "patient_responsibility",
         amount: pr,
         groupCode: "PR",
-        description: "Patient responsibility from manual EOB",
+        description: "Client responsibility from manual EOB",
       });
-      result.effects.push({ entryType: "patient_responsibility", amount: pr, groupCode: "PR", description: "Patient responsibility" });
+      result.effects.push({ entryType: "patient_responsibility", amount: pr, groupCode: "PR", description: "Client responsibility" });
 
       if (clientId) {
         const created = await createPatientInvoiceForManual(supabase, organizationId, hydrated!, clientId, manualId, pr, actor, result.auditLogIds);
@@ -534,7 +534,7 @@ async function createPatientInvoiceForManual(
     objectId: String((data as { id: string }).id),
     claimId: claim.id,
     afterValue: { patient_responsibility_amount: amount, source: "manual_pr" },
-    summary: `Patient invoice ${invoiceNumber(manualPaymentId)} created from manual EOB PR balance ${amount.toFixed(2)}`,
+    summary: `Client invoice ${invoiceNumber(manualPaymentId)} created from manual EOB PR balance ${amount.toFixed(2)}`,
   });
   if (audit) auditSink.push(audit.id);
   return true;

@@ -260,11 +260,11 @@ async function hydrateClaims(
 }
 
 function clientName(client: DbRow | undefined): string {
-  if (!client) return "Unknown patient";
+  if (!client) return "Unknown client";
   const f = txt(client.first_name);
   const l = txt(client.last_name);
   const name = `${f} ${l}`.trim();
-  return name || "Unknown patient";
+  return name || "Unknown client";
 }
 
 // ── 1. payer-rejections ────────────────────────────────────────────────────
@@ -627,7 +627,7 @@ const loadUnpostedPayments: Loader = async (sb, orgId, tab, f) => {
       .gte("created_at", lookback.toISOString())
       .limit(1000),
   ]);
-  const tabIds = ["all", "ach", "check", "card", "patient"];
+  const tabIds = ["all", "ach", "check", "card", "client"];
   const overlayIds = [
     ...((eras.data ?? []) as DbRow[]).map((r) => txt(r.id)),
     ...((clients.data ?? []) as DbRow[]).map((r) => txt(r.id)),
@@ -668,7 +668,7 @@ const loadUnpostedPayments: Loader = async (sb, orgId, tab, f) => {
     const age = daysSince(received);
     const ov = overlay.get(id);
     const method = txt(p.payment_method).toLowerCase();
-    const inferred = method.includes("card") ? "card" : method.includes("check") ? "check" : "patient";
+    const inferred = method.includes("card") ? "card" : method.includes("check") ? "check" : "client";
     return {
       id,
       tabs: ov?.tab ? [ov.tab, "all"] : [inferred, "all"],
@@ -678,13 +678,13 @@ const loadUnpostedPayments: Loader = async (sb, orgId, tab, f) => {
       aging_bucket: agingBucket(age),
       priority: priorityFor(age, amt),
       received_at: received || null,
-      source: `Patient (${txt(p.payment_method) || "card"})`,
+      source: `Client (${txt(p.payment_method) || "card"})`,
       reference: txt(p.reference_number) || "—",
       payer_name: null,
       client_name: null,
       amount: amt,
       assigned: null,
-      status_label: "Unposted patient payment",
+      status_label: "Unposted client payment",
       last_action: ov?.lastAction || null,
     };
   });
@@ -746,15 +746,15 @@ const loadCreditBalances: Loader = async (sb, orgId, tab, f) => {
     "credit-balances",
     balRows.map((b) => txt(b.id)),
   );
-  const tabIds = ["patient", "payer", "needs_refund", "transfer_pending", "resolved"];
+  const tabIds = ["client", "payer", "needs_refund", "transfer_pending", "resolved"];
   let rows: BaseRow[] = balRows.map((b) => {
     const id = txt(b.id);
     const credit = Math.abs(money(b.current_balance));
     const since = txt(b.last_payment_date) || txt(b.computed_at);
     const age = daysSince(since);
     const ov = overlay.get(id);
-    const tabId = ov?.tab ?? (credit >= 25 ? "needs_refund" : "patient");
-    const tabs = ov?.tab ? [ov.tab] : ["patient", tabId];
+    const tabId = ov?.tab ?? (credit >= 25 ? "needs_refund" : "client");
+    const tabs = ov?.tab ? [ov.tab] : ["client", tabId];
     const client = clientById.get(txt(b.client_id));
     return {
       id,
@@ -770,7 +770,7 @@ const loadCreditBalances: Loader = async (sb, orgId, tab, f) => {
       account: txt(b.client_id).slice(0, 8) || "—",
       balance: credit,
       since: since || null,
-      proposed_action: credit >= 25 ? "Refund patient" : "Apply to next visit",
+      proposed_action: credit >= 25 ? "Refund client" : "Apply to next visit",
       assigned: null,
       payer_name: null,
       date_of_service: null,
@@ -878,7 +878,7 @@ const loadBadDebtReview: Loader = async (sb, orgId, tab, f) => {
       aging_bucket: agingBucket(age),
       priority: priorityFor(age, bal),
       client_id: txt(b.client_id) || null,
-      patient: clientName(client),
+      client: clientName(client),
       client_name: clientName(client),
       guarantor: clientName(client),
       balance: bal,
@@ -951,7 +951,7 @@ const loadWriteOffs: Loader = async (sb, orgId, tab, f) => {
       aging_bucket: agingBucket(age),
       priority: priorityFor(age, Math.abs(amount)),
       date: postedAt || null,
-      patient: clientName(client),
+      client: clientName(client),
       client_name: clientName(client),
       client_id: txt(claim?.patient_id) || null,
       claim_number: claim ? txt(claim.claim_number) : "—",
@@ -1152,7 +1152,7 @@ export const LIVE_QUEUE_ACTIONS: Record<string, Record<string, string>> = {
     propose_refund: "needs_refund",
     transfer: "transfer_pending",
     resolve: "resolved",
-    reopen: "patient",
+    reopen: "client",
   },
   "reconciliation-exceptions": {
     investigate: "investigating",

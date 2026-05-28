@@ -1,7 +1,7 @@
 /**
  * POST /api/billing/payments/stripe-webhook
  *
- * Stripe webhook receiver for patient card payments. Verifies
+ * Stripe webhook receiver for client card payments. Verifies
  * `Stripe-Signature` (HMAC-SHA256 over `${t}.${rawBody}` with
  * STRIPE_WEBHOOK_SECRET), then routes Stripe events through the posting
  * engine.
@@ -11,7 +11,7 @@
  *       → auto-post via commitPatientPayment
  *   - `charge.refunded`           (Task #136)
  *       → reconcile each refund in the charge: flip matching
- *         payment_refunds row pending→issued, or create a new patient
+ *         payment_refunds row pending→issued, or create a new client
  *         refund row via recordPatientRefund (alreadyIssued=true)
  *   - `refund.updated`            (Task #136)
  *       → same reconciliation, scoped to the single refund object
@@ -21,9 +21,9 @@
  *   - `charge.dispute.closed`     (Task #136 / #173)
  *       → resolve the open dispute workqueue item with the final status.
  *         When status='lost', also auto-reverse the matching client_payment
- *         via reversePostedPayment (Task #173) so the patient ledger
+ *         via reversePostedPayment (Task #173) so the client ledger
  *         matches Stripe (Stripe has debited us for the original charge).
- *         reversePostedPayment opens a pending patient refund row for AR.
+ *         reversePostedPayment opens a pending client refund row for AR.
  *         Won/warning_closed/etc. do not move money — no financial action.
  *
  * Idempotency: payment posting collapses on the unique
@@ -511,7 +511,7 @@ async function handlePaymentSucceeded(
     if (result.ok) {
       // Task #674: if this Stripe payment cleared an invoice that had
       // an open autopay_charge_failed WQ row (filed by attemptAutopay),
-      // close it. Covers the patient-portal self-serve "Fix payment"
+      // close it. Covers the client-portal self-serve "Fix payment"
       // flow (Checkout) and any other path that lands a payment on the
       // invoice (e.g. biller-triggered Checkout link).
       if (invoiceId && supabase) {
@@ -522,7 +522,7 @@ async function handlePaymentSucceeded(
           await closeAutopayFailureWorkqueueItem({
             organizationId,
             patientInvoiceId: invoiceId,
-            reason: `Resolved by patient payment (Stripe ${details.chargeId ?? details.paymentIntentId ?? "?"}).`,
+            reason: `Resolved by client payment (Stripe ${details.chargeId ?? details.paymentIntentId ?? "?"}).`,
             supabase,
           });
         } catch (err) {
@@ -533,7 +533,7 @@ async function handlePaymentSucceeded(
         }
       }
 
-      // Task #674: when the patient just resolved a declined autopay via
+      // Task #674: when the client just resolved a declined autopay via
       // the "Fix payment" Checkout flow, the Checkout Session was bound
       // to their Stripe Customer with setup_future_usage='off_session'.
       // Mirror the resulting payment_method onto clients.stripe_payment_method_*
@@ -720,7 +720,7 @@ async function reconcileStripeRefund(
       return { refundId: existingRow.id, outcome: "marked_failed" };
     }
     if (refund.status === "succeeded" && existingRow.refund_status === "pending") {
-      if (existingRow.refund_type === "patient") {
+      if (existingRow.refund_type === "client") {
         const r = await confirmPatientRefund({
           organizationId: existingRow.organization_id,
           refundId: existingRow.id,
@@ -740,7 +740,7 @@ async function reconcileStripeRefund(
           clientId: null,
           reason: `confirmPatientRefund failed: ${errorSummary}`,
           title: `Reconcile Stripe refund $${amountDollarsStr} (${refund.id})`,
-          description: `Stripe webhook could not confirm pending patient refund ${existingRow.id} for Stripe refund ${refund.id}: ${errorSummary}.`,
+          description: `Stripe webhook could not confirm pending client refund ${existingRow.id} for Stripe refund ${refund.id}: ${errorSummary}.`,
           sourceObjectId: existingRow.source_client_payment_id ?? null,
           contextPayload: {
             stripe_refund_id: refund.id,
@@ -1009,7 +1009,7 @@ async function handleDisputeClosed(
 
   // When the dispute is LOST, money has actually left the building (Stripe
   // debits us for the original charge + fee). The matching client_payment
-  // must be reversed so the patient ledger matches Stripe — otherwise the
+  // must be reversed so the client ledger matches Stripe — otherwise the
   // invoice still reads as paid even though we no longer have the funds.
   // Won/warning_closed/etc. do not move money, so no financial action.
   let reversalInfo: {
@@ -1048,7 +1048,7 @@ async function handleDisputeClosed(
     const now = new Date().toISOString();
     // Resolve the WQ item when the dispute is won (no work left) OR when
     // the dispute is lost AND the auto-reversal succeeded (the financial
-    // obligation is now tracked on the new pending patient refund row
+    // obligation is now tracked on the new pending client refund row
     // reversePostedPayment opened). Otherwise leave it open/in_progress
     // so a biller picks it up.
     const resolved = isWon || (isLost && (reversalInfo.ok || reversalInfo.alreadyReversed));
@@ -1063,7 +1063,7 @@ async function handleDisputeClosed(
         );
       } else if (reversalInfo.ok && reversalInfo.clientPaymentId) {
         descriptionParts.push(
-          `Auto-reversed client_payment ${reversalInfo.clientPaymentId}; a pending patient refund row was opened to track the AR write-off.`,
+          `Auto-reversed client_payment ${reversalInfo.clientPaymentId}; a pending client refund row was opened to track the AR write-off.`,
         );
       } else if (reversalInfo.attempted) {
         descriptionParts.push(
@@ -1096,7 +1096,7 @@ async function handleDisputeClosed(
   const amountDollars = (Number(dispute.amount ?? 0) / 100).toFixed(2);
   const reversalNote = isLost
     ? reversalInfo.ok
-      ? ` Auto-reversed client_payment ${reversalInfo.clientPaymentId}; pending patient refund row opened.`
+      ? ` Auto-reversed client_payment ${reversalInfo.clientPaymentId}; pending client refund row opened.`
       : reversalInfo.alreadyReversed
         ? ` client_payment ${reversalInfo.clientPaymentId} was already reversed.`
         : reversalInfo.attempted

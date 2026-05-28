@@ -13,7 +13,7 @@ export default async function ClientJournalPage({
       <section className="panel">
         <h2>Between-session journal</h2>
         <p className="muted">
-          Entries the patient has logged between visits — newest first. Use these as a starting
+          Entries the client has logged between visits — newest first. Use these as a starting
           point for the next session; from the SOAP editor you can import individual entries
           directly into the note.
         </p>

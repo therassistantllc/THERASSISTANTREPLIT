@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     // action_taken — assigned_to_user_id stays null. This keeps the
     // assignment visible in the workqueue without failing the request.
 
-    // Verify all claims belong to the org and load patient ids
+    // Verify all claims belong to the org and load client ids
     const { data: claims } = await (supabase as any)
       .from("professional_claims")
       .select("id, patient_id")

@@ -1,5 +1,5 @@
 // Shared FHIR R4 helpers and structural types used by every resource route.
-// Lives alongside patient.ts (which keeps its Patient-specific types).
+// Lives alongside client.ts (which keeps its Client-specific types).
 
 import { NextResponse } from "next/server";
 import { requireAuthentication } from "@/lib/rbac/middleware";

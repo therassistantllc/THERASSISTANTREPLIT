@@ -96,10 +96,10 @@ const LIFECYCLES: LifecycleDef[] = [
   {
     id: "resolutions",
     label: "Resolutions",
-    description: "Closed out — written off, refunded, transferred to patient.",
+    description: "Closed out — written off, refunded, transferred to client.",
     chips: [
       { id: "write_offs", label: "Write-offs", tone: "resolved", serverTab: "recent" },
-      { id: "patient_resp", label: "Patient responsibility", tone: "neutral", serverTab: "recent" },
+      { id: "patient_resp", label: "Client responsibility", tone: "neutral", serverTab: "recent" },
       { id: "bad_debt", label: "Bad debt", tone: "neutral", serverTab: "by_reason" },
       { id: "credit_balance", label: "Credit balances", tone: "neutral", serverTab: "reversals" },
       { id: "recoupments", label: "Recoupments", tone: "pending", serverTab: "reversals" },
@@ -156,7 +156,7 @@ async function fetchNeedsAttention(ctx: FetchContext): Promise<ClaimRow[]> {
     return {
       id: String(r.id),
       claimNumber: r.claim_number || `(no claim #) ${String(r.id).slice(0, 6)}`,
-      patientName: r.patient_name || "Unknown patient",
+      patientName: r.patient_name || "Unknown client",
       patientId: r.patient_id ?? null,
       dosFrom: r.service_date_from ?? null,
       dosTo: r.service_date_to ?? null,
@@ -185,7 +185,7 @@ async function fetchSubmitted(ctx: FetchContext): Promise<ClaimRow[]> {
     return {
       id: String(r.id),
       claimNumber: r.claimNumber ?? String(r.id).slice(0, 8),
-      patientName: r.patientName ?? "Unknown patient",
+      patientName: r.patientName ?? "Unknown client",
       patientId: r.patientId ?? null,
       dosFrom: r.serviceDateFrom ?? null,
       dosTo: r.serviceDateTo ?? null,
@@ -215,7 +215,7 @@ async function fetchDenials(ctx: FetchContext): Promise<ClaimRow[]> {
     return {
       id: String(r.id),
       claimNumber: r.claim_number ?? String(r.id).slice(0, 8),
-      patientName: r.patient_name ?? "Unknown patient",
+      patientName: r.patient_name ?? "Unknown client",
       patientId: r.patient_id ?? null,
       dosFrom: r.service_date_from ?? null,
       dosTo: r.service_date_to ?? null,
@@ -245,7 +245,7 @@ async function fetchFollowUp(ctx: FetchContext): Promise<ClaimRow[]> {
     return {
       id: String(r.id),
       claimNumber: r.claimNumber ?? String(r.id).slice(0, 8),
-      patientName: r.clientName ?? "Unknown patient",
+      patientName: r.clientName ?? "Unknown client",
       patientId: r.clientId ?? null,
       dosFrom: r.serviceDateFrom ?? null,
       dosTo: r.serviceDateTo ?? null,
@@ -270,7 +270,7 @@ async function fetchResolutions(ctx: FetchContext): Promise<ClaimRow[]> {
   return items.map((r): ClaimRow => ({
     id: String(r.id ?? r.claim_id ?? Math.random()),
     claimNumber: r.claim_number ?? String(r.id ?? "").slice(0, 8),
-    patientName: r.patient_name ?? r.client_name ?? "Unknown patient",
+    patientName: r.patient_name ?? r.client_name ?? "Unknown client",
     patientId: r.patient_id ?? null,
     dosFrom: r.service_date_from ?? null,
     dosTo: r.service_date_to ?? null,
@@ -552,7 +552,7 @@ export default function ClaimsWorkspace() {
         <div className={styles.headerSearch}>
           <input
             type="search"
-            placeholder="Search patient, claim #, payer…"
+            placeholder="Search client, claim #, payer…"
             className={styles.searchInput}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -651,7 +651,7 @@ export default function ClaimsWorkspace() {
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Patient</th>
+                <th>Client</th>
                 <th>DOS</th>
                 <th>Payer</th>
                 <th>Issue</th>

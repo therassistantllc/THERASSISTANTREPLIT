@@ -19,7 +19,7 @@ export default function IntakePage() {
         const r = await fetch(`/api/patients/${clientId}/summary?organizationId=${encodeURIComponent(orgId)}`, { cache: "no-store" });
         const json = await r.json().catch(() => ({}));
         if (cancelled) return;
-        const email = json?.patient?.email ?? null;
+        const email = json?.client?.email ?? null;
         setPatientEmail(typeof email === "string" ? email : null);
       } catch {
         // best-effort

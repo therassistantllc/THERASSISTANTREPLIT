@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "patientId is required." }, { status: 400 });
   }
 
-  // Tenant isolation: verify patient belongs to the caller's organization
+  // Tenant isolation: verify client belongs to the caller's organization
   const supabase = createServerSupabaseAdminClient();
   if (!supabase) {
     return NextResponse.json({ error: "Database connection not available" }, { status: 500 });
@@ -35,13 +35,13 @@ export async function POST(request: Request) {
     .eq("id", patientId)
     .maybeSingle();
   if (clientError || !client) {
-    return NextResponse.json({ error: "Patient not found." }, { status: 404 });
+    return NextResponse.json({ error: "Client not found." }, { status: 404 });
   }
   if (client.organization_id !== organizationId) {
     return NextResponse.json({ error: "Access denied: organization mismatch" }, { status: 403 });
   }
 
-  // If an insurance policy is specified, verify it belongs to this patient AND this org.
+  // If an insurance policy is specified, verify it belongs to this client AND this org.
   if (body.insurancePolicyId) {
     const { data: policy, error: policyError } = await supabase
       .from("insurance_policies")
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
         user_id: staffId,
         user_role: roles?.[0] ?? null,
         event_type: "eligibility_check_denied",
-        event_summary: "Eligibility run denied: insurance policy does not belong to this patient/organization.",
+        event_summary: "Eligibility run denied: insurance policy does not belong to this client/organization.",
         action: "eligibility.run",
         object_type: "insurance_policy",
         object_id: body.insurancePolicyId,
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
           insurance_policy_id: body.insurancePolicyId,
         },
       });
-      return NextResponse.json({ error: "Access denied: insurance policy does not belong to this patient." }, { status: 403 });
+      return NextResponse.json({ error: "Access denied: insurance policy does not belong to this client." }, { status: 403 });
     }
   }
 

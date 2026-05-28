@@ -88,7 +88,7 @@ export async function GET(request: Request) {
         totalCharge: num(r.total_charge),
         patientResponsibility: num(r.patient_responsibility_amount),
         payerPaid: num(r.payer_responsibility_amount),
-        amountPaid: 0, // placeholder — patient payments not yet tracked separately
+        amountPaid: 0, // placeholder — client payments not yet tracked separately
         adjustmentAmount: num(r.total_charge) - num(r.patient_responsibility_amount) - num(r.payer_responsibility_amount),
         diagnosisCodes: Array.isArray(r.diagnosis_codes) ? (r.diagnosis_codes as string[]) : [],
         placeOfService: str(r.place_of_service),

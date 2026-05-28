@@ -207,7 +207,7 @@ export function parse835(raw835: string): Parsed835File {
     }
 
     if (seg.id === "NM1" && seg.elements[0] === "QC") {
-      // NM1*QC = Patient/Subscriber name
+      // NM1*QC = Client/Subscriber name
       // NM1*QC*1*LastName*FirstName
       currentClaim.patientLastName = seg.elements[2] ?? null;
       currentClaim.patientFirstName = seg.elements[3] ?? null;

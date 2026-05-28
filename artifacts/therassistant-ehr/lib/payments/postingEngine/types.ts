@@ -2,12 +2,12 @@
  * Payment Posting Engine — shared types.
  *
  * The engine is the single chokepoint for every write that changes a
- * payment ledger: ERA 835 auto-post, manual insurance post, patient
+ * payment ledger: ERA 835 auto-post, manual insurance post, client
  * payment, recoupment, refund, reversal. Each call goes through:
  *   role guard → validation → commit → audit.
  *
  * Phase 1 (Task #107) wires only the ERA-835 single-claim path; manual
- * insurance / patient / reversal sources land in Tasks #109 & #110.
+ * insurance / client / reversal sources land in Tasks #109 & #110.
  */
 
 type PostingSourceType =
@@ -116,16 +116,16 @@ export type PostingSource =
   | {
       /**
        * Refund (PP-4): refers to an existing posted payment and issues
-       * insurance OR patient refund against it. Dispatched to
+       * insurance OR client refund against it. Dispatched to
        * recordInsuranceRefund / recordPatientRefund. When refundType is
        * omitted the engine picks the natural fit for the source kind
-       * (client_payment → patient, era/manual → insurance).
+       * (client_payment → client, era/manual → insurance).
        */
       type: "refund";
       target: { kind: "era_835" | "client_payment" | "insurance_manual"; id: string };
       amount: number;
       reason: string;
-      refundType?: "insurance" | "patient";
+      refundType?: "insurance" | "client";
       stripeRefundId?: string | null;
       alreadyIssued?: boolean;
     }

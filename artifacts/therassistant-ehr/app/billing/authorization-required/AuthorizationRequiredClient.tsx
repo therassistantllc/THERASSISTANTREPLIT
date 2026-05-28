@@ -316,7 +316,7 @@ export default function AuthorizationRequiredClient() {
   // Filter rail definition
   const filters: FilterDef[] = useMemo(
     () => [
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "payer", label: "Payer", kind: "select", options: payerOptions },
       { id: "clinician", label: "Clinician", kind: "select", options: clinicianOptions },
       { id: "practice", label: "Practice", kind: "select", options: practiceOptions },

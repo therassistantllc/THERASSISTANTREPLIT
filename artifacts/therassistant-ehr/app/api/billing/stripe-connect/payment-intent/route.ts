@@ -4,7 +4,7 @@
  * Creates a Stripe PaymentIntent on a clinician's connected Express
  * account so funds settle to their account (no platform fee). The browser
  * confirms the PaymentIntent via Stripe Elements using the returned
- * client_secret and stripeAccountId. Auto-posting to the patient ledger
+ * client_secret and stripeAccountId. Auto-posting to the client ledger
  * happens via the Connect webhook (and a fallback inline call from the
  * UI on success; the unique-index dedupe collapses both into one row).
  *

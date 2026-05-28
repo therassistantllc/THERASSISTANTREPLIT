@@ -33,7 +33,7 @@ export const WORKQUEUE_STAGES: Array<{ id: WorkqueueStage; label: string }> = [
   { id: "submission_rejections", label: "Submission & Rejections" },
   { id: "adjudication_denials", label: "Adjudication & Denials" },
   { id: "payments_era", label: "Payments & ERA" },
-  { id: "patient_oversight", label: "Patient & Oversight" },
+  { id: "patient_oversight", label: "Client & Oversight" },
 ];
 
 export const WORKQUEUES: WorkqueueDef[] = [
@@ -83,7 +83,7 @@ export const WORKQUEUES: WorkqueueDef[] = [
   {
     id: "eligibility_issues",
     title: "Eligibility Issues",
-    description: "Patients whose latest 270/271 eligibility check failed or returned a coverage problem.",
+    description: "Clients whose latest 270/271 eligibility check failed or returned a coverage problem.",
     href: "/billing/eligibility-issues",
     stage: "pre_submission",
     status: "live",
@@ -263,7 +263,7 @@ export const WORKQUEUES: WorkqueueDef[] = [
   {
     id: "denials",
     title: "Denials",
-    description: "Denied claims — add notes, draft appeals, write off, or bill the patient.",
+    description: "Denied claims — add notes, draft appeals, write off, or bill the client.",
     href: "/billing/claim-submission",
     stage: "adjudication_denials",
     status: "live",
@@ -377,7 +377,7 @@ export const WORKQUEUES: WorkqueueDef[] = [
   {
     id: "partial_payments",
     title: "Partial Payments",
-    description: "Review claims paid in part — investigate ERA adjustments, pursue remainder, or transfer to patient.",
+    description: "Review claims paid in part — investigate ERA adjustments, pursue remainder, or transfer to client.",
     href: "/billing/partial-payments",
     stage: "payments_era",
     status: "live",
@@ -400,8 +400,8 @@ export const WORKQUEUES: WorkqueueDef[] = [
   },
   {
     id: "patient_payments",
-    title: "Patient Payments",
-    description: "Patient-side payments — copays, deductibles, self-pay, and portal pays.",
+    title: "Client Payments",
+    description: "Client-side payments — copays, deductibles, self-pay, and portal pays.",
     href: "/billing/patient-payments",
     stage: "payments_era",
     status: "coming_soon",
@@ -409,7 +409,7 @@ export const WORKQUEUES: WorkqueueDef[] = [
   {
     id: "refund_requests",
     title: "Refund / Overpayment",
-    description: "Manage credit balances and payer / patient refunds — approve, issue, or apply to balance.",
+    description: "Manage credit balances and payer / client refunds — approve, issue, or apply to balance.",
     href: "/billing/refunds",
     stage: "payments_era",
     status: "live",
@@ -447,18 +447,18 @@ export const WORKQUEUES: WorkqueueDef[] = [
     status: "live",
   },
 
-  // ── Patient & Oversight ─────────────────────────────────────────────────
+  // ── Client & Oversight ─────────────────────────────────────────────────
   {
     id: "patient_responsibility",
-    title: "Patient Responsibility Generated",
-    description: "Insurance has adjudicated — move the remaining balance to patient billing (deductible, copay, coinsurance, noncovered).",
+    title: "Client Responsibility Generated",
+    description: "Insurance has adjudicated — move the remaining balance to client billing (deductible, copay, coinsurance, noncovered).",
     href: "/billing/patient-responsibility",
     stage: "patient_oversight",
     status: "live",
   },
   {
     id: "patient_billing",
-    title: "Patient Billing",
+    title: "Client Billing",
     description: "Self-pay balances after insurance processing — statements, payments, plans, and collections review.",
     href: "/billing/patient-billing",
     stage: "patient_oversight",
@@ -466,7 +466,7 @@ export const WORKQUEUES: WorkqueueDef[] = [
   },
   {
     id: "patient_statements",
-    title: "Patient Statements",
+    title: "Client Statements",
     description: "Statements queued for delivery — paper and electronic.",
     href: "/billing/patient-statements",
     stage: "patient_oversight",
@@ -474,7 +474,7 @@ export const WORKQUEUES: WorkqueueDef[] = [
   },
   {
     id: "patient_collections",
-    title: "Patient Collections",
+    title: "Client Collections",
     description: "Self-pay balances past the collections threshold.",
     href: "/billing/patient-collections",
     stage: "patient_oversight",

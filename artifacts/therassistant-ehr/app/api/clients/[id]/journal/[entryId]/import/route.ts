@@ -54,7 +54,7 @@ export async function POST(
 
   // Validate the note belongs to the same org + client. Without this, a
   // caller could stamp a journal entry as "imported" into a note for a
-  // completely different patient or org.
+  // completely different client or org.
   const { data: note } = await supabase
     .from("encounter_clinical_notes")
     .select("id, encounter_id, encounters!inner(client_id, organization_id)")
@@ -69,7 +69,7 @@ export async function POST(
     value(noteEnc.client_id) !== clientId
   ) {
     return NextResponse.json(
-      { success: false, error: "Target note does not belong to this patient." },
+      { success: false, error: "Target note does not belong to this client." },
       { status: 400 },
     );
   }

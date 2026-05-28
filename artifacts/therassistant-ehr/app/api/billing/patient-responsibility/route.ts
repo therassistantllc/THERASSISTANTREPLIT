@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: true, rows, appliedFilters: filters });
   } catch (e) {
     return NextResponse.json(
-      { success: false, error: e instanceof Error ? e.message : "Failed to load patient responsibility queue" },
+      { success: false, error: e instanceof Error ? e.message : "Failed to load client responsibility queue" },
       { status: 500 },
     );
   }

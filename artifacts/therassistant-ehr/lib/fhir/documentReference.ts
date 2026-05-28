@@ -40,7 +40,7 @@ export const DOCUMENT_DB_COLUMNS =
 export function documentRowToFhir(row: DocumentRow, baseUrl: string): FhirDocumentReference {
   const archived = s(row.archived_at);
   // Admin-set title only — file_name and notes can contain identifying
-  // information (e.g. "<patient-name>-intake.pdf" or free-text PHI), so we
+  // information (e.g. "<client-name>-intake.pdf" or free-text PHI), so we
   // deliberately do NOT pass them through to partner-facing FHIR output.
   const title = s(row.title);
   // Truly opaque URN keyed only on the DocumentReference id. Raw storage
@@ -59,7 +59,7 @@ export function documentRowToFhir(row: DocumentRow, baseUrl: string): FhirDocume
       : undefined,
     category: row.document_scope ? [{ text: row.document_scope }] : undefined,
     subject: row.client_id
-      ? { reference: `${baseUrl}/Patient/${row.client_id}`, type: "Patient" }
+      ? { reference: `${baseUrl}/Patient/${row.client_id}`, type: "Client" }
       : undefined,
     date: s(row.created_at),
     description: title,

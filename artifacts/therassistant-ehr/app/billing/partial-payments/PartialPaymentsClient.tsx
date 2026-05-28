@@ -162,7 +162,7 @@ function statePill(state: State): ReactNode {
     case "payment_accepted": return pill("Accepted", "#dcfce7", "#166534");
     case "appealed": return pill("Appealed", "#ede9fe", "#5b21b6");
     case "billed_secondary": return pill("To secondary", "#dbeafe", "#1e40af");
-    case "transferred_to_patient": return pill("On patient", "#ffedd5", "#9a3412");
+    case "transferred_to_patient": return pill("On client", "#ffedd5", "#9a3412");
     case "resolved": return pill("Resolved", "#f1f5f9", "#475569");
     default: return pill("Open", "#e0f2fe", "#075985");
   }
@@ -270,7 +270,7 @@ export default function PartialPaymentsClient() {
           { value: "payment_accepted", label: "Payment accepted" },
           { value: "appealed", label: "Appealed" },
           { value: "billed_secondary", label: "Billed secondary" },
-          { value: "transferred_to_patient", label: "On patient" },
+          { value: "transferred_to_patient", label: "On client" },
         ],
       },
       { id: "minAmount", label: "Min $ remaining", kind: "number" },
@@ -375,7 +375,7 @@ export default function PartialPaymentsClient() {
                 break;
               case "transfer_to_patient":
                 next.state = "transferred_to_patient";
-                next.status_label = "On patient";
+                next.status_label = "On client";
                 break;
             }
             next.last_action_at = new Date().toISOString();
@@ -422,7 +422,7 @@ export default function PartialPaymentsClient() {
       },
       {
         id: "transfer_to_patient",
-        label: "Transfer to patient",
+        label: "Transfer to client",
         onClick: (r) => void runAction(r.id, "transfer_to_patient"),
         disabled: (r) => busyRow === r.id,
       },
@@ -606,7 +606,7 @@ export default function PartialPaymentsClient() {
       },
       {
         id: "pr_calc",
-        label: "Patient responsibility",
+        label: "Client responsibility",
         render: () => {
           const billed = row.billed_amount;
           const paid = row.paid_amount;
@@ -624,7 +624,7 @@ export default function PartialPaymentsClient() {
                 <strong>{formatMoney(remaining)}</strong>,
               )}
               {labeledItem(
-                "Patient responsibility (CLP05)",
+                "Client responsibility (CLP05)",
                 <strong>{formatMoney(pr)}</strong>,
               )}
               {labeledItem("Responsibility type", row.responsibility_type)}
@@ -635,8 +635,8 @@ export default function PartialPaymentsClient() {
                   : pill("No", "#fee2e2", "#991b1b"),
               )}
               <p style={{ fontSize: 12, color: "#64748b", marginTop: 12 }}>
-                Use <em>Transfer to patient</em> to open a $
-                {pr > 0 ? pr : remaining} patient invoice, <em>Bill secondary</em>{" "}
+                Use <em>Transfer to client</em> to open a $
+                {pr > 0 ? pr : remaining} client invoice, <em>Bill secondary</em>{" "}
                 to send the remainder to the secondary payer, or <em>Appeal</em>{" "}
                 to push back on an underpayment.
               </p>
@@ -736,7 +736,7 @@ export default function PartialPaymentsClient() {
       },
       {
         id: "transfer_to_patient",
-        label: "Transfer to patient",
+        label: "Transfer to client",
         onClick: () => void runAction(row.id, "transfer_to_patient"),
       },
     ];
@@ -789,7 +789,7 @@ export default function PartialPaymentsClient() {
   return (
     <WorkqueueShell<Row>
       title="Partial Payments"
-      description="Claims paid in part — review ERA adjustments, pursue the remainder, transfer to patient, or appeal."
+      description="Claims paid in part — review ERA adjustments, pursue the remainder, transfer to client, or appeal."
       headerActions={headerActions}
       summary={summaryMetrics}
       primaryTabs={primaryTabs}

@@ -12,7 +12,7 @@ or the secondary payer will reject the claim or (worse) pay it as primary:
 2. **2320 SBR** — `SBR*P*...*CI`. The OTHER payer (primary) adjudication.
 3. **2320 CAS** — claim-level adjustments from the primary 835/EOB.
 4. **2320 AMT*D** — primary payer paid amount (CLP04 on the 835).
-5. **2320 AMT*F2** — patient responsibility (CLP05 on the 835).
+5. **2320 AMT*F2** — client responsibility (CLP05 on the 835).
 6. **2320 OI** — `OI***Y***Y` (release-of-info + benefits-assignment for
    the other payer).
 7. **2330A NM1*IL** — primary subscriber name + member id.

@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     const organizationId = guard.organizationId;
 
     // Task #112 — POST_PAYMENTS gate. Clinicians lacking the permission
-    // cannot post patient payments via this legacy route.
+    // cannot post client payments via this legacy route.
     try {
       await requireAuthenticatedPaymentPoster(organizationId);
     } catch (err) {
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
       }
 
       if (claimData.client_id && claimData.client_id !== clientId) {
-        return NextResponse.json({ success: false, error: "Claim does not belong to the provided patient/client." }, { status: 409 });
+        return NextResponse.json({ success: false, error: "Claim does not belong to the provided client/client." }, { status: 409 });
       }
 
       claimRow = claimData;

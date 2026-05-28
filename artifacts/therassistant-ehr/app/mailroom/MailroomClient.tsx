@@ -586,11 +586,11 @@ export default function MailroomClient() {
                       onClick={() => void fileToDestination("patient_chart")}
                       disabled={filing || selected.status === "filed"}
                     >
-                      {filing ? "Filing…" : "File to Patient Chart"}
+                      {filing ? "Filing…" : "File to Client Chart"}
                     </button>
                   ) : (
                     <Link className={`${styles.attachBtn} ${styles.attachBtnPrimary}`} href={`/mailroom/${selected.id}`}>
-                      Link to Patient Chart
+                      Link to Client Chart
                     </Link>
                   )}
                   <button

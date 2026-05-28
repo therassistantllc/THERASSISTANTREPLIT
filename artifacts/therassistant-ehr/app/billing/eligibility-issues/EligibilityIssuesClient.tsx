@@ -384,7 +384,7 @@ export default function EligibilityIssuesClient() {
     () => [
       { id: "practice", label: "Practice", kind: "select", options: practiceOptions },
       { id: "clinician", label: "Clinician", kind: "select", options: clinicianOptions },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "payer", label: "Payer", kind: "select", options: payerOptions },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },
@@ -869,7 +869,7 @@ export default function EligibilityIssuesClient() {
             <DetailKV label="Effective date" value={formatDate(selectedRow.effectiveDate)} />
             <DetailKV label="Termination date" value={formatDate(selectedRow.terminationDate)} />
             <p style={{ color: "#94A3B8", fontSize: 12, marginTop: 12 }}>
-              Card images live on the patient chart — use “Update insurance”.
+              Card images live on the client chart — use “Update insurance”.
             </p>
           </div>
         ) : null,
@@ -884,7 +884,7 @@ export default function EligibilityIssuesClient() {
             <DetailKV label="Payer" value={selectedRow.payerName} />
             {!selectedRow.memberId ? (
               <p style={{ color: "#B91C1C", fontSize: 12, marginTop: 8 }}>
-                Member ID is missing on the subscriber record. Update the patient&apos;s insurance to continue.
+                Member ID is missing on the subscriber record. Update the client&apos;s insurance to continue.
               </p>
             ) : null}
           </div>
@@ -900,7 +900,7 @@ export default function EligibilityIssuesClient() {
             <DetailKV label="Current policy termination" value={formatDate(selectedRow.terminationDate)} />
             {selectedRow.policyCount > 1 ? (
               <p style={{ color: "#B45309", fontSize: 12, marginTop: 8 }}>
-                Patient has multiple active policies — review coordination of benefits before billing.
+                Client has multiple active policies — review coordination of benefits before billing.
               </p>
             ) : null}
           </div>

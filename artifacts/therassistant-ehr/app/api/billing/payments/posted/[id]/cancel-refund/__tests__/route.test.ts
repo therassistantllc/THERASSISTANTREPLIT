@@ -261,7 +261,7 @@ test("403 when the auth guard rejects as cross-org / forbidden", async () => {
   assert.equal(scenario.engineCalls.length, 0);
 });
 
-test("409 when the engine reports the refund is already issued / wrong-org / patient refund", async () => {
+test("409 when the engine reports the refund is already issued / wrong-org / client refund", async () => {
   scenario.engineResult = {
     ok: false,
     refundId: null,

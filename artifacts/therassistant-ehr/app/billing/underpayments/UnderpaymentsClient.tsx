@@ -877,7 +877,7 @@ export default function UnderpaymentsClient() {
               <KV label="Allowed (payer)" value={money(selectedRow.allowedPaid)} />
               <KV label="Paid" value={money(selectedRow.paidAmount)} />
               <KV
-                label="Patient responsibility"
+                label="Client responsibility"
                 value={money(selectedRow.patientResponsibility)}
               />
               <KV label="Paid date" value={formatDate(selectedRow.paidDate)} />
@@ -982,7 +982,7 @@ export default function UnderpaymentsClient() {
                 value={money(selectedRow.paidAmount)}
               />
               <KV
-                label="Patient responsibility"
+                label="Client responsibility"
                 value={money(selectedRow.patientResponsibility)}
               />
               <KV
@@ -1009,7 +1009,7 @@ export default function UnderpaymentsClient() {
           selectedRow ? (
             <DetailSection
               title="Prior payments"
-              note="History on this claim — original adjudication, any reprocessing, and patient-side payments."
+              note="History on this claim — original adjudication, any reprocessing, and client-side payments."
             >
               <KV
                 label="Latest paid"

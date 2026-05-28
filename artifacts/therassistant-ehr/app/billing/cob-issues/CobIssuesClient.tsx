@@ -306,7 +306,7 @@ export default function CobIssuesClient() {
       },
       {
         id: "patient_contact",
-        header: "Patient contact needed",
+        header: "Client contact needed",
         cell: (r) =>
           r.patient_contact_needed
             ? pill("Yes", "#fee2e2", "#991b1b")
@@ -1411,7 +1411,7 @@ function CardSuggestionPanel({
       <div style={{ fontSize: 13 }}>
         <p style={{ color: "#854d0e" }}>
           We received the card photo but couldn&apos;t auto-parse it. Open the
-          photo from the patient chart and key the new policy in manually.
+          photo from the client chart and key the new policy in manually.
         </p>
         {found.other_coverage_note ? (
           <p style={{ color: "#475569", marginTop: 8 }}>

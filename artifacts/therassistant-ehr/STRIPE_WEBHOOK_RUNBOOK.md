@@ -1,7 +1,7 @@
 # Stripe Webhook Runbook
 
 Operator guide for configuring and recovering the Stripe webhook that
-auto-posts patient card payments into client_payments.
+auto-posts client card payments into client_payments.
 
 Route: `app/api/billing/payments/stripe-webhook/route.ts`
 Public URL: `POST {your-deployment}/api/billing/payments/stripe-webhook`
@@ -53,19 +53,19 @@ leaving extra events selected, but the two above are the minimum.
 
 ## 3. Required and optional metadata on the source payment
 
-The route looks up which patient/organization to credit from
+The route looks up which client/organization to credit from
 `metadata` on the Stripe object. Whatever creates the Checkout Session,
 Payment Link, or PaymentIntent **must** set these:
 
 | Key                          | Required? | Effect                                                                 |
 | ---------------------------- | --------- | ---------------------------------------------------------------------- |
 | `organization_id`            | **Yes**   | Tenant scope for the posted payment. Missing → workqueue review item.  |
-| `client_id`                  | **Yes**   | Patient the payment is credited to. Missing → workqueue review item.   |
+| `client_id`                  | **Yes**   | Client the payment is credited to. Missing → workqueue review item.   |
 | `patient_invoice_id`         | Optional  | If present, applies the payment to that invoice automatically.         |
 | `professional_claim_id`      | Optional  | If present (and no invoice id), applies to that claim.                 |
 
 If neither `patient_invoice_id` nor `professional_claim_id` is set, the
-payment is posted to the patient's **account balance** for a biller to
+payment is posted to the client's **account balance** for a biller to
 apply later.
 
 Set metadata in whichever object initiates the charge:
@@ -101,7 +101,7 @@ To recover:
 1. Open the workqueue and filter `work_type = patient_payment_review`.
    The title is `Review Stripe payment $<amount> (<ch_…>)`.
 2. From `context_payload.stripe_charge_id`, find the charge in the
-   Stripe Dashboard and identify the correct patient + organization.
+   Stripe Dashboard and identify the correct client + organization.
 3. Post the payment manually in the EHR payments UI. **Use the Stripe
    charge id as the External Payment ID** — the unique index on
    `(organization_id, payment_method='stripe', external_payment_id)`

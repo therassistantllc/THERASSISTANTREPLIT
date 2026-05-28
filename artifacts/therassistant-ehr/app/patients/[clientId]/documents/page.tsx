@@ -126,7 +126,7 @@ export default function DocumentsPage() {
                 <th>Size</th>
                 <th>Filed</th>
                 <th>Created</th>
-                <th>Patient portal</th>
+                <th>Client portal</th>
                 <th>Links</th>
               </tr>
             </thead>

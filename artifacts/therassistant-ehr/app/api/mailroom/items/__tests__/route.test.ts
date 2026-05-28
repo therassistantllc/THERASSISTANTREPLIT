@@ -1,7 +1,7 @@
 /**
  * Tests for GET /api/mailroom/items/[itemId] (Task #195).
  *
- * The detail endpoint hydrates a mailroom item plus the patient / encounter /
+ * The detail endpoint hydrates a mailroom item plus the client / encounter /
  * claim it was filed against. The cases below pin:
  *
  *   - the mailroom_items lookup is org-scoped (filtered by organization_id)

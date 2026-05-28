@@ -177,7 +177,7 @@ function groupCodeLabel(group: string | null): string {
   if (!group) return "";
   const map: Record<string, string> = {
     CO: "Contractual",
-    PR: "Patient Resp.",
+    PR: "Client Resp.",
     OA: "Other Adj.",
     PI: "Payer Initiated",
     CR: "Correction/Reversal",
@@ -246,7 +246,7 @@ function deriveServiceLineLedger(
     });
   }
   // Prefer detailed CAS entries when available, fall back to summary line.adjustment
-  // PR (patient responsibility) group code → patient_responsibility event
+  // PR (client responsibility) group code → patient_responsibility event
   // CO / OA / PI → contractual_adjustment event (with semantic label)
   let casPatientResp = 0;
   if (casForLine.length > 0) {
@@ -283,7 +283,7 @@ function deriveServiceLineLedger(
   if (patientResp > 0) {
     events.push({
       kind: "patient_responsibility",
-      label: "Patient responsibility",
+      label: "Client responsibility",
       amount: patientResp,
     });
   }
@@ -456,7 +456,7 @@ function deriveChronology(payment: EraPaymentItem): ChronoEvent[] {
     if (payment.patientResponsibility > 0) {
       events.push({
         date: postedAt,
-        label: "Patient invoice created",
+        label: "Client invoice created",
         amount: payment.patientResponsibility,
         state: "done",
       });
@@ -618,7 +618,7 @@ export default function PaymentsClient() {
         const messageBits: string[] = [];
         if (json.alreadyPosted) messageBits.push("Already posted");
         else if (json.posted) messageBits.push("Payment posted");
-        if (json.patientInvoiceCreated) messageBits.push("patient invoice created");
+        if (json.patientInvoiceCreated) messageBits.push("client invoice created");
         if (json.workqueueItemsClosed > 0)
           messageBits.push(`${json.workqueueItemsClosed} workqueue item(s) closed`);
         setPostFeedback({
@@ -719,7 +719,7 @@ export default function PaymentsClient() {
           href="/billing/payments/patient"
           className="inline-flex h-7 items-center gap-1.5 rounded border border-amber-300 bg-amber-50 px-2.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100"
         >
-          Patient payment
+          Client payment
         </a>
         <div className="flex-1" />
         <div className="relative">
@@ -729,7 +729,7 @@ export default function PaymentsClient() {
           />
           <input
             className="h-7 w-72 rounded border border-slate-300 bg-white pl-8 pr-2 text-[12px] text-slate-800 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
-            placeholder="Search ERA #, claim #, patient, payer…"
+            placeholder="Search ERA #, claim #, client, payer…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -844,7 +844,7 @@ export default function PaymentsClient() {
                       <div className="mt-0.5 flex items-center justify-between gap-2">
                         <span className="truncate text-[10.5px] text-slate-500">
                           {pmt.client?.displayName ?? (
-                            <em className="not-italic text-rose-600">Unmatched patient</em>
+                            <em className="not-italic text-rose-600">Unmatched client</em>
                           )}
                         </span>
                         <span className="shrink-0 font-mono text-[9.5px] text-slate-400">
@@ -904,7 +904,7 @@ export default function PaymentsClient() {
                       ) : null}
                     </div>
                     <h1 className="mt-1 truncate text-[18px] font-semibold tracking-tight text-slate-900">
-                      {selected.client?.displayName ?? "Unmatched patient"}
+                      {selected.client?.displayName ?? "Unmatched client"}
                       <span className="ml-2 text-[12px] font-normal text-slate-500">
                         {selected.payer.name}
                       </span>
@@ -1031,7 +1031,7 @@ export default function PaymentsClient() {
                 {/* Inline interactions hint */}
                 <div className="flex flex-wrap items-center gap-1 border-t border-slate-100 bg-slate-50/60 px-3 py-2 text-[10.5px] text-slate-500">
                   <span className="mr-1 font-medium text-slate-600">Inline actions:</span>
-                  <InlineAction icon={Edit3} label="Edit patient resp." />
+                  <InlineAction icon={Edit3} label="Edit client resp." />
                   <InlineAction icon={SplitSquareHorizontal} label="Split payment" />
                   <InlineAction icon={ArrowRightLeft} label="Transfer balance" />
                   <InlineAction icon={FileText} label="Apply adjustment" />
@@ -1415,7 +1415,7 @@ function BalancingRail({
             tone="slate"
           />
           <Row
-            label="Patient resp."
+            label="Client resp."
             value={money(totalPt, { signed: true })}
             small
             tone="orange"
@@ -1471,7 +1471,7 @@ function KeyFacts({ payment }: { payment: EraPaymentItem }) {
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 text-[11px]">
         <Fact term="Payer" def={payment.payer.name} />
         <Fact
-          term="Patient"
+          term="Client"
           def={payment.client?.displayName ?? "Unmatched"}
         />
         <Fact term="Claim #" def={payment.professionalClaim?.claimNumber ?? "—"} />

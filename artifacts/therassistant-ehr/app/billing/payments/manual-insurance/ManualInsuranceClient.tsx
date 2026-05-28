@@ -258,7 +258,7 @@ export default function ManualInsuranceClient() {
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <input
                 className="h-7 w-full rounded border border-slate-300 bg-white pl-8 pr-2 text-[12px]"
-                placeholder="Search claim # or patient acct"
+                placeholder="Search claim # or client acct"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => {
@@ -374,7 +374,7 @@ export default function ManualInsuranceClient() {
                 <Field label="Contractual adjustment">
                   <input type="number" step="0.01" className="input" value={adj} onChange={(e) => setAdj(e.target.value)} />
                 </Field>
-                <Field label="Patient responsibility">
+                <Field label="Client responsibility">
                   <input type="number" step="0.01" className="input" value={pr} onChange={(e) => setPr(e.target.value)} />
                 </Field>
                 <Field label="Note">

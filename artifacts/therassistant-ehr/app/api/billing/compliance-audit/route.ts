@@ -192,7 +192,7 @@ export async function GET(request: Request) {
     const encIds = [...new Set(claims.map((c) => text(c.encounter_id)).filter(Boolean))];
 
     const [
-      { data: patients },
+      { data: clients },
       { data: payers },
       { data: serviceLines },
       { data: appointments },
@@ -243,7 +243,7 @@ export async function GET(request: Request) {
     ]);
 
     const patientById = new Map<string, DbRow>(
-      ((patients as DbRow[]) ?? []).map((p) => [text(p.id), p]),
+      ((clients as DbRow[]) ?? []).map((p) => [text(p.id), p]),
     );
     const payerById = new Map<string, DbRow>(
       ((payers as DbRow[]) ?? []).map((p) => [text(p.id), p]),
@@ -324,16 +324,16 @@ export async function GET(request: Request) {
     for (const claim of claims) {
       const claimId = text(claim.id);
       const lines = linesByClaim.get(claimId) ?? [];
-      const patient = patientById.get(text(claim.patient_id));
+      const client = patientById.get(text(claim.patient_id));
       const payer = payerById.get(text(claim.payer_profile_id));
       const appt = apptById.get(text(claim.appointment_id));
       const enc = encById.get(text(claim.encounter_id));
       const note = enc ? noteByEnc.get(text(enc.id)) : undefined;
       const wq = wqByClaim.get(claimId);
 
-      const patientName = patient
-        ? [patient.first_name, patient.last_name].map(text).filter(Boolean).join(" ")
-        : "Unknown patient";
+      const patientName = client
+        ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ")
+        : "Unknown client";
       const providerId = text(enc?.provider_id) || text(appt?.provider_id) || null;
       const practiceLocationId = text(appt?.location_id) || null;
       const serviceDate =
@@ -346,7 +346,7 @@ export async function GET(request: Request) {
         claimId,
         claimNumber: text(claim.claim_number) || claimId.slice(0, 8),
         patientId: text(claim.patient_id) || null,
-        patientName: patientName || "Unknown patient",
+        patientName: patientName || "Unknown client",
         clinicianId: providerId,
         clinicianName: providerLabel(providerId),
         practiceLocationId,

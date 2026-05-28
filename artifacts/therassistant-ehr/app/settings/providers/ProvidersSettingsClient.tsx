@@ -854,7 +854,7 @@ function StripeConnectSection({
             <strong>Account:</strong> <code>{provider.stripe_connect_account_id}</code>
           </div>
         ) : (
-          <div>Connect a Stripe account so the “Collect Copay” button can charge patient cards and route funds directly to this clinician.</div>
+          <div>Connect a Stripe account so the “Collect Copay” button can charge client cards and route funds directly to this clinician.</div>
         )}
         {provider.stripe_connect_account_id && (
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>

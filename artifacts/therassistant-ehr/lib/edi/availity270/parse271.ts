@@ -95,18 +95,18 @@ const AAA03_MEANINGS: Record<string, string> = {
   "61": "Date of Death precedes Date(s) of service",
   "62": "Date of service not within allowable inquiry period",
   "63": "Date of service in future",
-  "67": "Patient birth date does not match that for the patient on the database",
-  "68": "Inconsistent with patient's age",
-  "69": "Inconsistent with patient's gender",
-  "71": "Patient birth date does not match",
+  "67": "Client birth date does not match that for the client on the database",
+  "68": "Inconsistent with client's age",
+  "69": "Inconsistent with client's gender",
+  "71": "Client birth date does not match",
   "72": "Invalid/Missing Subscriber/Insured ID",
   "73": "Invalid/Missing Subscriber/Insured Name",
   "74": "Invalid/Missing Subscriber/Insured Gender Code",
   "75": "Subscriber/Insured not found",
   "76": "Duplicate Subscriber/Insured ID Number",
-  "77": "Subscriber found, patient not found",
+  "77": "Subscriber found, client not found",
   "78": "Subscriber/Insured not in group/plan identified",
-  "79": "Patient not eligible",
+  "79": "Client not eligible",
   "80": "No response received - transaction terminated",
 };
 
@@ -193,12 +193,12 @@ export function parseAvaility271(raw: string): Parsed271Response {
   let currentEB: ParsedEB271 | null = null;
   // Loop context tracking — used so we know when EB-adjacent DTP/MSG/REF
   // segments belong to the in-flight benefit vs. a higher loop. We also
-  // track which HL we are inside for Single Patient Attribution routing.
+  // track which HL we are inside for Single Client Attribution routing.
   let lastLoopKind: "source" | "receiver" | "subscriber" | "dependent" | "benefit" | "envelope" =
     "envelope";
   // Tracks the most recent non-benefit loop so EB segments following an
   // HL*23 (dependent) attribute to the dependent rather than the
-  // subscriber (Single Patient Attribution Rule vEB.1.0 §4.2).
+  // subscriber (Single Client Attribution Rule vEB.1.0 §4.2).
   let benefitOwnerLoop: "subscriber" | "dependent" = "subscriber";
   let subscriber: Parsed271Subscriber = {
     lastName: null,
@@ -286,7 +286,7 @@ export function parseAvaility271(raw: string): Parsed271Response {
           result.subscriberFirstName = subscriber.firstName;
           if (subscriber.memberId) result.memberId = subscriber.memberId;
         } else if (entityIdCode === "03" && lastLoopKind === "dependent") {
-          // Dependent (Loop 2100D / NM1*03) — Single Patient Attribution
+          // Dependent (Loop 2100D / NM1*03) — Single Client Attribution
           // Rule vEB.1.0: benefit content under this HL belongs to the
           // dependent, NOT the subscriber.
           if (!dependent) {
@@ -445,7 +445,7 @@ export function parseAvaility271(raw: string): Parsed271Response {
   // §1.3.2.5–§1.3.2.13. Mutates each benefit in place.
   result.financials = annotateBenefits(result.benefits);
 
-  // Phase 6 — Single Patient Attribution Rule vEB.1.0 §4.2–§4.3.
+  // Phase 6 — Single Client Attribution Rule vEB.1.0 §4.2–§4.3.
   // Compute target from where benefit content actually appears, not just
   // from dependent-loop presence: many payers echo an empty HL*23 even
   // when all returned benefits live under the subscriber loop.

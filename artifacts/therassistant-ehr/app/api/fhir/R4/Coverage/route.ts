@@ -21,10 +21,10 @@ export async function GET(request: Request) {
     const baseUrl = baseUrlOf(request);
     const { searchParams } = new URL(request.url);
 
-    // Both `beneficiary` and `patient` are accepted as aliases for the
+    // Both `beneficiary` and `client` are accepted as aliases for the
     // Coverage's beneficiary (see CapabilityStatement).
     const beneficiary = safeTerm(
-      stripRefPrefix(searchParams.get("beneficiary") || searchParams.get("patient"), "Patient"),
+      stripRefPrefix(searchParams.get("beneficiary") || searchParams.get("client"), "Client"),
     );
     const count = toFiniteInt(searchParams.get("_count"), 20, 1, 200);
     const offset = toFiniteInt(searchParams.get("_offset"), 0, 0, 100000);

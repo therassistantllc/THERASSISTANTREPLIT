@@ -44,7 +44,7 @@ const SUMMARIES: Record<Action, string> = {
   accept_payment: "Partial payment accepted; remaining adjusted off",
   appeal_balance: "Appeal queued for remaining balance",
   bill_secondary: "Claim queued to bill secondary payer",
-  transfer_to_patient: "Remaining balance transferred to patient invoice",
+  transfer_to_patient: "Remaining balance transferred to client invoice",
   add_note: "Biller added a note",
   reopen: "Partial-payment item reopened",
 };

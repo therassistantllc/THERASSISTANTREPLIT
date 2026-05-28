@@ -1,5 +1,5 @@
 /**
- * Saved-card lifecycle for patient clients (Task #487).
+ * Saved-card lifecycle for client clients (Task #487).
  *
  * Direct charges on Stripe Connect require the Customer + PaymentMethod
  * to live on the practice's connected Express account. We pin a client
@@ -174,7 +174,7 @@ export async function startCardSetup(input: {
   if (!supabase) return { ok: false, code: "db_unavailable", message: "Database unavailable." };
 
   const client = await loadClient(supabase, input.organizationId, input.clientId);
-  if (!client) return { ok: false, code: "client_not_found", message: "Patient not found." };
+  if (!client) return { ok: false, code: "client_not_found", message: "Client not found." };
 
   // Lock the client to the practice's currently-active connected
   // account; if one was already chosen previously, stick with it (the
@@ -266,7 +266,7 @@ export async function confirmSavedCard(
   if (!supabase) return { ok: false, code: "db_unavailable", message: "Database unavailable." };
 
   const client = await loadClient(supabase, input.organizationId, input.clientId);
-  if (!client) return { ok: false, code: "client_not_found", message: "Patient not found." };
+  if (!client) return { ok: false, code: "client_not_found", message: "Client not found." };
 
   const connectAccountId = client.stripe_connect_account_id;
   const customerId = client.stripe_customer_id;
@@ -354,7 +354,7 @@ export async function confirmSavedCard(
 
 /**
  * Refresh `clients.stripe_payment_method_*` from a successful
- * Checkout PaymentIntent (Task #674 — patient "Fix payment" recovery).
+ * Checkout PaymentIntent (Task #674 — client "Fix payment" recovery).
  *
  * Called from the Stripe webhook when `metadata.is_recovery === 'true'`
  * AND `metadata.save_card_on_success === 'true'`. The Checkout Session
@@ -402,7 +402,7 @@ export async function persistRecoveredSavedCardFromPaymentIntent(input: {
   const detachPM = input.deps?.detachPaymentMethod ?? detachConnectPaymentMethod;
 
   const client = await loadClient(supabase, input.organizationId, input.clientId);
-  if (!client) return { ok: false, status: "client_not_found", message: "Patient not found." };
+  if (!client) return { ok: false, status: "client_not_found", message: "Client not found." };
   if (!client.stripe_connect_account_id) {
     return {
       ok: false,
@@ -498,7 +498,7 @@ export async function removeSavedCard(input: {
   if (!supabase) return { ok: false, code: "db_unavailable", message: "Database unavailable." };
 
   const client = await loadClient(supabase, input.organizationId, input.clientId);
-  if (!client) return { ok: false, code: "client_not_found", message: "Patient not found." };
+  if (!client) return { ok: false, code: "client_not_found", message: "Client not found." };
 
   if (client.stripe_payment_method_id && client.stripe_connect_account_id) {
     try {
@@ -540,7 +540,7 @@ export async function setAutopayEnabled(input: {
   const supabase = createServerSupabaseAdminClient();
   if (!supabase) return { ok: false, code: "db_unavailable", message: "Database unavailable." };
   const client = await loadClient(supabase, input.organizationId, input.clientId);
-  if (!client) return { ok: false, code: "client_not_found", message: "Patient not found." };
+  if (!client) return { ok: false, code: "client_not_found", message: "Client not found." };
   if (input.enabled && !client.stripe_payment_method_id) {
     return {
       ok: false,
@@ -568,7 +568,7 @@ export async function getSavedCardSummary(input: {
   const supabase = createServerSupabaseAdminClient();
   if (!supabase) return { ok: false, code: "db_unavailable", message: "Database unavailable." };
   const client = await loadClient(supabase, input.organizationId, input.clientId);
-  if (!client) return { ok: false, code: "client_not_found", message: "Patient not found." };
+  if (!client) return { ok: false, code: "client_not_found", message: "Client not found." };
   return summarizeSavedCard(client);
 }
 
@@ -604,7 +604,7 @@ export async function chargeSavedCardForInvoice(
   if (!supabase) return { ok: false, code: "db_unavailable", message: "Database unavailable." };
 
   const client = await loadClient(supabase, input.organizationId, input.clientId);
-  if (!client) return { ok: false, code: "client_not_found", message: "Patient not found." };
+  if (!client) return { ok: false, code: "client_not_found", message: "Client not found." };
   if (
     !client.stripe_connect_account_id ||
     !client.stripe_customer_id ||
@@ -642,7 +642,7 @@ export async function chargeSavedCardForInvoice(
       customerId: client.stripe_customer_id,
       paymentMethodId: client.stripe_payment_method_id,
       metadata,
-      description: `Patient invoice ${input.patientInvoiceId}`,
+      description: `Client invoice ${input.patientInvoiceId}`,
       idempotencyKey,
     });
     if (intent.status !== "succeeded") {
@@ -694,7 +694,7 @@ function mapStripeError(err: unknown):
       return {
         ok: false,
         code: "authentication_required",
-        message: "Card requires 3DS authentication — patient must confirm via the portal.",
+        message: "Card requires 3DS authentication — client must confirm via the portal.",
       };
     }
     if (code === "card_declined") {

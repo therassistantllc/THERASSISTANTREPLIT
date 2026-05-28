@@ -53,7 +53,7 @@ export interface PatientResponsibilityRow {
   id: string;
   eraClaimPaymentId: string;
 
-  // Claim / patient
+  // Claim / client
   claimId: string | null;
   claimNumber: string | null;
   clientId: string | null;

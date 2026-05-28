@@ -25,7 +25,7 @@ export async function GET(request: Request) {
         },
         resource: [
           {
-            type: "Patient",
+            type: "Client",
             profile: "http://hl7.org/fhir/StructureDefinition/Patient",
             interaction: [{ code: "read" }, { code: "search-type" }],
             searchParam: [
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
             profile: "http://hl7.org/fhir/StructureDefinition/Encounter",
             interaction: [{ code: "read" }, { code: "search-type" }],
             searchParam: [
-              { name: "patient", type: "reference", documentation: "Patient/{id} or bare {id}." },
+              { name: "client", type: "reference", documentation: "Client/{id} or bare {id}." },
               { name: "date", type: "date", documentation: "Exact YYYY-MM-DD match against service_date." },
               { name: "status", type: "token", documentation: "Filter by raw encounter_status." },
               { name: "_count", type: "number" },
@@ -68,7 +68,7 @@ export async function GET(request: Request) {
             profile: "http://hl7.org/fhir/StructureDefinition/Observation",
             interaction: [{ code: "read" }, { code: "search-type" }],
             searchParam: [
-              { name: "patient", type: "reference", documentation: "Patient/{id} or bare {id}." },
+              { name: "client", type: "reference", documentation: "Client/{id} or bare {id}." },
               { name: "date", type: "date", documentation: "Exact YYYY-MM-DD match against submitted_at::date." },
               { name: "_count", type: "number" },
               { name: "_offset", type: "number" },
@@ -79,7 +79,7 @@ export async function GET(request: Request) {
             profile: "http://hl7.org/fhir/StructureDefinition/Appointment",
             interaction: [{ code: "read" }, { code: "search-type" }],
             searchParam: [
-              { name: "patient", type: "reference", documentation: "Patient/{id} or bare {id}." },
+              { name: "client", type: "reference", documentation: "Client/{id} or bare {id}." },
               { name: "practitioner", type: "reference", documentation: "Practitioner/{id} or bare {id}." },
               { name: "date", type: "date", documentation: "Exact YYYY-MM-DD match against scheduled_start_at::date." },
               { name: "status", type: "token" },
@@ -92,8 +92,8 @@ export async function GET(request: Request) {
             profile: "http://hl7.org/fhir/StructureDefinition/Coverage",
             interaction: [{ code: "read" }, { code: "search-type" }],
             searchParam: [
-              { name: "beneficiary", type: "reference", documentation: "Patient/{id} or bare {id}." },
-              { name: "patient", type: "reference", documentation: "Alias for beneficiary." },
+              { name: "beneficiary", type: "reference", documentation: "Client/{id} or bare {id}." },
+              { name: "client", type: "reference", documentation: "Alias for beneficiary." },
               { name: "_count", type: "number" },
               { name: "_offset", type: "number" },
             ],
@@ -103,7 +103,7 @@ export async function GET(request: Request) {
             profile: "http://hl7.org/fhir/StructureDefinition/DocumentReference",
             interaction: [{ code: "read" }, { code: "search-type" }],
             searchParam: [
-              { name: "patient", type: "reference", documentation: "Patient/{id} or bare {id}." },
+              { name: "client", type: "reference", documentation: "Client/{id} or bare {id}." },
               { name: "type", type: "token", documentation: "Filter by document_type." },
               { name: "_count", type: "number" },
               { name: "_offset", type: "number" },

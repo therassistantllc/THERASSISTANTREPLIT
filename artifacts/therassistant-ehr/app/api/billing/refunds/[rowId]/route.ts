@@ -14,7 +14,7 @@
  *                        for era: rows, mints a payment_refunds row first)
  *   issue_refund      — set refund_status='issued', issued_at=now()
  *   apply_to_balance  — write a note that the credit was applied to
- *                        future patient balance (cancels the refund row)
+ *                        future client balance (cancels the refund row)
  *   dispute_refund    — set refund_status='cancelled' with reason
  *   mark_complete     — set refund_status='issued' (manual reconciliation)
  *
@@ -203,7 +203,7 @@ async function mintRefundFromEra(
 // before issuing:
 //   - paymentHistory: every era_posting_ledger_entries, client_payments,
 //     patient_invoice_payments, and payment_refunds row tied to the source
-//     claim (and, for patient credits, the source client_payment).
+//     claim (and, for client credits, the source client_payment).
 //   - creditSource: the originating ERA's CARC/RARC + CAS breakdown plus
 //     any prior refunds linked to the same source payment.
 export interface LedgerEntry {
@@ -576,7 +576,7 @@ export async function GET(
       const invNum = invoiceNumberById.get(invId) || "";
       const invClientId = invoiceClientById.get(invId) || "";
       const bits = [
-        text(p.payment_method) || "patient payment",
+        text(p.payment_method) || "client payment",
         invNum ? `invoice ${invNum}` : "",
         text(p.memo),
       ].filter(Boolean);
@@ -588,7 +588,7 @@ export async function GET(
         description: bits.join(" · "),
         status: text(p.payment_status) || null,
         reasonCode: null,
-        source: "patient invoice",
+        source: "client invoice",
         href:
           invClientId && invId
             ? `/patients/${invClientId}/balance/invoice/${invId}`
@@ -605,8 +605,8 @@ export async function GET(
         // the row kind.
         amount: -money(r.amount),
         description:
-          (text(r.refund_type) === "patient"
-            ? "Patient refund"
+          (text(r.refund_type) === "client"
+            ? "Client refund"
             : "Payer refund") +
           (text(r.reason) ? ` · ${text(r.reason)}` : ""),
         status: text(r.refund_status) || null,
@@ -717,7 +717,7 @@ export async function GET(
 
 /**
  * Issue a pending refund row for real:
- *   - patient + Stripe-origin client_payment → call Stripe /v1/refunds
+ *   - client + Stripe-origin client_payment → call Stripe /v1/refunds
  *     (with the Stripe-Account header for Connect charges). On success
  *     stamps stripe_refund_id + refund_status='issued'. On failure
  *     stamps refund_status='failed' and appends the Stripe error to note.
@@ -747,7 +747,7 @@ async function issueRefund(
   const amount = Number(refund.amount ?? 0);
   const now = new Date().toISOString();
 
-  if (refundType === "patient") {
+  if (refundType === "client") {
     // Look up the originating client_payment for Stripe linkage.
     const { data: cpRow } = await supabase
       .from("client_payments")
@@ -1105,7 +1105,7 @@ export async function POST(
       summary =
         issuance.refundStatus === "issued"
           ? issuance.kind === "patient_stripe"
-            ? `Issued patient refund via Stripe (${issuance.stripeRefundId ?? "—"})`
+            ? `Issued client refund via Stripe (${issuance.stripeRefundId ?? "—"})`
             : `Issued insurance refund (check ${issuance.checkNumber ?? "—"})`
           : `Refund issuance failed: ${issuance.error ?? "unknown"}`;
       // Bail out of the generic UPDATE block — issuance already wrote the
@@ -1146,7 +1146,7 @@ export async function POST(
     } else if (action === "apply_to_balance") {
       const noteLine = `[APPLIED_TO_BALANCE ${new Date()
         .toISOString()
-        .slice(0, 10)}] ${reason ?? "Credit applied to outstanding patient balance"}`;
+        .slice(0, 10)}] ${reason ?? "Credit applied to outstanding client balance"}`;
       update = {
         refund_status: "cancelled",
         note: [text(refund.note), noteLine].filter(Boolean).join("\n"),

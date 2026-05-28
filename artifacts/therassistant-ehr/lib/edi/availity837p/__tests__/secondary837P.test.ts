@@ -169,7 +169,7 @@ describe("Availity 837P — secondary COB", () => {
     const amtF2 = segs.find((s) => s.startsWith("AMT*F2*"));
     const oi = segs.find((s) => s === "OI***Y***Y");
     assert.equal(amtD, "AMT*D*100.00", "AMT*D must carry primary payer paid amount");
-    assert.equal(amtF2, "AMT*F2*25.00", "AMT*F2 must carry patient responsibility");
+    assert.equal(amtF2, "AMT*F2*25.00", "AMT*F2 must carry client responsibility");
     assert.ok(oi, "OI segment missing from 2320 loop");
   });
 

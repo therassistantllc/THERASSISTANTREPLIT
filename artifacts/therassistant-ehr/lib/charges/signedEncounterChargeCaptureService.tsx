@@ -149,7 +149,7 @@ export async function captureSignedEncounterCharge(
   }
 
   // Resolve the case for this encounter — explicit case_id wins, then the
-  // client's default case. Self-pay / charity cases route to patient
+  // client's default case. Self-pay / charity cases route to client
   // responsibility instead of generating an insurance claim.
   let resolvedCaseId: string | null = encounter.case_id ? String(encounter.case_id) : null;
   if (!resolvedCaseId && encounter.client_id) {

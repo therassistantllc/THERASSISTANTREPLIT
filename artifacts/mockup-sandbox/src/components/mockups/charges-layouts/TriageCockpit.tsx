@@ -10,7 +10,7 @@ type ChargeStatus = "unsigned" | "missing_dx" | "hold" | "ready" | "released";
 
 interface Charge {
   id: string;
-  patient: string;
+  client: string;
   dob: string;
   age: number;
   accountNo: string;
@@ -34,49 +34,49 @@ interface Charge {
 
 const CHARGES: Charge[] = [
   {
-    id: "CHG-101", patient: "Chen, David", dob: "1985-04-12", age: 38, accountNo: "ACC-8821",
+    id: "CHG-101", client: "Chen, David", dob: "1985-04-12", age: 38, accountNo: "ACC-8821",
     charge: 150.00, status: "unsigned", cpt: "90837", dos: "10/24/2023",
     primaryPayer: "Aetna", plan: "Choice POS II", memberId: "W11928374", payerType: "Commercial",
     diagnoses: ["F41.1"], renderingProvider: "Dr. Sarah Jenkins", npi: "1092837465", pos: "11 - Office",
     copay: 20, deductible: 0, coinsurance: 0, blockers: []
   },
   {
-    id: "CHG-102", patient: "Smith, Robert", dob: "1990-11-05", age: 33, accountNo: "ACC-9102",
+    id: "CHG-102", client: "Smith, Robert", dob: "1990-11-05", age: 33, accountNo: "ACC-9102",
     charge: 120.00, status: "unsigned", cpt: "90834", dos: "10/24/2023",
     primaryPayer: "BCBS", plan: "BlueCard PPO", memberId: "XEA123456789", payerType: "Commercial",
     diagnoses: ["F32.1"], renderingProvider: "Dr. Sarah Jenkins", npi: "1092837465", pos: "11 - Office",
     copay: 0, deductible: 50, coinsurance: 20, blockers: []
   },
   {
-    id: "CHG-103", patient: "Reyes, Marisol", dob: "1992-08-17", age: 31, accountNo: "ACC-7734",
+    id: "CHG-103", client: "Reyes, Marisol", dob: "1992-08-17", age: 31, accountNo: "ACC-7734",
     charge: 150.00, status: "missing_dx", cpt: "90837", dos: "10/23/2023",
     primaryPayer: "Cigna", plan: "Open Access Plus", memberId: "U99283746", payerType: "Commercial",
     diagnoses: [], renderingProvider: "Dr. Sarah Jenkins", npi: "1092837465", pos: "02 - Telehealth",
     copay: 15, deductible: 0, coinsurance: 0, blockers: ["Missing Primary Diagnosis"]
   },
   {
-    id: "CHG-104", patient: "Washington, James", dob: "1978-02-22", age: 45, accountNo: "ACC-4412",
+    id: "CHG-104", client: "Washington, James", dob: "1978-02-22", age: 45, accountNo: "ACC-4412",
     charge: 250.00, status: "hold", cpt: "90791", dos: "10/22/2023",
     primaryPayer: "Medicare", plan: "Part B", memberId: "1EG4TE5MK73", payerType: "Medicare",
     diagnoses: ["F43.20", "F41.9"], renderingProvider: "Dr. Sarah Jenkins", npi: "1092837465", pos: "11 - Office",
     copay: 0, deductible: 0, coinsurance: 20, blockers: ["Awaiting credentialing approval for POS 11"]
   },
   {
-    id: "CHG-105", patient: "Nguyen, Emily", dob: "2001-05-30", age: 22, accountNo: "ACC-5521",
+    id: "CHG-105", client: "Nguyen, Emily", dob: "2001-05-30", age: 22, accountNo: "ACC-5521",
     charge: 150.00, status: "ready", cpt: "90837", dos: "10/21/2023",
     primaryPayer: "Aetna", plan: "Student Health", memberId: "W88273645", payerType: "Commercial",
     diagnoses: ["F41.1", "F33.1"], renderingProvider: "Dr. Sarah Jenkins", npi: "1092837465", pos: "11 - Office",
     copay: 25, deductible: 0, coinsurance: 0, blockers: []
   },
   {
-    id: "CHG-106", patient: "Johnson, Michael", dob: "1988-09-14", age: 35, accountNo: "ACC-2291",
+    id: "CHG-106", client: "Johnson, Michael", dob: "1988-09-14", age: 35, accountNo: "ACC-2291",
     charge: 120.00, status: "ready", cpt: "90834", dos: "10/21/2023",
     primaryPayer: "UHC", plan: "Choice Plus", memberId: "991827364", payerType: "Commercial",
     diagnoses: ["F90.0"], renderingProvider: "Dr. Sarah Jenkins", npi: "1092837465", pos: "02 - Telehealth",
     copay: 10, deductible: 0, coinsurance: 0, blockers: []
   },
   {
-    id: "CHG-107", patient: "Patel, Anh", dob: "1995-12-01", age: 28, accountNo: "ACC-3310",
+    id: "CHG-107", client: "Patel, Anh", dob: "1995-12-01", age: 28, accountNo: "ACC-3310",
     charge: 150.00, status: "released", cpt: "90837", dos: "10/20/2023",
     primaryPayer: "BCBS", plan: "BlueOptions", memberId: "XEB987654321", payerType: "Commercial",
     diagnoses: ["F41.1"], renderingProvider: "Dr. Sarah Jenkins", npi: "1092837465", pos: "11 - Office",
@@ -119,7 +119,7 @@ export function TriageCockpit() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Search by patient or CPT..." 
+              placeholder="Search by client or CPT..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 pr-4 py-2 w-72 rounded bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500 focus:bg-slate-900 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 text-sm transition-all"
@@ -173,7 +173,7 @@ export function TriageCockpit() {
                       >
                         <div className="flex justify-between items-start mb-1.5">
                           <div>
-                            <div className="font-bold text-slate-900 text-[13px]">{charge.patient}</div>
+                            <div className="font-bold text-slate-900 text-[13px]">{charge.client}</div>
                             <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                               {charge.dos} <span className="mx-0.5">•</span> CPT {charge.cpt}
                             </div>
@@ -203,7 +203,7 @@ export function TriageCockpit() {
         {/* LOWER: Editor Workspace */}
         <div className="flex-1 flex flex-col bg-white z-20 relative shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
           
-          {/* Workspace Header / Patient Bar */}
+          {/* Workspace Header / Client Bar */}
           <div className="h-[52px] px-6 border-b border-slate-200 bg-slate-50 flex items-center gap-8 shrink-0">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
@@ -215,7 +215,7 @@ export function TriageCockpit() {
             <div className="flex items-center gap-6 flex-1 text-sm">
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-slate-400" />
-                <span className="font-bold text-slate-900 text-[15px]">{selectedCharge.patient}</span>
+                <span className="font-bold text-slate-900 text-[15px]">{selectedCharge.client}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-xs uppercase font-bold text-slate-400">DOB</span>
@@ -310,7 +310,7 @@ export function TriageCockpit() {
                 <div className="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
                   <div className="bg-slate-50/80 px-4 py-2 border-b border-slate-200">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                      <CreditCard className="w-3.5 h-3.5" /> Patient Payments
+                      <CreditCard className="w-3.5 h-3.5" /> Client Payments
                     </h3>
                   </div>
                   <div className="p-4 grid grid-cols-3 gap-3">

@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import { requireAuthentication } from "@/lib/rbac/middleware";
 import {
-  clientToFhirPatient,
+  clientToFhirClient,
   fhirJson,
   operationOutcome,
   PATIENT_DB_COLUMNS,
   type ClientRow,
   type FhirBundle,
-  type FhirPatient,
+  type FhirClient,
 } from "@/lib/fhir/patient";
 
 export const dynamic = "force-dynamic";
@@ -92,12 +92,12 @@ export async function GET(request: Request) {
     const rows = (data ?? []) as ClientRow[];
     const entry = rows.map((row) => ({
       fullUrl: `${baseUrl}/Patient/${row.id}`,
-      resource: clientToFhirPatient(row, baseUrl),
+      resource: clientToFhirClient(row, baseUrl),
       search: { mode: "match" as const },
     }));
 
     const selfUrl = new URL(request.url);
-    const bundle: FhirBundle<FhirPatient> = {
+    const bundle: FhirBundle<FhirClient> = {
       resourceType: "Bundle",
       type: "searchset",
       total: total ?? rows.length,

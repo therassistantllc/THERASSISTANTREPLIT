@@ -11,7 +11,7 @@ import { requireOrgAccess } from "@/lib/auth/requireOrgAccess";
 
 function extractMessage(error: unknown) {
   if (error instanceof Error) return error.message;
-  return "Patient update failed";
+  return "Client update failed";
 }
 
 type IncomingUpdates = {
@@ -182,7 +182,7 @@ async function writeDemographicsAuditLogs(params: {
 
   const { error } = await supabase.from("audit_logs").insert(rows as never);
   if (error) {
-    console.error("[patients.PATCH] audit_logs insert failed", error.message);
+    console.error("[clients.PATCH] audit_logs insert failed", error.message);
     throw new Error(
       "Demographic change could not be recorded in the audit log. The update was not saved.",
     );
@@ -203,7 +203,7 @@ export async function PATCH(
     const supabase = createServerSupabaseServiceRoleClient();
     if (!supabase) {
       return NextResponse.json(
-        { success: false, error: "Service role key is required for patient updates." },
+        { success: false, error: "Service role key is required for client updates." },
         { status: 503 },
       );
     }
@@ -252,7 +252,7 @@ export async function PATCH(
       .maybeSingle();
     if (existingError) throw existingError;
     if (!existing) {
-      return NextResponse.json({ success: false, error: "Patient not found." }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Client not found." }, { status: 404 });
     }
 
     const beforeSnapshot: Record<string, string | null> = {};
@@ -262,7 +262,7 @@ export async function PATCH(
     }
 
     // Write the audit trail FIRST. If audit persistence fails we refuse to
-    // mutate the patient row — HIPAA requires every demographic change to be
+    // mutate the client row — HIPAA requires every demographic change to be
     // recorded, so a silent un-audited update is unacceptable.
     await writeDemographicsAuditLogs({
       supabase,
@@ -288,7 +288,7 @@ export async function PATCH(
       // Audit rows were already written; record a compensating note so the
       // trail isn't misleading.
       console.error(
-        "[patients.PATCH] update failed after audit write — audit rows describe an unapplied change",
+        "[clients.PATCH] update failed after audit write — audit rows describe an unapplied change",
         updateError.message,
       );
       throw updateError;

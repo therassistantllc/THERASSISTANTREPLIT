@@ -28,14 +28,14 @@ type MailroomItem = {
   createdAt: string;
 };
 
-type LinkedPatient = { id: string; name: string; dob: string; archived: boolean };
+type LinkedClient = { id: string; name: string; dob: string; archived: boolean };
 type LinkedEncounter = { id: string; serviceDate: string; providerName: string; archived: boolean };
 type LinkedClaim = { id: string; claimNumber: string; serviceDateFrom: string; payerName: string; archived: boolean };
 
 type DetailResponse = {
   success?: boolean;
   item?: MailroomItem;
-  patient?: LinkedPatient | null;
+  client?: LinkedClient | null;
   encounter?: LinkedEncounter | null;
   claim?: LinkedClaim | null;
   error?: string;
@@ -57,7 +57,7 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
   const router = useRouter();
   const organizationId = useMemo(() => getOrganizationId(), []);
   const [item, setItem] = useState<MailroomItem | null>(null);
-  const [patient, setPatient] = useState<LinkedPatient | null>(null);
+  const [client, setClient] = useState<LinkedClient | null>(null);
   const [encounter, setEncounter] = useState<LinkedEncounter | null>(null);
   const [claim, setClaim] = useState<LinkedClaim | null>(null);
   const [filingDestination, setFilingDestination] = useState<FilingDestination>("patient_chart");
@@ -88,7 +88,7 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
       setError(json.error || "Unable to load mailroom item.");
     } else {
       setItem(json.item);
-      setPatient(json.patient ?? null);
+      setClient(json.client ?? null);
       setEncounter(json.encounter ?? null);
       setClaim(json.claim ?? null);
       setAdminComments(json.item.adminComments || "");
@@ -107,7 +107,7 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
   }, [organizationId, itemId]);
 
   // Clear the picked entity whenever the user switches filing destination —
-  // a claim ID is not interchangeable with a patient or encounter ID.
+  // a claim ID is not interchangeable with a client or encounter ID.
   useEffect(() => {
     setSelectedEntity(null);
   }, [filingDestination]);
@@ -220,16 +220,16 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
               <p><strong>Created:</strong> {formatDate(item.createdAt)}</p>
               <p><strong>Notes:</strong> {item.notes || "—"}</p>
               <p>
-                <strong>Linked patient:</strong>{" "}
-                {patient ? (
-                  patient.name ? (
+                <strong>Linked client:</strong>{" "}
+                {client ? (
+                  client.name ? (
                     <>
-                      <Link href={`/clients/${patient.id}`}>{patient.name}</Link>
-                      {patient.dob ? ` (DOB ${patient.dob})` : ""}
-                      {patient.archived ? " — archived" : ""}
+                      <Link href={`/clients/${client.id}`}>{client.name}</Link>
+                      {client.dob ? ` (DOB ${client.dob})` : ""}
+                      {client.archived ? " — archived" : ""}
                     </>
                   ) : (
-                    <span className="muted-text">Patient record unavailable (archived or deleted)</span>
+                    <span className="muted-text">Client record unavailable (archived or deleted)</span>
                   )
                 ) : (
                   "Not linked"
@@ -266,7 +266,7 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
               ) : null}
             </div>
             <div className="section-actions">
-              {patient?.id ? <Link className="button button-secondary" href={`/clients/${patient.id}`}>Open Client Chart</Link> : null}
+              {client?.id ? <Link className="button button-secondary" href={`/clients/${client.id}`}>Open Client Chart</Link> : null}
               {encounter?.id ? <Link className="button button-secondary" href={`/encounters/${encounter.id}`}>Open Encounter</Link> : null}
               {filingDestination === "encounter" && selectedEntity && selectedEntity.id !== encounter?.id ? (
                 <Link className="button button-secondary" href={`/encounters/${selectedEntity.id}`}>Open Selected Encounter</Link>
@@ -282,7 +282,7 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
                 value={filingDestination}
                 onChange={(event) => setFilingDestination(event.target.value as FilingDestination)}
               >
-                <option value="patient_chart">Patient chart</option>
+                <option value="patient_chart">Client chart</option>
                 <option value="claim">Claim</option>
                 <option value="encounter">Encounter</option>
                 <option value="practice_documents">Practice-level documents</option>
@@ -291,7 +291,7 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
             {requiresTarget && entityType ? (
               <div className="field-label">
                 <span>
-                  {entityType === "patient" ? "Patient" : entityType === "claim" ? "Claim" : "Encounter"}
+                  {entityType === "client" ? "Client" : entityType === "claim" ? "Claim" : "Encounter"}
                 </span>
                 <EntityPicker
                   entityType={entityType}
@@ -322,7 +322,7 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
         <section className="panel form-panel">
           <h2>Re-link filed document</h2>
           <p className="muted-text">
-            Made a mistake when filing? Move this document to a different patient, encounter, or claim
+            Made a mistake when filing? Move this document to a different client, encounter, or claim
             without re-uploading. The original document record is updated and the change is recorded
             in the audit log.
           </p>
@@ -335,16 +335,16 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
               onChange={(event) => setRelinkDestination(event.target.value as FilingDestination)}
               disabled={relinking}
             >
-              <option value="patient_chart">Patient chart</option>
+              <option value="patient_chart">Client chart</option>
               <option value="claim">Claim</option>
               <option value="encounter">Encounter</option>
-              <option value="practice_documents">Practice-level documents (unlink patient/encounter/claim)</option>
+              <option value="practice_documents">Practice-level documents (unlink client/encounter/claim)</option>
             </select>
           </label>
           {relinkRequiresTarget && relinkEntityType ? (
             <div className="field-label">
               <span>
-                {relinkEntityType === "patient" ? "Patient" : relinkEntityType === "claim" ? "Claim" : "Encounter"}
+                {relinkEntityType === "client" ? "Client" : relinkEntityType === "claim" ? "Claim" : "Encounter"}
               </span>
               <EntityPicker
                 entityType={relinkEntityType}
@@ -356,7 +356,7 @@ export default function MailroomItemClient({ itemId }: { itemId: string }) {
             </div>
           ) : (
             <p className="muted-text">
-              This will unlink the patient, encounter, and claim from the document and file it at the practice level.
+              This will unlink the client, encounter, and claim from the document and file it at the practice level.
             </p>
           )}
           <button className="button" type="button" onClick={relinkDocument} disabled={!canRelink}>

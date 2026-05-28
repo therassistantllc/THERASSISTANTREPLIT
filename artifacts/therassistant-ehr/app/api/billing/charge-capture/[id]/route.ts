@@ -87,7 +87,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
       encounterId: charge.encounter_id ?? null,
       blockerReasons: Array.isArray(charge.blocker_reasons) ? charge.blocker_reasons : [],
       updatedAt: charge.updated_at ?? null,
-      patient: client
+      client: client
         ? {
             id: text(client.id),
             firstName: text(client.first_name),

@@ -8,7 +8,7 @@ type ChargeStatus = "ready" | "unsigned" | "missing_dx" | "hold" | "released";
 
 interface ChargeRow {
   id: string;
-  patient: string;
+  client: string;
   dob: string;
   age: string;
   acct: string;
@@ -28,7 +28,7 @@ interface ChargeRow {
 const CHARGES: ChargeRow[] = [
   {
     id: "CHG-1001",
-    patient: "Reyes, Marisol",
+    client: "Reyes, Marisol",
     dob: "1985-04-12",
     age: "38",
     acct: "PT-8832",
@@ -46,7 +46,7 @@ const CHARGES: ChargeRow[] = [
   },
   {
     id: "CHG-1002",
-    patient: "Chen, David",
+    client: "Chen, David",
     dob: "1990-11-05",
     age: "33",
     acct: "PT-9941",
@@ -64,7 +64,7 @@ const CHARGES: ChargeRow[] = [
   },
   {
     id: "CHG-1003",
-    patient: "Smith, James",
+    client: "Smith, James",
     dob: "1972-02-18",
     age: "51",
     acct: "PT-2210",
@@ -82,7 +82,7 @@ const CHARGES: ChargeRow[] = [
   },
   {
     id: "CHG-1004",
-    patient: "Johnson, Emily",
+    client: "Johnson, Emily",
     dob: "2001-08-30",
     age: "22",
     acct: "PT-4456",
@@ -100,7 +100,7 @@ const CHARGES: ChargeRow[] = [
   },
   {
     id: "CHG-1005",
-    patient: "Williams, Michael",
+    client: "Williams, Michael",
     dob: "1965-12-10",
     age: "58",
     acct: "PT-1122",
@@ -118,7 +118,7 @@ const CHARGES: ChargeRow[] = [
   },
   {
     id: "CHG-1006",
-    patient: "Brown, Jessica",
+    client: "Brown, Jessica",
     dob: "1995-03-25",
     age: "28",
     acct: "PT-3344",
@@ -171,7 +171,7 @@ export function WorklistTable() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input 
                 type="text" 
-                placeholder="Search patient, CPT..." 
+                placeholder="Search client, CPT..." 
                 className="pl-9 pr-4 py-1.5 w-64 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-slate-400"
               />
             </div>
@@ -201,7 +201,7 @@ export function WorklistTable() {
             <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-20 text-xs font-semibold text-slate-500 uppercase tracking-wider">
               <tr>
                 <th className="px-6 py-3 w-10 text-center"><input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" /></th>
-                <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors">Patient</th>
+                <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors">Client</th>
                 <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors">DOB</th>
                 <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors">DOS</th>
                 <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors">CPT</th>
@@ -223,7 +223,7 @@ export function WorklistTable() {
                     <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
                   </td>
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-slate-900 group-hover:text-blue-700 transition-colors">{row.patient}</div>
+                    <div className="font-semibold text-slate-900 group-hover:text-blue-700 transition-colors">{row.client}</div>
                     <div className="text-xs text-slate-500 font-mono mt-0.5">{row.acct}</div>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{row.dob}</td>
@@ -270,7 +270,7 @@ export function WorklistTable() {
               <div className="flex items-center gap-4">
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                   <FileText className="w-5 h-5 text-blue-600" />
-                  {selectedCharge.patient}
+                  {selectedCharge.client}
                 </h2>
                 <div className="h-5 w-px bg-slate-300"></div>
                 <div className="flex items-center gap-3 text-sm">
@@ -331,17 +331,17 @@ export function WorklistTable() {
                 )}
 
                 <div className="grid grid-cols-12 gap-6">
-                  {/* Left Column: Patient & Case (4 cols) */}
+                  {/* Left Column: Client & Case (4 cols) */}
                   <div className="col-span-4 space-y-6">
-                    {/* Patient Card */}
+                    {/* Client Card */}
                     <div className="bg-white border border-slate-200 rounded-md shadow-sm overflow-hidden">
                       <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Patient Information</h3>
+                        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Client Information</h3>
                       </div>
                       <div className="p-4 grid grid-cols-2 gap-4">
                         <div className="col-span-2">
-                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Patient Name</label>
-                          <div className="text-sm font-medium text-slate-900 bg-slate-50 px-3 py-1.5 rounded border border-slate-200">{selectedCharge.patient}</div>
+                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Client Name</label>
+                          <div className="text-sm font-medium text-slate-900 bg-slate-50 px-3 py-1.5 rounded border border-slate-200">{selectedCharge.client}</div>
                         </div>
                         <div>
                           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">DOB</label>
@@ -499,7 +499,7 @@ export function WorklistTable() {
 
                       <div className="bg-white border border-slate-200 rounded-md shadow-sm overflow-hidden">
                         <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Patient Payments</h3>
+                          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Client Payments</h3>
                         </div>
                         <div className="p-4 grid grid-cols-3 gap-4">
                           <div>

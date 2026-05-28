@@ -187,7 +187,7 @@ export default function PatientResponsibilityClient() {
     () => [
       { id: "practice", label: "Practice", kind: "select", options: practiceOptions },
       { id: "clinician", label: "Clinician", kind: "select", options: clinicianOptions },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "payer", label: "Payer", kind: "select", options: payerOptions },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },
@@ -237,13 +237,13 @@ export default function PatientResponsibilityClient() {
     const urgent = filteredRows.filter((r) => r.isUrgent).length;
     return [
       { id: "count", label: "Items", value: total.toLocaleString() },
-      { id: "dollars", label: "Total patient $", value: formatCurrency(dollars), tone: dollars > 0 ? "amber" : "default" },
+      { id: "dollars", label: "Total client $", value: formatCurrency(dollars), tone: dollars > 0 ? "amber" : "default" },
       { id: "oldest", label: "Oldest ERA (days)", value: oldest, tone: oldest > 30 ? "red" : oldest > 14 ? "amber" : "default" },
       { id: "urgent", label: "Urgent / Overdue", value: urgent, tone: urgent > 0 ? "red" : "default" },
     ];
   }, [filteredRows]);
 
-  // Columns — spec order: Client, Claim ID, DOS, Payer, Patient amount,
+  // Columns — spec order: Client, Claim ID, DOS, Payer, Client amount,
   // Reason, Invoice status, Autopay status, Statement date.
   const columns: ColumnDef<PatientResponsibilityRow>[] = useMemo(
     () => [
@@ -259,7 +259,7 @@ export default function PatientResponsibilityClient() {
       { id: "dos", header: "DOS", cell: (r) => formatDate(r.dateOfService) },
       { id: "payer", header: "Payer", cell: (r) => r.payerName || "—" },
       {
-        id: "amount", header: "Patient amount", align: "right",
+        id: "amount", header: "Client amount", align: "right",
         cell: (r) => <span style={{ fontWeight: 600 }}>{formatCurrency(r.patientAmount)}</span>,
       },
       {
@@ -378,7 +378,7 @@ export default function PatientResponsibilityClient() {
           send_statement: "Statement sent",
           charge_card: json.message ?? "Card charge requested",
           apply_adjustment: "Adjustment applied",
-          hold_billing: "Patient billing held",
+          hold_billing: "Client billing held",
           release_hold: "Hold released",
         } as Record<string, string>)[action] ?? "Done");
       } catch (e) {
@@ -414,7 +414,7 @@ export default function PatientResponsibilityClient() {
           const m = ctxByEra[r.eraClaimPaymentId]?.paymentMethod;
           // If we have context loaded and there's no saved card, disable;
           // otherwise allow optimistic click — the server returns a
-          // helpful 422 if the patient has no card on file.
+          // helpful 422 if the client has no card on file.
           if (m && m.hasSavedCard === false) return true;
           return false;
         },
@@ -441,7 +441,7 @@ export default function PatientResponsibilityClient() {
       },
       {
         id: "hold",
-        label: (() => "Hold patient billing")(),
+        label: (() => "Hold client billing")(),
         variant: "danger",
         onClick: (r) => void performAction(r, r.onHold ? "release_hold" : "hold_billing"),
         disabled: (r) => actingId === r.id,
@@ -468,7 +468,7 @@ export default function PatientResponsibilityClient() {
               <DetailKV label="Allowed amount" value={e.allowedAmount == null ? "—" : formatCurrency(e.allowedAmount)} />
               <DetailKV label="Insurance paid" value={formatCurrency(e.insurancePaid)} />
               <DetailKV label="Contractual adj (CO)" value={formatCurrency(e.contractualAdjustment)} />
-              <DetailKV label="Patient responsibility" value={<strong>{formatCurrency(e.patientResponsibility)}</strong>} />
+              <DetailKV label="Client responsibility" value={<strong>{formatCurrency(e.patientResponsibility)}</strong>} />
               <DetailKV label="Check / EFT #" value={e.checkEftNumber ?? "—"} />
               <DetailKV label="Check issue date" value={formatDate(e.checkIssueDate)} />
               <h4 style={{ fontSize: 13, margin: "12px 0 4px" }}>Service lines</h4>
@@ -506,7 +506,7 @@ export default function PatientResponsibilityClient() {
         },
       },
       {
-        id: "reason", label: "Patient responsibility reason",
+        id: "reason", label: "Client responsibility reason",
         render: () => {
           if (!selectedRow) return null;
           if (ctxIsLoading && !ctx) return <p style={{ color: "#64748B", fontSize: 13 }}>Loading…</p>;
@@ -528,12 +528,12 @@ export default function PatientResponsibilityClient() {
         },
       },
       {
-        id: "balance", label: "Existing patient balance",
+        id: "balance", label: "Existing client balance",
         render: () => {
           if (!selectedRow) return null;
           if (ctxIsLoading && !ctx) return <p style={{ color: "#64748B", fontSize: 13 }}>Loading…</p>;
           if (!ctx?.existingBalance) {
-            return <p style={{ color: "#64748B", fontSize: 13 }}>No prior patient balance on file.</p>;
+            return <p style={{ color: "#64748B", fontSize: 13 }}>No prior client balance on file.</p>;
           }
           const b = ctx.existingBalance;
           return (
@@ -573,13 +573,13 @@ export default function PatientResponsibilityClient() {
                   ? <StatusPill label="Enabled" tone="green" />
                   : <StatusPill label="Off" tone="default" />}
               />
-              <DetailKV label="Patient portal" value={m.portalStatus ?? "Not configured"} />
+              <DetailKV label="Client portal" value={m.portalStatus ?? "Not configured"} />
               <DetailKV label="Email on file" value={m.hasEmail ? <StatusPill label="Yes" tone="green" /> : <StatusPill label="No" tone="amber" />} />
               <DetailKV label="Phone on file" value={m.hasPhone ? <StatusPill label="Yes" tone="green" /> : <StatusPill label="No" tone="amber" />} />
               <DetailKV label="Mailing address" value={m.hasMailingAddress ? <StatusPill label="Yes" tone="green" /> : <StatusPill label="No" tone="amber" />} />
               {!m.hasSavedCard ? (
                 <p style={{ marginTop: 8, fontSize: 12, color: "#64748B" }}>
-                  No card on file — add one from the patient&apos;s billing page before charging.
+                  No card on file — add one from the client&apos;s billing page before charging.
                 </p>
               ) : null}
             </div>
@@ -610,7 +610,7 @@ export default function PatientResponsibilityClient() {
           return (
             <div>
               <DetailKV label="Invoice # (preview)" value={<span style={{ fontFamily: "ui-monospace,monospace" }}>{p.invoiceNumberPreview}</span>} />
-              <DetailKV label="Patient" value={p.clientName} />
+              <DetailKV label="Client" value={p.clientName} />
               <DetailKV label="Email" value={p.clientEmail ?? "—"} />
               <DetailKV label="Amount" value={<strong>{formatCurrency(p.amount)}</strong>} />
               <DetailKV label="Source" value={p.proposedSource} />
@@ -663,7 +663,7 @@ export default function PatientResponsibilityClient() {
         disabled: actingId === r.id,
       },
       {
-        id: "hold", label: r.onHold ? "Release hold" : "Hold patient billing", variant: "danger",
+        id: "hold", label: r.onHold ? "Release hold" : "Hold client billing", variant: "danger",
         onClick: () => void performAction(r, r.onHold ? "release_hold" : "hold_billing"),
         disabled: actingId === r.id,
       },
@@ -680,7 +680,7 @@ export default function PatientResponsibilityClient() {
 
   return (
     <WorkqueueShell<PatientResponsibilityRow>
-      title={queueDef?.title ?? "Patient Responsibility Generated"}
+      title={queueDef?.title ?? "Client Responsibility Generated"}
       description={queueDef?.description}
       headerActions={[
         { id: "refresh", label: "Refresh", onClick: () => void load() },

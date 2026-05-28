@@ -84,7 +84,7 @@ export default function UpdateInsuranceDrawer({
     copayAmount: row.copay == null ? "" : String(row.copay),
   });
 
-  // Load payers + patient policies (to get plan_name/group/copay not on the row)
+  // Load payers + client policies (to get plan_name/group/copay not on the row)
   useEffect(() => {
     let cancelled = false;
     (async () => {

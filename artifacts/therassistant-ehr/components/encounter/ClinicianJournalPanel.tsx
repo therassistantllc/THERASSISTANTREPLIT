@@ -191,7 +191,7 @@ export default function ClinicianJournalPanel({
         <p className="muted" style={{ margin: 0 }}>
           {mode === "import"
             ? "No journal entries are available to import."
-            : "The patient has not logged any journal entries in this window."}
+            : "The client has not logged any journal entries in this window."}
         </p>
       ) : (
         <div>

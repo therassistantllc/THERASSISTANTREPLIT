@@ -172,7 +172,7 @@ export async function POST(req: Request) {
       lines.push(
         [
           csvCell(`cp:${r.id}`),
-          "patient",
+          "client",
           csvCell(r.amount),
           csvCell(r.reference_number),
           csvCell(r.posted_at),

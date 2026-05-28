@@ -148,7 +148,7 @@ const POS_LABELS: Record<string, string> = {
   "12": "12 – Home",
   "49": "49 – Independent Clinic",
   "02": "02 – Telehealth",
-  "10": "10 – Telehealth (patient home)",
+  "10": "10 – Telehealth (client home)",
 };
 
 /* ── Small presentational helpers for the CMS-1500 preview ── */
@@ -538,7 +538,7 @@ export default function OrganizationSettingsClient() {
                   <option value="12">12 – Home</option>
                   <option value="49">49 – Independent Clinic</option>
                   <option value="02">02 – Telehealth</option>
-                  <option value="10">10 – Telehealth (patient home)</option>
+                  <option value="10">10 – Telehealth (client home)</option>
                 </select>
               </label>
               <label className="field-label">
@@ -547,7 +547,7 @@ export default function OrganizationSettingsClient() {
                   value={billing.default_pos_telehealth}
                   onChange={(e) => setBilling((prev) => ({ ...prev, default_pos_telehealth: e.target.value }))}
                 >
-                  <option value="10">10 – Telehealth (patient home)</option>
+                  <option value="10">10 – Telehealth (client home)</option>
                   <option value="02">02 – Telehealth</option>
                   <option value="11">11 – Office</option>
                   <option value="12">12 – Home</option>

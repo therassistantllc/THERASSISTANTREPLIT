@@ -49,7 +49,7 @@ export async function POST(request: Request) {
 
     // Self-pay / charity cases skip insurance claim creation entirely. The
     // charge capture row stays at status='patient_responsibility' and the
-    // balance will be invoiced to the patient by the existing balance flow.
+    // balance will be invoiced to the client by the existing balance flow.
     if (resolvedCase && isPatientResponsibilityCaseType(resolvedCase.caseType)) {
       return NextResponse.json({
         success: true,
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
         reason: "patient_responsibility",
         caseId: resolvedCase.id,
         caseType: resolvedCase.caseType,
-        message: `Encounter is routed to patient responsibility under case "${resolvedCase.name}"; no insurance claim created.`,
+        message: `Encounter is routed to client responsibility under case "${resolvedCase.name}"; no insurance claim created.`,
       });
     }
 

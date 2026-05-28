@@ -1,6 +1,6 @@
 /**
  * POST /api/billing/claims/[claimId]/bill-to-patient
- * Moves a denied claim to the patient responsibility queue.
+ * Moves a denied claim to the client responsibility queue.
  */
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
@@ -23,7 +23,7 @@ export async function POST(
     if (!supabase)
       return NextResponse.json({ success: false, error: "Database not available" }, { status: 500 });
 
-    // Get current claim to calculate patient responsibility
+    // Get current claim to calculate client responsibility
     const { data: claim, error: fetchError } = await supabase
       .from("professional_claims")
       .select("id, total_charge, patient_responsibility_amount, payer_responsibility_amount")
@@ -34,10 +34,10 @@ export async function POST(
     if (fetchError || !claim)
       return NextResponse.json({ success: false, error: "Claim not found" }, { status: 404 });
 
-    // Move entire charge to patient responsibility
+    // Move entire charge to client responsibility
     const totalCharge = Number(claim.total_charge ?? 0);
     const currentPR = Number(claim.patient_responsibility_amount ?? 0);
-    // If no PR is set, treat entire charge as patient responsibility
+    // If no PR is set, treat entire charge as client responsibility
     const newPR = currentPR > 0 ? currentPR : totalCharge;
 
     const { error } = await supabase

@@ -29,9 +29,9 @@ const MEMBER_KEYWORDS = [
   "insured",
   "member id",
   "member number",
-  "patient id",
-  "patient gender",
-  "patient dob",
+  "client id",
+  "client gender",
+  "client dob",
   "date of birth",
   "eligibility",
   "policy number",
@@ -120,7 +120,7 @@ export function rejection277CaTabLabel(id: Rejection277CaTabId): string {
  * rejection at intake time, before any biller has read the message.
  *
  *   - "IL" → Insured / Subscriber (member problem)
- *   - "QC" → Patient (also a member problem)
+ *   - "QC" → Client (also a member problem)
  *   - "82" → Rendering Provider
  *   - "85" → Billing Provider
  *   - "71" → Attending Physician

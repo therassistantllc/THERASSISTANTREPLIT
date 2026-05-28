@@ -19,9 +19,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: result.ok, result }, { status: result.ok ? 200 : 422 });
   } catch (error) {
-    console.error("Patient invoice void API error:", error);
+    console.error("Client invoice void API error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Patient invoice void failed" },
+      { success: false, error: error instanceof Error ? error.message : "Client invoice void failed" },
       { status: 500 },
     );
   }

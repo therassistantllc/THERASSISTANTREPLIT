@@ -60,7 +60,7 @@ export async function GET(request: Request, context: { params: Promise<{ itemId:
     const item = itemDto(data as DbRow);
 
     // Find the most recent filed document for this mailroom item — it carries the
-    // patient / encounter / claim FKs that the filing UI produced.
+    // client / encounter / claim FKs that the filing UI produced.
     const { data: docRow } = await supabase
       .from("documents")
       .select("id, client_id, encounter_id, claim_id, filed_at, created_at")
@@ -76,8 +76,8 @@ export async function GET(request: Request, context: { params: Promise<{ itemId:
     const encounterId = clean(filedDoc?.encounter_id);
     const claimId = clean(filedDoc?.claim_id);
 
-    // Patient
-    let patient: { id: string; name: string; dob: string; archived: boolean } | null = null;
+    // Client
+    let client: { id: string; name: string; dob: string; archived: boolean } | null = null;
     if (effectivePatientId) {
       const { data: clientRow } = await supabase
         .from("clients")
@@ -87,14 +87,14 @@ export async function GET(request: Request, context: { params: Promise<{ itemId:
         .maybeSingle();
       if (clientRow) {
         const c = clientRow as DbRow;
-        patient = {
+        client = {
           id: clean(c.id),
-          name: fullName(c.first_name, c.last_name, c.preferred_name) || "Unnamed patient",
+          name: fullName(c.first_name, c.last_name, c.preferred_name) || "Unnamed client",
           dob: clean(c.date_of_birth),
           archived: Boolean(c.archived_at),
         };
       } else {
-        patient = { id: effectivePatientId, name: "", dob: "", archived: true };
+        client = { id: effectivePatientId, name: "", dob: "", archived: true };
       }
     }
 
@@ -176,7 +176,7 @@ export async function GET(request: Request, context: { params: Promise<{ itemId:
       }
     }
 
-    return NextResponse.json({ success: true, item, patient, encounter, claim });
+    return NextResponse.json({ success: true, item, client, encounter, claim });
   } catch (error) {
     console.error("Mailroom item detail API error:", error);
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Mailroom item detail failed" }, { status: 500 });

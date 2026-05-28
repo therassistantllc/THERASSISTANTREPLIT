@@ -71,7 +71,7 @@ describe("fee schedule line parser", () => {
   });
 
   it("handles commas in money values", () => {
-    const r = parseLine("99205   New patient visit   $1,234.56");
+    const r = parseLine("99205   New client visit   $1,234.56");
     assert.equal(r?.allowedAmount, 1234.56);
   });
 

@@ -159,7 +159,7 @@ async function upsertInboxItem(
     args.kind === "clinician" ? "eligibility_routed_clinician" : "eligibility_routed_admin";
   const title =
     args.kind === "clinician"
-      ? "Verify patient insurance for upcoming visit"
+      ? "Verify client insurance for upcoming visit"
       : "Resolve eligibility issue (admin)";
   const description =
     args.note ||
@@ -314,7 +314,7 @@ export async function POST(request: Request) {
           note,
         });
 
-        // Look up enrichment data for the email body — patient name + the
+        // Look up enrichment data for the email body — client name + the
         // routed-by display name. Best-effort: any failure here just drops
         // the field; we never want enrichment to break the routing call.
         let patientName: string | null = null;

@@ -65,7 +65,7 @@ type ClaimLite = {
 type PatientBalancePayload = {
   success: boolean;
   error?: string;
-  patient?: { id: string; name: string; dateOfBirth?: string | null; email?: string | null; phone?: string | null };
+  client?: { id: string; name: string; dateOfBirth?: string | null; email?: string | null; phone?: string | null };
   totals?: {
     openBalance: number;
     totalPaid: number;
@@ -176,7 +176,7 @@ function buildLedger(
         key: `pay:${pay.id}`,
         date: pay.paid_at ?? invDate,
         kind: "payment",
-        description: `Patient payment · ${pay.payment_method ?? "method not set"}${pay.memo ? ` — ${pay.memo}` : ""}`,
+        description: `Client payment · ${pay.payment_method ?? "method not set"}${pay.memo ? ` — ${pay.memo}` : ""}`,
         reference: ref,
         charge: 0,
         credit: Number(pay.amount ?? 0),
@@ -257,7 +257,7 @@ function ledgerKindLabel(kind: LedgerEntry["kind"]): string {
   switch (kind) {
     case "pending_visit": return "Visit (pending)";
     case "invoice": return "Invoice";
-    case "payment": return "Patient payment";
+    case "payment": return "Client payment";
     case "insurance_payment": return "Insurance payment";
     case "adjustment": return "Adjustment";
     case "write_off": return "Write-off";
@@ -291,10 +291,10 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
     try {
       const response = await fetch(`/api/patients/${clientId}/balance?organizationId=${encodeURIComponent(organizationId)}`, { cache: "no-store" });
       const json = (await response.json()) as PatientBalancePayload;
-      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to load patient balance");
+      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to load client balance");
       setPayload(json);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load patient balance");
+      setError(loadError instanceof Error ? loadError.message : "Failed to load client balance");
     } finally {
       setLoading(false);
     }
@@ -329,7 +329,7 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
     try {
       await postAction(
         "/api/patient-invoices/pay",
-        { organizationId, patientInvoiceId: invoice.id, amount: Number(amount), paymentMethod: "manual", memo: "Manual payment posted from patient balance screen" },
+        { organizationId, patientInvoiceId: invoice.id, amount: Number(amount), paymentMethod: "manual", memo: "Manual payment posted from client balance screen" },
         "Payment posted.",
       );
     } catch (e) {
@@ -341,7 +341,7 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
     try {
       await postAction(
         "/api/patient-invoices/mark-sent",
-        { organizationId, patientInvoiceId: invoice.id, memo: "Marked sent from patient balance screen" },
+        { organizationId, patientInvoiceId: invoice.id, memo: "Marked sent from client balance screen" },
         "Invoice marked sent.",
       );
     } catch (e) {
@@ -354,7 +354,7 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
     try {
       await postAction(
         "/api/patient-invoices/void",
-        { organizationId, patientInvoiceId: invoice.id, memo: "Voided from patient balance screen" },
+        { organizationId, patientInvoiceId: invoice.id, memo: "Voided from client balance screen" },
         "Invoice voided.",
       );
     } catch (e) {
@@ -362,7 +362,7 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
     }
   }
 
-  const patient = payload?.patient;
+  const client = payload?.client;
   const totals = payload?.totals;
   const invoices = payload?.invoices ?? [];
   const insurancePayments = payload?.insurancePayments ?? [];
@@ -385,7 +385,7 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
 
   if (loading) return <div className="empty-state">Loading balance…</div>;
   if (error) return <div className="alert-panel">{error}</div>;
-  if (!patient) return <div className="alert-panel">Patient balance not found.</div>;
+  if (!client) return <div className="alert-panel">Client balance not found.</div>;
 
   const orgQ = `?organizationId=${encodeURIComponent(organizationId)}`;
 
@@ -393,8 +393,8 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
     <>
       <section className="hero-panel">
         <div>
-          <p className="eyebrow">Patient Balance</p>
-          <h1>{patient.name}</h1>
+          <p className="eyebrow">Client Balance</p>
+          <h1>{client.name}</h1>
           <p className="hero-copy">Account ledger of charges, payments, and adjustments with running balance.</p>
         </div>
         <div className="hero-actions">
@@ -403,7 +403,7 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
             className="button button-primary"
             onClick={() => setInvoiceModalOpen(true)}
             disabled={openClaims.length === 0}
-            title={openClaims.length === 0 ? "No open claims available to invoice" : "Generate a patient invoice from an open claim"}
+            title={openClaims.length === 0 ? "No open claims available to invoice" : "Generate a client invoice from an open claim"}
           >
             Generate invoice
           </button>
@@ -417,7 +417,7 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
           <Link className="button button-secondary" href={`/billing/payments${orgQ}`}>
             Enter payment
           </Link>
-          <Link className="button button-secondary" href={`/clients/${patient.id}${orgQ}`}>Patient Chart</Link>
+          <Link className="button button-secondary" href={`/clients/${client.id}${orgQ}`}>Client Chart</Link>
         </div>
       </section>
 
@@ -429,7 +429,7 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
           <strong>{formatMoney(totals?.openBalance ?? 0)}</strong>
         </article>
         <article className="metric-card">
-          <span>Patient Paid</span>
+          <span>Client Paid</span>
           <strong>{formatMoney(totals?.totalPaid ?? 0)}</strong>
         </article>
         <article className="metric-card">
@@ -482,7 +482,7 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
                   <td>{entry.description}</td>
                   <td>
                     {entry.invoiceId ? (
-                      <Link className="inline-link" href={`/clients/${patient.id}/balance/invoice/${entry.invoiceId}/print${orgQ}`} target="_blank">
+                      <Link className="inline-link" href={`/clients/${client.id}/balance/invoice/${entry.invoiceId}/print${orgQ}`} target="_blank">
                         {entry.reference}
                       </Link>
                     ) : entry.claimId ? (
@@ -507,7 +507,7 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
         <div className="panel-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2 style={{ margin: 0 }}>Invoices</h2>
         </div>
-        {invoices.length === 0 ? <p className="muted">No patient invoices found.</p> : null}
+        {invoices.length === 0 ? <p className="muted">No client invoices found.</p> : null}
         <div className="stack-list">
           {invoices.map((invoice) => (
             <article className="stack-item" key={invoice.id}>
@@ -527,7 +527,7 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
               <div className="section-actions">
                 <a
                   className="button button-primary"
-                  href={`/clients/${patient.id}/balance/invoice/${invoice.id}/print${orgQ}`}
+                  href={`/clients/${client.id}/balance/invoice/${invoice.id}/print${orgQ}`}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -545,7 +545,7 @@ export default function PatientBalanceClient({ clientId }: { clientId: string })
       {statementModalOpen ? (
         <GenerateStatementModal
           organizationId={organizationId}
-          clientId={patient.id}
+          clientId={client.id}
           openBalance={totals?.openBalance ?? 0}
           onClose={() => setStatementModalOpen(false)}
           onCreated={async (message) => {
@@ -619,7 +619,7 @@ function GenerateInvoiceModal({
         const url = `/clients/${clientIdForUrl}/balance/invoice/${newInvoiceId}/print?organizationId=${encodeURIComponent(organizationId)}`;
         window.open(url, "_blank", "noreferrer");
       }
-      await onCreated(`Patient invoice generated and posted to ledger.`);
+      await onCreated(`Client invoice generated and posted to ledger.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -642,9 +642,9 @@ function GenerateInvoiceModal({
           boxShadow: "0 20px 40px rgba(15,23,42,0.2)",
         }}
       >
-        <h3 style={{ marginTop: 0 }}>Generate patient invoice</h3>
+        <h3 style={{ marginTop: 0 }}>Generate client invoice</h3>
         <p className="muted" style={{ marginTop: 0 }}>
-          Create a new patient invoice from an open claim. The invoice posts to the ledger and is marked sent.
+          Create a new client invoice from an open claim. The invoice posts to the ledger and is marked sent.
         </p>
         {error ? <div className="alert-panel" style={{ marginBottom: 10 }}>{error}</div> : null}
 

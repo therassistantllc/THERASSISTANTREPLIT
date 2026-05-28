@@ -270,9 +270,9 @@ export default function MyInboxClient() {
         }
         setItems((prev) => prev.filter((r) => r.id !== item.id));
         const labels: Record<string, string> = {
-          approve: "Approved — returned to Patient Balances",
+          approve: "Approved — returned to Client Balances",
           charity_care: "Written off as charity care",
-          discount: `Discounted to $${discountedAmount?.toFixed(2) ?? "0.00"} — returned to Patient Balances`,
+          discount: `Discounted to $${discountedAmount?.toFixed(2) ?? "0.00"} — returned to Client Balances`,
         };
         setToast(labels[action] ?? "Action completed");
         setDiscountModal(null);
@@ -721,7 +721,7 @@ export default function MyInboxClient() {
                       )}
                       {item.patientResponsibility != null && (
                         <div style={{ fontSize: 11, color: "#334155", marginBottom: 2 }}>
-                          Patient responsibility:{" "}
+                          Client responsibility:{" "}
                           <strong>${Number(item.patientResponsibility).toFixed(2)}</strong>
                         </div>
                       )}
@@ -960,7 +960,7 @@ export default function MyInboxClient() {
                           onChange={(e) =>
                             setDraftById((prev) => ({ ...prev, [item.id]: e.target.value }))
                           }
-                          placeholder="e.g. Left voicemail with patient — will follow up tomorrow"
+                          placeholder="e.g. Left voicemail with client — will follow up tomorrow"
                           rows={2}
                           style={{
                             width: "100%",
@@ -1053,14 +1053,14 @@ export default function MyInboxClient() {
               Set Discounted Amount
             </h3>
             <p style={{ margin: "0 0 16px", fontSize: 12, color: "#64748b" }}>
-              Enter the new amount the patient should be charged for{" "}
-              <strong>{discountModal.item.clientName ?? "this patient"}</strong>.
+              Enter the new amount the client should be charged for{" "}
+              <strong>{discountModal.item.clientName ?? "this client"}</strong>.
               {discountModal.item.patientResponsibility != null && (
                 <> Original: <strong>${Number(discountModal.item.patientResponsibility).toFixed(2)}</strong>.</>
               )}
             </p>
             <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#64748b", marginBottom: 4, textTransform: "uppercase" }}>
-              New Patient Amount ($)
+              New Client Amount ($)
             </label>
             <input
               type="number"

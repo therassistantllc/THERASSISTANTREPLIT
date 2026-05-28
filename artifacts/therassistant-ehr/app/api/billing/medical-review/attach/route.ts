@@ -1,13 +1,13 @@
 /**
  * POST /api/billing/medical-review/attach
  *
- * Links existing patient-chart documents to a claim by setting
+ * Links existing client-chart documents to a claim by setting
  * `documents.claim_id`. Used by the chart picker in the Medical Review
  * detail panel so billers can attach records already on file (notes,
  * treatment plans, prior auths, etc.) without re-uploading.
  *
  * Validates every document belongs to the same org and (when set) the
- * claim's patient before any update lands.
+ * claim's client before any update lands.
  */
 import { NextResponse } from "next/server";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";

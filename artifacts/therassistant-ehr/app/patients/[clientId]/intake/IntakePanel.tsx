@@ -115,7 +115,7 @@ export default function IntakePanel({
       if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to create intake link");
       const url = typeof window !== "undefined" ? `${window.location.origin}${json.link.url}` : json.link.url;
       if (delivery === "email") {
-        const to = json.email?.to ?? "the patient";
+        const to = json.email?.to ?? "the client";
         setMessage(`Intake link emailed to ${to}.`);
       } else {
         try {
@@ -213,7 +213,7 @@ export default function IntakePanel({
       <section className="page-header">
         <div>
           <p className="eyebrow">Client Chart</p>
-          <h2>Patient Intake</h2>
+          <h2>Client Intake</h2>
         </div>
         <div className="hero-actions">
           <button
@@ -241,7 +241,7 @@ export default function IntakePanel({
 
       {!loading && submissions.length === 0 && links.length === 0 ? (
         <div className="empty-state">
-          No intake on file yet. Send the patient a one-time intake link to collect demographics,
+          No intake on file yet. Send the client a one-time intake link to collect demographics,
           insurance, consents, and screening tools (PHQ-9, GAD-7).
         </div>
       ) : null}
@@ -322,8 +322,8 @@ export default function IntakePanel({
                   ? replacedByStaffName
                     ? `Updated by ${replacedByStaffName}${uploadedAt ? ` on ${formatDateTime(uploadedAt)}` : ""}`
                     : uploadedAt
-                      ? `Uploaded by patient at intake (${formatDateTime(uploadedAt)})`
-                      : "Uploaded by patient at intake"
+                      ? `Uploaded by client at intake (${formatDateTime(uploadedAt)})`
+                      : "Uploaded by client at intake"
                   : null;
                 return (
                   <div key={side} style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 160 }}>
@@ -453,7 +453,7 @@ export default function IntakePanel({
               const deliveryLabel =
                 method === "email"
                   ? link.deliveredAt
-                    ? `Emailed to ${link.deliveredToEmail ?? "patient"} on ${formatDate(link.deliveredAt)}`
+                    ? `Emailed to ${link.deliveredToEmail ?? "client"} on ${formatDate(link.deliveredAt)}`
                     : `Email queued${link.deliveredToEmail ? ` to ${link.deliveredToEmail}` : ""}`
                   : "Copied to clipboard";
               let statusBadge: { className: string; text: string } | null = null;

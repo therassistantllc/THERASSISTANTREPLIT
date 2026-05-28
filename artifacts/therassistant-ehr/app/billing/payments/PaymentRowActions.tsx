@@ -5,7 +5,7 @@
  *
  * Renders a compact "Actions ▾" popover per posted-payment row that opens the
  * five destructive/finalising flows the biller used to have to curl directly:
- *   - Issue refund (insurance or patient)
+ *   - Issue refund (insurance or client)
  *   - Reverse posted payment
  *   - Void (no financial impact)
  *   - Record recoupment (payer takeback)
@@ -32,11 +32,11 @@ type ActionKind =
 
 export interface RowSummary {
   id: string; // composite (era:|cp:|mi: + uuid)
-  paymentType: "insurance" | "patient";
+  paymentType: "insurance" | "client";
   postingStatus: string;
   amount: number;
   payerName: string | null;
-  source: "era" | "manual_insurance" | "patient";
+  source: "era" | "manual_insurance" | "client";
 }
 
 interface DetailResponse {
@@ -52,7 +52,7 @@ interface DetailResponse {
   } | null;
   refunds: Array<{
     id: string;
-    refund_type: "insurance" | "patient";
+    refund_type: "insurance" | "client";
     amount: number;
     refund_status: "pending" | "issued" | "failed" | "cancelled";
     reason: string;
@@ -479,7 +479,7 @@ function useDetail(rowId: string, orgId: string) {
 
 interface RefundPreviewShape {
   source: { kind: string; id: string; label: string };
-  refundType: "insurance" | "patient";
+  refundType: "insurance" | "client";
   amount: number;
   paymentTotalImpact: number;
   priorRefundTotal: number;
@@ -528,9 +528,9 @@ export function RefundModal({
   onError: (msg: string) => void;
 }) {
   const { detail, loading, error: loadError, remaining } = useDetail(row.id, orgId);
-  const defaultRefundType: "insurance" | "patient" =
-    row.source === "patient" ? "patient" : "insurance";
-  const [refundType, setRefundType] = useState<"insurance" | "patient">(defaultRefundType);
+  const defaultRefundType: "insurance" | "client" =
+    row.source === "client" ? "client" : "insurance";
+  const [refundType, setRefundType] = useState<"insurance" | "client">(defaultRefundType);
   const [amount, setAmount] = useState<string>("");
   const [reason, setReason] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
@@ -740,7 +740,7 @@ export function RefundModal({
 
         {preview.patientInvoice ? (
           <div style={{ marginTop: 10, fontSize: 13, color: "#374151" }}>
-            <strong>Patient invoice impact:</strong>
+            <strong>Client invoice impact:</strong>
             <ul style={{ margin: "4px 0 0 18px" }}>
               <li>
                 paid_amount {fmtMoney(preview.patientInvoice.currentPaidAmount)} →{" "}
@@ -784,7 +784,7 @@ export function RefundModal({
           <InfoLine label="Remaining refundable" value={fmtMoney(remaining)} />
           {detail.patientInvoice?.invoice_number ? (
             <InfoLine
-              label="Patient invoice"
+              label="Client invoice"
               value={`${detail.patientInvoice.invoice_number} (bal ${fmtMoney(Number(detail.patientInvoice.balance_amount ?? 0))})`}
             />
           ) : null}
@@ -794,12 +794,12 @@ export function RefundModal({
               <span>Refund type</span>
               <select
                 value={refundType}
-                onChange={(e) => setRefundType(e.target.value as "insurance" | "patient")}
+                onChange={(e) => setRefundType(e.target.value as "insurance" | "client")}
                 style={fieldInput}
-                disabled={row.source === "patient"}
+                disabled={row.source === "client"}
               >
                 <option value="insurance">Insurance (payer)</option>
-                <option value="patient">Patient</option>
+                <option value="client">Client</option>
               </select>
             </label>
             <label style={fieldLabel}>
@@ -826,7 +826,7 @@ export function RefundModal({
             {clientValidation ? (
               <div style={{ fontSize: 12, color: "#b45309" }}>{clientValidation}</div>
             ) : null}
-            {refundType === "patient" && row.source === "patient" ? (
+            {refundType === "client" && row.source === "client" ? (
               <div style={{ fontSize: 12, color: "#6b7280" }}>
                 If the original charge was on Stripe and a secret key is configured, the refund
                 will be issued immediately and surfaced below.
@@ -966,7 +966,7 @@ export function ReverseModal({
     }
     if (detail.patientInvoice) {
       lines.push(
-        `Patient invoice ${detail.patientInvoice.invoice_number ?? ""} balance will be restored.`,
+        `Client invoice ${detail.patientInvoice.invoice_number ?? ""} balance will be restored.`,
       );
     }
     const activeRefunds = detail.refunds.filter((r) => r.refund_status !== "cancelled");
@@ -978,9 +978,9 @@ export function ReverseModal({
     if (detail.recoupments.length > 0) {
       lines.push(`${detail.recoupments.length} recoupment row(s) on this payment.`);
     }
-    if (row.source === "patient") {
+    if (row.source === "client") {
       lines.push(
-        `If this was a Stripe charge, a pending patient refund + workqueue item will be auto-created.`,
+        `If this was a Stripe charge, a pending client refund + workqueue item will be auto-created.`,
       );
     }
     return lines;
@@ -1103,7 +1103,7 @@ export function ReverseModal({
 
         {preview.patientInvoice ? (
           <div style={{ marginTop: 10, fontSize: 13, color: "#374151" }}>
-            <strong>Patient invoice impact:</strong>
+            <strong>Client invoice impact:</strong>
             <ul style={{ margin: "4px 0 0 18px" }}>
               <li>
                 paid_amount {fmtMoney(preview.patientInvoice.currentPaidAmount)} →{" "}
@@ -1136,9 +1136,9 @@ export function ReverseModal({
             {preview.autoPatientRefund.stripeChargeId
               ? `to charge ${preview.autoPatientRefund.stripeChargeId}`
               : `(method: ${preview.autoPatientRefund.method})`}{" "}
-            as a pending patient refund.
+            as a pending client refund.
           </div>
-        ) : row.source === "patient" ? (
+        ) : row.source === "client" ? (
           <div
             style={{
               marginTop: 10,

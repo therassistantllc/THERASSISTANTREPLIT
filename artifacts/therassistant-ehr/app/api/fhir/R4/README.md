@@ -1,7 +1,7 @@
 # FHIR R4 API (minimal)
 
 Small, outward-facing FHIR R4 surface for TherassistantEHR. Enough to power
-referrals, patient apps, and health-system partners doing read-only clinical
+referrals, client apps, and health-system partners doing read-only clinical
 context lookups — and to pass a basic HAPI validator round-trip.
 
 ## Base URL
@@ -16,7 +16,7 @@ All responses use `Content-Type: application/fhir+json; charset=utf-8`.
 
 | Resource          | Read | Search | Backed by                                                            |
 |-------------------|------|--------|----------------------------------------------------------------------|
-| Patient           | ✓    | ✓      | `clients`                                                            |
+| Client           | ✓    | ✓      | `clients`                                                            |
 | Practitioner      | ✓    | ✓      | `staff_profiles` (+ optional `provider_profiles` join on `staff_id`) |
 | Encounter         | ✓    | ✓      | `encounters`                                                         |
 | Observation       | ✓    | ✓      | `patient_check_ins` (mood / stressors / safety / psychosocial)       |
@@ -47,13 +47,13 @@ Shared pagination parameters:
 | `_count`   | number | 20      | 1..200         |
 | `_offset`  | number | 0       | 0..100000      |
 
-Reference search params (`patient`, `practitioner`, `beneficiary`) accept
-either a bare id (`abc-123`) or the FHIR typed form (`Patient/abc-123`).
+Reference search params (`client`, `practitioner`, `beneficiary`) accept
+either a bare id (`abc-123`) or the FHIR typed form (`Client/abc-123`).
 Date search params expect `YYYY-MM-DD` and do an exact-day match.
 
 ## Resource specifics
 
-### Patient
+### Client
 
 ```
 GET /api/fhir/R4/Patient/{id}
@@ -80,11 +80,11 @@ Mapping: `identifier` (NPI when present, with NPI v2-0203 type coding),
 
 ```
 GET /api/fhir/R4/Encounter/{id}
-GET /api/fhir/R4/Encounter?patient=&date=YYYY-MM-DD&status=
+GET /api/fhir/R4/Encounter?client=&date=YYYY-MM-DD&status=
 ```
 
 Mapping: `status` (translated from `encounter_status`), `class` (always
-ambulatory for now), `subject` → Patient, optional `participant` → Practitioner,
+ambulatory for now), `subject` → Client, optional `participant` → Practitioner,
 `period` from `started_at` / `ended_at`, optional `appointment` link,
 `reasonCode.text` from `session_summary` (truncated).
 
@@ -92,37 +92,37 @@ ambulatory for now), `subject` → Patient, optional `participant` → Practitio
 
 ```
 GET /api/fhir/R4/Observation/{id}
-GET /api/fhir/R4/Observation?patient=&date=YYYY-MM-DD
+GET /api/fhir/R4/Observation?client=&date=YYYY-MM-DD
 ```
 
 Mapping: one Observation per `patient_check_ins` row, with
-`category = survey`, `code = "Patient check-in"`, `subject` → Patient,
+`category = survey`, `code = "Client check-in"`, `subject` → Client,
 optional `encounter` → Encounter, `effectiveDateTime` / `issued` from
 `submitted_at`, and a `component[]` array with `valueString` for each populated
-check-in field (mood, stressors, safety, psychosocial). The patient's free-text
+check-in field (mood, stressors, safety, psychosocial). The client's free-text
 statement, when present, lands in `note[]`.
 
 ### Appointment
 
 ```
 GET /api/fhir/R4/Appointment/{id}
-GET /api/fhir/R4/Appointment?patient=&practitioner=&date=YYYY-MM-DD&status=
+GET /api/fhir/R4/Appointment?client=&practitioner=&date=YYYY-MM-DD&status=
 ```
 
 Mapping: `status` (translated from `appointment_status`), `serviceType.text`
 from `appointment_type`, `description` from `reason`, `start` / `end` from
-`scheduled_start_at` / `scheduled_end_at`, two required participants (Patient
+`scheduled_start_at` / `scheduled_end_at`, two required participants (Client
 + Practitioner when present), optional `cancelationReason.text`.
 
 ### Coverage
 
 ```
 GET /api/fhir/R4/Coverage/{id}
-GET /api/fhir/R4/Coverage?beneficiary=    (alias: patient=)
+GET /api/fhir/R4/Coverage?beneficiary=    (alias: client=)
 ```
 
 Mapping: derived from `intake_submissions.insurance` (jsonb captured during
-patient intake). The mapper pulls a small set of well-known keys —
+client intake). The mapper pulls a small set of well-known keys —
 `payerName`, `memberId`, `planName`, `relationship`, `effectiveDate`,
 `terminationDate` (with common camelCase / snake_case variants). Submissions
 without any recognisable insurance data still surface a Coverage with
@@ -132,12 +132,12 @@ without any recognisable insurance data still surface a Coverage with
 
 ```
 GET /api/fhir/R4/DocumentReference/{id}
-GET /api/fhir/R4/DocumentReference?patient=&type=
+GET /api/fhir/R4/DocumentReference?client=&type=
 ```
 
 Mapping: `status` (`current` or `entered-in-error` when archived), `type.text`
 from `document_type`, `category.text` from `document_scope`, `subject` →
-Patient (when present), `description` from the admin-set `title` (never from
+Client (when present), `description` from the admin-set `title` (never from
 the free-text `notes` field), single `content[].attachment` with
 `contentType`, `title`, `size`, `creation`, and a truly opaque
 `urn:ehr:document:<id>` URL.

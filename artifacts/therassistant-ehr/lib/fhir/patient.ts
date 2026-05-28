@@ -1,4 +1,4 @@
-// Minimal hand-rolled FHIR R4 typings sufficient for the Patient surface we
+// Minimal hand-rolled FHIR R4 typings sufficient for the Client surface we
 // expose today. Avoids pulling in a heavy FHIR resource library.
 
 type FhirGender = "male" | "female" | "other" | "unknown";
@@ -33,8 +33,8 @@ interface FhirAddress {
   country?: string;
 }
 
-export interface FhirPatient {
-  resourceType: "Patient";
+export interface FhirClient {
+  resourceType: "Client";
   id: string;
   meta?: { lastUpdated?: string; profile?: string[] };
   identifier?: FhirIdentifier[];
@@ -111,7 +111,7 @@ function mapGender(sexAtBirth?: string | null, genderIdentity?: string | null): 
   return "unknown";
 }
 
-export function clientToFhirPatient(row: ClientRow, baseUrl?: string): FhirPatient {
+export function clientToFhirClient(row: ClientRow, baseUrl?: string): FhirClient {
   const identifiers: FhirIdentifier[] = [];
   const mrn = s(row.mrn);
   if (mrn) {
@@ -179,8 +179,8 @@ export function clientToFhirPatient(row: ClientRow, baseUrl?: string): FhirPatie
   const archived = s(row.archived_at);
   const deceased = s(row.deceased_at);
 
-  const patient: FhirPatient = {
-    resourceType: "Patient",
+  const client: FhirClient = {
+    resourceType: "Client",
     id: String(row.id),
     meta: { lastUpdated: s(row.updated_at) },
     identifier: identifiers.length ? identifiers : undefined,
@@ -191,8 +191,8 @@ export function clientToFhirPatient(row: ClientRow, baseUrl?: string): FhirPatie
     birthDate: s(row.date_of_birth),
     address: address.length ? address : undefined,
   };
-  if (deceased) patient.deceasedDateTime = deceased;
-  return patient;
+  if (deceased) client.deceasedDateTime = deceased;
+  return client;
 }
 
 export const PATIENT_DB_COLUMNS =

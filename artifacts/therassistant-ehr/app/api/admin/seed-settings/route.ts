@@ -694,14 +694,14 @@ async function reseedEraPaymentDemoData(supabase: any): Promise<{
   const ledgerRows = [
     { era_claim_payment_id: DEMO_IDS.ECP1, professional_claim_id: DEMO_IDS.PC4, client_id: DEMO_IDS.C1, entry_type: "insurance_payment",      amount: 168.0, group_code: null, reason_code: null, description: "BlueCross BlueShield payment — CLM-2026-004" },
     { era_claim_payment_id: DEMO_IDS.ECP1, professional_claim_id: DEMO_IDS.PC4, client_id: DEMO_IDS.C1, entry_type: "contractual_adjustment", amount: 42.0,  group_code: "CO", reason_code: "45", description: "Contractual write-off — charges exceed fee schedule" },
-    { era_claim_payment_id: DEMO_IDS.ECP1, professional_claim_id: DEMO_IDS.PC4, client_id: DEMO_IDS.C1, entry_type: "patient_responsibility", amount: 42.0,  group_code: "PR", reason_code: "1",  description: "Patient deductible/copay — billed via invoice INV-2026-001" },
+    { era_claim_payment_id: DEMO_IDS.ECP1, professional_claim_id: DEMO_IDS.PC4, client_id: DEMO_IDS.C1, entry_type: "patient_responsibility", amount: 42.0,  group_code: "PR", reason_code: "1",  description: "Client deductible/copay — billed via invoice INV-2026-001" },
     { era_claim_payment_id: DEMO_IDS.ECP2, professional_claim_id: DEMO_IDS.PC2, client_id: DEMO_IDS.C4, entry_type: "insurance_payment",      amount: 140.0, group_code: null, reason_code: null, description: "United Healthcare payment — CLM-2026-002" },
     { era_claim_payment_id: DEMO_IDS.ECP2, professional_claim_id: DEMO_IDS.PC2, client_id: DEMO_IDS.C4, entry_type: "contractual_adjustment", amount: 35.0,  group_code: "CO", reason_code: "45", description: "Contractual write-off — charges exceed fee schedule" },
-    { era_claim_payment_id: DEMO_IDS.ECP2, professional_claim_id: DEMO_IDS.PC2, client_id: DEMO_IDS.C4, entry_type: "patient_responsibility", amount: 35.0,  group_code: "PR", reason_code: "3",  description: "Patient deductible — billed via invoice INV-2026-002" },
+    { era_claim_payment_id: DEMO_IDS.ECP2, professional_claim_id: DEMO_IDS.PC2, client_id: DEMO_IDS.C4, entry_type: "patient_responsibility", amount: 35.0,  group_code: "PR", reason_code: "3",  description: "Client deductible — billed via invoice INV-2026-002" },
     { era_claim_payment_id: DEMO_IDS.ECP3, professional_claim_id: DEMO_IDS.PC3, client_id: DEMO_IDS.C5, entry_type: "other_adjustment",       amount: 145.0, group_code: "CO", reason_code: "97", description: "Claim denied — CARC 97: service not covered" },
     { era_claim_payment_id: DEMO_IDS.ECP4, professional_claim_id: DEMO_IDS.PC1, client_id: DEMO_IDS.C2, entry_type: "insurance_payment",      amount: 116.0, group_code: null, reason_code: null, description: "BlueCross BlueShield payment — CLM-2026-001 (pending posting)" },
     { era_claim_payment_id: DEMO_IDS.ECP4, professional_claim_id: DEMO_IDS.PC1, client_id: DEMO_IDS.C2, entry_type: "contractual_adjustment", amount: 29.0,  group_code: "CO", reason_code: "45", description: "Contractual write-off — charges exceed fee schedule" },
-    { era_claim_payment_id: DEMO_IDS.ECP4, professional_claim_id: DEMO_IDS.PC1, client_id: DEMO_IDS.C2, entry_type: "patient_responsibility", amount: 29.0,  group_code: "PR", reason_code: "3",  description: "Patient deductible — invoice pending" },
+    { era_claim_payment_id: DEMO_IDS.ECP4, professional_claim_id: DEMO_IDS.PC1, client_id: DEMO_IDS.C2, entry_type: "patient_responsibility", amount: 29.0,  group_code: "PR", reason_code: "3",  description: "Client deductible — invoice pending" },
   ].map((r) => ({ organization_id: DEMO_ORG_ID, ...r }));
   {
     const { error } = await supabase.from("era_posting_ledger_entries").insert(ledgerRows);
@@ -723,7 +723,7 @@ async function reseedEraPaymentDemoData(supabase: any): Promise<{
 
   // 5. patient_invoice_payments
   const invoicePayments = [
-    { id: DEMO_IDS.PIP1, organization_id: DEMO_ORG_ID, patient_invoice_id: DEMO_IDS.PI1, client_id: DEMO_IDS.C1, payment_status: "posted", payment_method: "card",  amount: 42.0, memo: "Patient copay — Sarah Johnson — CLM-2026-004 — card on file",            paid_at: daysAgoIso(8) },
+    { id: DEMO_IDS.PIP1, organization_id: DEMO_ORG_ID, patient_invoice_id: DEMO_IDS.PI1, client_id: DEMO_IDS.C1, payment_status: "posted", payment_method: "card",  amount: 42.0, memo: "Client copay — Sarah Johnson — CLM-2026-004 — card on file",            paid_at: daysAgoIso(8) },
     { id: DEMO_IDS.PIP2, organization_id: DEMO_ORG_ID, patient_invoice_id: DEMO_IDS.PI2, client_id: DEMO_IDS.C4, payment_status: "posted", payment_method: "check", amount: 20.0, memo: "Partial deductible payment — James Rivera — CLM-2026-002 — check #4421", paid_at: daysAgoIso(3) },
   ];
   {

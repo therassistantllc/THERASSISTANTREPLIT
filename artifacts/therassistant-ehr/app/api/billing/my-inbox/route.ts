@@ -178,7 +178,7 @@ export async function GET(request: Request) {
   }
 
   // Enrich rows that point at appointments so the inbox can show
-  // a real date + patient name without the user clicking through.
+  // a real date + client name without the user clicking through.
   const appointmentIds = Array.from(
     new Set(
       items
@@ -362,7 +362,7 @@ export async function PATCH(request: Request) {
     const now = new Date().toISOString();
 
     if (action === "approve") {
-      // Mark workqueue item resolved; return claim to patient balances queue
+      // Mark workqueue item resolved; return claim to client balances queue
       await sb
         .from("workqueue_items")
         .update({ status: "resolved", resolved_at: now, updated_at: now })
@@ -371,7 +371,7 @@ export async function PATCH(request: Request) {
     }
 
     if (action === "charity_care") {
-      // Write off the patient balance as charity care
+      // Write off the client balance as charity care
       const { error: wErr } = await sb
         .from("professional_claims")
         .update({
@@ -391,7 +391,7 @@ export async function PATCH(request: Request) {
     }
 
     if (action === "discount") {
-      // Provider sends back a new approved patient amount
+      // Provider sends back a new approved client amount
       const discountedAmount = Number((body as { discountedAmount?: unknown }).discountedAmount ?? 0);
       if (!Number.isFinite(discountedAmount) || discountedAmount < 0) {
         return NextResponse.json(

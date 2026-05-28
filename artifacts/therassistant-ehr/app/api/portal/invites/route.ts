@@ -270,8 +270,8 @@ export async function DELETE(request: Request) {
       .eq("status", "pending");
     if (updateErr) throw updateErr;
 
-    // Only reset portal_status if the patient hasn't already activated their
-    // portal via a prior invite. Leaving an "active" patient as "not_invited"
+    // Only reset portal_status if the client hasn't already activated their
+    // portal via a prior invite. Leaving an "active" client as "not_invited"
     // would misrepresent their access state.
     const { data: clientRow } = await supabase
       .from("clients")

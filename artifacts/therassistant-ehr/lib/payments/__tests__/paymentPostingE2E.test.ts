@@ -5,8 +5,8 @@
  * exercises the *real* commit paths in commitManualInsurancePosting and
  * commitPatientPayment, asserting that:
  *   1. Paper-EOB manual insurance with per-service-line allocation writes
- *      one ledger entry per line plus a patient invoice when PR > 0.
- *   2. Stripe (external_card) patient payment with apply-to-invoice closes
+ *      one ledger entry per line plus a client invoice when PR > 0.
+ *   2. Stripe (external_card) client payment with apply-to-invoice closes
  *      the invoice and dedupes on the unique external_payment_id.
  *   3. Cash to account_balance creates a client_credit, then applyClientCredit
  *      drains it against a later invoice (full unapplied-credit lifecycle).
@@ -140,7 +140,7 @@ const ORG = "org-1";
 const CLIENT = "client-1";
 const ACTOR = { staffId: null, userId: null, role: "biller", source: "test" } as const;
 
-test("manual EOB with per-line allocation writes one ledger per line and a patient invoice", async () => {
+test("manual EOB with per-line allocation writes one ledger per line and a client invoice", async () => {
   const fake = makeFakeSupabase();
   // inject fake as last positional arg below
   fake._tables.professional_claims.push({
@@ -183,7 +183,7 @@ test("manual EOB with per-line allocation writes one ledger per line and a patie
   assert.equal(r.posted, true);
   // 2 lines × 3 entry types each = 6 ledger entries.
   assert.equal(fake._tables.era_posting_ledger_entries.length, 6);
-  // PR > 0 → patient invoice created.
+  // PR > 0 → client invoice created.
   assert.equal(fake._tables.patient_invoices.length, 1);
   assert.equal(Number((fake._tables.patient_invoices[0] as Row).patient_responsibility_amount), 20);
 });
@@ -562,7 +562,7 @@ test("transferred_balance rejects a source claim belonging to a different client
 
   assert.equal(r.ok, false, "expected cross-client claim transfer to be rejected");
   assert.ok(
-    r.errors.some((e) => /does not belong to this patient/.test(e.message)),
+    r.errors.some((e) => /does not belong to this client/.test(e.message)),
     `expected cross-client error, got: ${JSON.stringify(r.errors)}`,
   );
   // No writes occurred.
@@ -613,7 +613,7 @@ test("transferred_balance rejects a source invoice belonging to a different clie
   }, asClient(fake));
   assert.equal(r2.ok, false, "expected cross-client transfer to be rejected");
   assert.ok(
-    r2.errors.some((e) => /does not belong to this patient/.test(e.message)),
+    r2.errors.some((e) => /does not belong to this client/.test(e.message)),
     `expected cross-client error, got: ${JSON.stringify(r2.errors)}`,
   );
   // No transfer row, no payment row, no application row was written.

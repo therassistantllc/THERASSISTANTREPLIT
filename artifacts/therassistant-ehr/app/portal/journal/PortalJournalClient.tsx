@@ -265,7 +265,7 @@ export default function PortalJournalClient() {
     <main className="portal-shell">
       <header className="portal-header">
         <div>
-          <div className="eyebrow">Patient portal</div>
+          <div className="eyebrow">Client portal</div>
           <h1>Journal</h1>
         </div>
         <Link href="/portal/home" className="button button-secondary">Back to portal</Link>

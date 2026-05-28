@@ -22,7 +22,7 @@ export default function UnpostedPaymentsPage() {
         { id: "ach", label: "ACH / Lockbox" },
         { id: "check", label: "Check" },
         { id: "card", label: "Card / VCC" },
-        { id: "patient", label: "Patient" },
+        { id: "client", label: "Client" },
       ]}
       columns={[
         { id: "received", header: "Received", cell: (r) => formatDate(r.received_at) },

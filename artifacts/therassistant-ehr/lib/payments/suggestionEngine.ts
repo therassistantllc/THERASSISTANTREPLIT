@@ -107,7 +107,7 @@ export function generatePostingSuggestions(input: SuggestionInput): PostingSugge
       confidence: 0.95,
       field: "deductible",
       suggestedValue: casAmount(pr1),
-      reason: `CAS PR-1 ${casAmount(pr1).toFixed(2)} → patient deductible`,
+      reason: `CAS PR-1 ${casAmount(pr1).toFixed(2)} → client deductible`,
       conflict: null,
       sourceCas: [{ groupCode: "PR", reasonCode: "1", amount: casAmount(pr1) }],
     });
@@ -122,7 +122,7 @@ export function generatePostingSuggestions(input: SuggestionInput): PostingSugge
       confidence: 0.95,
       field: "coinsurance",
       suggestedValue: casAmount(pr2),
-      reason: `CAS PR-2 ${casAmount(pr2).toFixed(2)} → patient coinsurance`,
+      reason: `CAS PR-2 ${casAmount(pr2).toFixed(2)} → client coinsurance`,
       conflict: null,
       sourceCas: [{ groupCode: "PR", reasonCode: "2", amount: casAmount(pr2) }],
     });
@@ -137,7 +137,7 @@ export function generatePostingSuggestions(input: SuggestionInput): PostingSugge
       confidence: 0.95,
       field: "copay",
       suggestedValue: casAmount(pr3),
-      reason: `CAS PR-3 ${casAmount(pr3).toFixed(2)} → patient copay`,
+      reason: `CAS PR-3 ${casAmount(pr3).toFixed(2)} → client copay`,
       conflict: null,
       sourceCas: [{ groupCode: "PR", reasonCode: "3", amount: casAmount(pr3) }],
     });
@@ -189,7 +189,7 @@ export function generatePostingSuggestions(input: SuggestionInput): PostingSugge
       confidence: 0.85,
       field: "claim_status",
       suggestedValue: "denied",
-      reason: "Zero payment with adjustments and no patient responsibility — looks like a denial.",
+      reason: "Zero payment with adjustments and no client responsibility — looks like a denial.",
       conflict: null,
       sourceCas: adjs.map((a) => ({
         groupCode: casGroup(a),

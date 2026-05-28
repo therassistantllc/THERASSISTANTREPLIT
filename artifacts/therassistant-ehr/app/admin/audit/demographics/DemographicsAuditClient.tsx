@@ -132,7 +132,7 @@ export default function DemographicsAuditClient() {
       <header style={{ marginBottom: "1.5rem" }}>
         <h1 style={{ margin: 0 }}>Demographics audit log</h1>
         <p style={{ color: "#555", marginTop: "0.5rem" }}>
-          Every demographic change recorded across all patients in your organization. Use the
+          Every demographic change recorded across all clients in your organization. Use the
           filters below to narrow by date, field, or staff member.
         </p>
       </header>
@@ -280,7 +280,7 @@ export default function DemographicsAuditClient() {
             <thead>
               <tr style={{ background: "#f0f0f4", textAlign: "left" }}>
                 <th style={{ padding: "0.5rem 0.75rem" }}>When</th>
-                <th style={{ padding: "0.5rem 0.75rem" }}>Patient</th>
+                <th style={{ padding: "0.5rem 0.75rem" }}>Client</th>
                 <th style={{ padding: "0.5rem 0.75rem" }}>Field</th>
                 <th style={{ padding: "0.5rem 0.75rem" }}>Before</th>
                 <th style={{ padding: "0.5rem 0.75rem" }}>After</th>

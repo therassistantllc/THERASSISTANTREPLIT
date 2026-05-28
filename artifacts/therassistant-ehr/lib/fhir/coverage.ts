@@ -61,7 +61,7 @@ export function intakeRowToCoverage(row: IntakeSubmissionRow, baseUrl: string): 
     status: hasData ? "active" : "draft",
     type: { text: "Health insurance" },
     subscriberId: memberId,
-    beneficiary: { reference: `${baseUrl}/Patient/${row.client_id}`, type: "Patient" },
+    beneficiary: { reference: `${baseUrl}/Patient/${row.client_id}`, type: "Client" },
     relationship: relationship ? { text: relationship } : undefined,
     period: effective || termination
       ? { start: effective, end: termination }

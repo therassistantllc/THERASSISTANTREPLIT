@@ -41,7 +41,7 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
     if (error) return NextResponse.json({ success: false, error: error.message }, { status: 422 });
 
     // Resolve payer names via payer_profiles (primary) with a fallback to the
-    // patient's active insurance policy → insurance_payers so claims without
+    // client's active insurance policy → insurance_payers so claims without
     // a payer_profile_id still show a meaningful payer label.
     const payerProfileIds = [
       ...new Set((claims ?? []).map((c: DbRow) => text(c.payer_profile_id)).filter(Boolean)),

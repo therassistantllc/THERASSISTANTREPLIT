@@ -54,7 +54,7 @@ const STATUS_CHECK_ELIGIBLE_STATUSES = new Set([
  * same modal used by the No-Response workqueue.
  *
  * When the claim is in a state that supports a status check and we know the
- * patient/client, the card also exposes a "Check status now" action that
+ * client/client, the card also exposes a "Check status now" action that
  * fires a fresh 276 inquiry through the same Availity endpoint the
  * No-Response workqueue uses and then re-fetches the latest response so the
  * card refreshes inline.

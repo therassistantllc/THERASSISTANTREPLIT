@@ -146,13 +146,13 @@ export interface ParsedEB271 {
   messageText?: string | null;
   /**
    * Which HL loop this EB segment was returned under — drives Single
-   * Patient Attribution Rule vEB.1.0 rollup of `attribution.target`.
+   * Client Attribution Rule vEB.1.0 rollup of `attribution.target`.
    */
   owner?: "subscriber" | "dependent";
 }
 
 /**
- * Headline patient financial responsibility values rolled up from the
+ * Headline client financial responsibility values rolled up from the
  * per-segment `benefits` list. Provided as a convenience for callers
  * that don't want to walk segments themselves; the full per-segment
  * detail remains on `Parsed271Response.benefits`.
@@ -190,7 +190,7 @@ export interface Parsed271Subscriber {
 
 /**
  * Identity captured from the 271's dependent loop (Loop 2100D / NM1*03)
- * per CAQH CORE Single Patient Attribution Data Content Rule vEB.1.0.
+ * per CAQH CORE Single Client Attribution Data Content Rule vEB.1.0.
  * Present only when the 271 includes an HL*23 dependent hierarchy.
  */
 export interface Parsed271Dependent {
@@ -201,10 +201,10 @@ export interface Parsed271Dependent {
 }
 
 /**
- * Attribution rollup per Single Patient Attribution Rule vEB.1.0
+ * Attribution rollup per Single Client Attribution Rule vEB.1.0
  * §4.2–§4.3. `target` says which loop the eligibility/benefit content
  * applies to; the caller is responsible for routing the response to the
- * matching patient chart.
+ * matching client chart.
  */
 export interface Parsed271Attribution {
   target: "subscriber" | "dependent";
@@ -239,7 +239,7 @@ export interface Parsed271Response {
   subscriber?: Parsed271Subscriber;
   /** Dependent identity when an HL*23 dependent loop is present. */
   dependent?: Parsed271Dependent | null;
-  /** Single Patient Attribution Rule rollup. */
+  /** Single Client Attribution Rule rollup. */
   attribution?: Parsed271Attribution;
   effectiveDate?: string | null;
   terminationDate?: string | null;

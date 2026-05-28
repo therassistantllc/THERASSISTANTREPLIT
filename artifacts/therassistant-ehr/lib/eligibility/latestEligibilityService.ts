@@ -90,7 +90,7 @@ function deriveDisplayStatus(
   return "Unknown";
 }
 
-export async function getLatestEligibilityForPatient(
+export async function getLatestEligibilityForClient(
   input: GetLatestEligibilityInput
 ): Promise<LatestEligibilityResult> {
   if (!input.organization_id || !input.patient_id) {

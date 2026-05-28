@@ -172,7 +172,7 @@ export async function POST(
 
     // Default subscriber to the client themselves when the user didn't
     // fill in subscriber name/DOB. Member ID falls back to the policy's
-    // member ID since that's what the user typed as the patient's ID.
+    // member ID since that's what the user typed as the client's ID.
     const subFirst = s(body.subscriberFirstName) ?? clientRow.first_name;
     const subLast = s(body.subscriberLastName) ?? clientRow.last_name;
     const subDob = dob.v ?? clientRow.date_of_birth;
@@ -182,7 +182,7 @@ export async function POST(
     // The DB has partial unique indexes on insurance_policies
     // (client_id, priority) WHERE archived_at IS NULL — only one active
     // policy per priority slot per client. With multi-case support, a
-    // patient may already have an active "primary" from an earlier case;
+    // client may already have an active "primary" from an earlier case;
     // creating another would 23505. Reuse the existing policy if the
     // payer + member ID match (idempotent attach), otherwise return a
     // clear 409 so the caller can show a friendly message instead of
@@ -231,7 +231,7 @@ export async function POST(
         return NextResponse.json(
           {
             success: false,
-            error: `This patient already has a different ${priority} insurance on file (${existingActive.plan_name ?? "policy"} #${existingActive.policy_number ?? "—"}). Archive it first, or save this one under a different priority.`,
+            error: `This client already has a different ${priority} insurance on file (${existingActive.plan_name ?? "policy"} #${existingActive.policy_number ?? "—"}). Archive it first, or save this one under a different priority.`,
             conflict: {
               priority,
               existingPolicyId: String(existingActive.id),

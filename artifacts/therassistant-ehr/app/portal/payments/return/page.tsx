@@ -55,7 +55,7 @@ export default async function PortalPaymentReturnPage({
     <main className="portal-shell-narrow">
       <div className="portal-header">
         <div>
-          <div className="eyebrow">Patient portal</div>
+          <div className="eyebrow">Client portal</div>
           <h1 className={toneClass}>{title}</h1>
         </div>
       </div>

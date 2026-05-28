@@ -126,7 +126,7 @@ test("denial signal (zero pay, nonzero adj, zero PR) is warning not blocking", (
   assert.ok(r.warning.some((w) => w.code === "likely_denial"));
 });
 
-test("PR with no patient on claim emits warning, not block", () => {
+test("PR with no client on claim emits warning, not block", () => {
   const r = validateManualInsurancePosting(
     {
       type: "manual_insurance",

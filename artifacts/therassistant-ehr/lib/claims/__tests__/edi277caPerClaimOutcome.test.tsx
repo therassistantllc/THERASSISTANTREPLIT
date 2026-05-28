@@ -18,7 +18,7 @@ const ACK_ID = "ack-mixed";
 const CLAIM_ROWS = [
   {
     id: "claim-mem",
-    patient_id: "patient-mem",
+    patient_id: "client-mem",
     appointment_id: "appt-mem",
     claim_number: "CLM-MEM",
     patient_account_number: "PAT-MEM",
@@ -26,7 +26,7 @@ const CLAIM_ROWS = [
   },
   {
     id: "claim-ok",
-    patient_id: "patient-ok",
+    patient_id: "client-ok",
     appointment_id: "appt-ok",
     claim_number: "CLM-OK",
     patient_account_number: "PAT-OK",

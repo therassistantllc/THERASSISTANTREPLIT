@@ -376,12 +376,12 @@ export async function GET(request: Request) {
       if (TERMINAL_STATUSES.has(status)) continue;
 
       // Apply remaining row-level filters that we couldn't push to Postgres.
-      const patient = c.patient_id ? patientById.get(text(c.patient_id)) : null;
-      if (filters.practice && text(patient?.location_id) !== filters.practice) continue;
+      const client = c.patient_id ? patientById.get(text(c.patient_id)) : null;
+      if (filters.practice && text(client?.location_id) !== filters.practice) continue;
       if (filters.client) {
         const q = filters.client.toLowerCase();
-        const name = patient
-          ? `${text(patient.first_name)} ${text(patient.last_name)}`.toLowerCase()
+        const name = client
+          ? `${text(client.first_name)} ${text(client.last_name)}`.toLowerCase()
           : "";
         if (!name.includes(q)) continue;
       }
@@ -417,14 +417,14 @@ export async function GET(request: Request) {
           dos: text(l.service_date_from) || null,
         })),
         providerName,
-        locationId: text(patient?.location_id) || null,
+        locationId: text(client?.location_id) || null,
       });
     }
 
     // ── Pair detection ─────────────────────────────────────────────────────
     // Group by (patientId, dosFrom) and (patientId) for the overlap pass.
     const byPatientDos = new Map<string, Derived[]>();
-    const byPatient = new Map<string, Derived[]>();
+    const byClient = new Map<string, Derived[]>();
     for (const d of derived.values()) {
       if (!d.patientId) continue;
       if (d.dosFrom) {
@@ -432,8 +432,8 @@ export async function GET(request: Request) {
         if (!byPatientDos.has(key)) byPatientDos.set(key, []);
         byPatientDos.get(key)!.push(d);
       }
-      if (!byPatient.has(d.patientId)) byPatient.set(d.patientId, []);
-      byPatient.get(d.patientId)!.push(d);
+      if (!byClient.has(d.patientId)) byClient.set(d.patientId, []);
+      byClient.get(d.patientId)!.push(d);
     }
 
     const pairs = new Map<string, DuplicateRow>();
@@ -466,9 +466,9 @@ export async function GET(request: Request) {
         }
         return;
       }
-      const patient = current.patientId ? patientById.get(current.patientId) : null;
-      const clientName = patient
-        ? [text(patient.first_name), text(patient.last_name)].filter(Boolean).join(" ") ||
+      const client = current.patientId ? patientById.get(current.patientId) : null;
+      const clientName = client
+        ? [text(client.first_name), text(client.last_name)].filter(Boolean).join(" ") ||
           "Unknown client"
         : "Unknown client";
       pairs.set(pairId, {
@@ -590,7 +590,7 @@ export async function GET(request: Request) {
     }
 
     // Overlapping time window (+/- 1 day, not same DOS).
-    for (const list of byPatient.values()) {
+    for (const list of byClient.values()) {
       if (list.length < 2) continue;
       for (let i = 0; i < list.length; i++) {
         for (let j = i + 1; j < list.length; j++) {

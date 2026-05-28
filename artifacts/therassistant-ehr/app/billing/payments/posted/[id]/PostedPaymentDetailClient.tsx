@@ -164,11 +164,11 @@ export default function PostedPaymentDetailClient({ compositeId }: { compositeId
       detail.kind === "era_835"
         ? "era"
         : detail.kind === "client_payment"
-          ? "patient"
+          ? "client"
           : "manual_insurance";
     return {
       id: detail.compositeId,
-      paymentType: detail.kind === "client_payment" ? "patient" : "insurance",
+      paymentType: detail.kind === "client_payment" ? "client" : "insurance",
       postingStatus: detail.postingStatus,
       amount: Number(detail.totalImpact ?? 0),
       payerName: null,
@@ -303,7 +303,7 @@ export default function PostedPaymentDetailClient({ compositeId }: { compositeId
         ) : null}
         {detail.patientInvoice ? (
           <Card
-            label="Patient invoice"
+            label="Client invoice"
             value={String((detail.patientInvoice as { invoice_number?: string }).invoice_number ?? "—")}
             sub={`Balance ${fmtCurrency((detail.patientInvoice as { balance_amount?: number }).balance_amount)}`}
           />
@@ -424,7 +424,7 @@ export default function PostedPaymentDetailClient({ compositeId }: { compositeId
             disabled={isVoided}
             style={btnStyle(isVoided)}
           >
-            {detail.kind === "client_payment" ? "Refund Patient…" : "Refund Insurance…"}
+            {detail.kind === "client_payment" ? "Refund Client…" : "Refund Insurance…"}
           </button>
         </div>
         {isReversed ? (

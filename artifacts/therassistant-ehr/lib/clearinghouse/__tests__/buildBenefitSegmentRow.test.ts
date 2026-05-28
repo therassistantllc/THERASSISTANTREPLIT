@@ -14,7 +14,7 @@ describe("benefit segment routing integrity", () => {
   it("uses the dependent's routed client_id for every child segment row when routing reroutes", async () => {
     const decision: AttributionDecision = {
       target: "dependent",
-      matchesRequestedPatient: false,
+      matchesRequestedClient: false,
       mismatchReasons: ["name_mismatch", "dob_mismatch"],
       attributedName: "Sam Doe",
     };
@@ -28,7 +28,7 @@ describe("benefit segment routing integrity", () => {
     });
 
     assert.equal(routing.routedClientId, "dependent-42");
-    assert.equal(routing.routedToRequestedPatient, false);
+    assert.equal(routing.routedToRequestedClient, false);
 
     const segments = [
       { eligibilityCode: "1", segmentIndex: 0, category: "active" },
@@ -60,7 +60,7 @@ describe("benefit segment routing integrity", () => {
   it("keeps subscriber routing on both parent and children when attribution is subscriber-target", async () => {
     const decision: AttributionDecision = {
       target: "subscriber",
-      matchesRequestedPatient: true,
+      matchesRequestedClient: true,
       mismatchReasons: [],
       attributedName: "Jane Doe",
     };
@@ -91,7 +91,7 @@ describe("benefit segment routing integrity", () => {
   it("keeps subscriber routing for the parent AND children when dependent rerouting is unresolved (ambiguous match)", async () => {
     const decision: AttributionDecision = {
       target: "dependent",
-      matchesRequestedPatient: false,
+      matchesRequestedClient: false,
       mismatchReasons: ["name_mismatch"],
       attributedName: "Sam Doe",
     };
@@ -115,6 +115,6 @@ describe("benefit segment routing integrity", () => {
       segment: { eligibilityCode: "1", segmentIndex: 0, category: "active" },
     });
     assert.equal(row.client_id, "subscriber-1",
-      "ambiguous-match must keep parent + children together on the requested patient, flagged unresolved");
+      "ambiguous-match must keep parent + children together on the requested client, flagged unresolved");
   });
 });

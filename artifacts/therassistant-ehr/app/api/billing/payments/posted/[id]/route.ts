@@ -116,7 +116,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       sourceTitle = `Client payment (${String(row.payment_method ?? "")})`;
       const invId = (row.patient_invoice_id as string | null) ?? null;
       if (invId) {
-        sourceLink = { kind: "patient_invoice", id: invId, label: `Patient invoice ${invId.slice(0, 8)}` };
+        sourceLink = { kind: "patient_invoice", id: invId, label: `Client invoice ${invId.slice(0, 8)}` };
       }
     } else {
       const { data, error } = await supabase
@@ -342,7 +342,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       attachments = [];
     }
 
-    // Patient-side context (invoice + payments) for the right rail
+    // Client-side context (invoice + payments) for the right rail
     let patientInvoice: Record<string, unknown> | null = null;
     if (parsed.kind === "client_payment" && header) {
       const invId = (header as { patient_invoice_id?: string | null }).patient_invoice_id ?? null;

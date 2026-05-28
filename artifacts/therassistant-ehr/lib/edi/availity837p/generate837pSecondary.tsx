@@ -76,7 +76,7 @@ export interface SecondaryCobPrimaryPayer {
   adjudication_date: string;
   // CLP04 — total amount the primary payer paid on the claim.
   payer_paid_amount: number;
-  // CLP05 — total patient responsibility recorded on the ERA / EOB.
+  // CLP05 — total client responsibility recorded on the ERA / EOB.
   patient_responsibility_amount: number;
   // Claim-level CAS adjustments (group/reason/amount tuples).
   cas_adjustments: Array<{
@@ -353,7 +353,7 @@ export function generateAvaility837PSecondaryBatch(
     ]),
   );
 
-  // 2000C patient HL (only when patient != subscriber)
+  // 2000C client HL (only when client != subscriber)
   if (hasPatientLoop) {
     segments.push(buildSegment(["HL", "3", "2", "23", "0"]));
     segments.push(buildSegment(["PAT", "19"]));
@@ -475,7 +475,7 @@ export function generateAvaility837PSecondaryBatch(
     buildSegment([
       "SBR",
       "P", // this OTHER payer paid as primary
-      "18", // patient is the insured
+      "18", // client is the insured
       "",
       "",
       "",
@@ -491,7 +491,7 @@ export function generateAvaility837PSecondaryBatch(
 
   // AMT*D — primary payer paid amount (CLP04 on the 835).
   segments.push(buildSegment(["AMT", "D", formatMoney(primary.payer_paid_amount)]));
-  // AMT*F2 — patient responsibility amount (CLP05 on the 835).
+  // AMT*F2 — client responsibility amount (CLP05 on the 835).
   segments.push(
     buildSegment(["AMT", "F2", formatMoney(primary.patient_responsibility_amount)]),
   );

@@ -152,7 +152,7 @@ export async function GET(request: Request) {
           const client = clientById.get(text(claim.patient_id) || text(claim.client_id));
           const patientName = client
             ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ")
-            : "Unknown patient";
+            : "Unknown client";
           return {
             id: text(claim.id),
             patientId: text(claim.patient_id) || text(claim.client_id),

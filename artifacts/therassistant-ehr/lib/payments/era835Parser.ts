@@ -46,7 +46,7 @@ type Era835ServiceLine = {
  *   service-line CAS segments.
  * - `otherPayerPaidAmount` carries the dollar amount the prior payer
  *   already paid, sourced from the MOA segment when present (Medicare
- *   Outpatient Adjudication MOA*…) or from claim-level AMT*I/AMT*AAE
+ *   Outclient Adjudication MOA*…) or from claim-level AMT*I/AMT*AAE
  *   "other-payer paid" qualifiers.
  * - `otherPayerName` / `otherPayerId` are populated from a CLP-loop
  *   NM1*TT (Transfer-To) or NM1*PR-as-other when the payer identifies
@@ -279,7 +279,7 @@ export function parseEra835(rawContent: string): Era835ParsedFile {
       continue;
     }
 
-    // MOA — Medicare Outpatient Adjudication. MOA03–MOA09 carry MIA/MOA
+    // MOA — Medicare Outclient Adjudication. MOA03–MOA09 carry MIA/MOA
     // remark codes; MOA02 is the reimbursement rate, but several payers
     // also place the prior-payer paid amount here when the claim was
     // adjudicated as secondary. We capture MOA03 = MA-series remark
@@ -338,7 +338,7 @@ export function parseEra835(rawContent: string): Era835ParsedFile {
       continue;
     }
 
-    // MIA / MOA segments carry inpatient / outpatient remark codes in
+    // MIA / MOA segments carry inclient / outclient remark codes in
     // positions MIA20-MIA23 and MOA03-MOA07 respectively. Sweep both
     // ranges and collect anything that looks like a remark code (alpha
     // prefix + digits).

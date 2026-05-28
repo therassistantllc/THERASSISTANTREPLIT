@@ -54,7 +54,7 @@ export async function GET(
     const organizationId = guard.organizationId;
 
     // Resolve the client_id from the claim so we can pull eligibility
-    // other-payer evidence for the same patient.
+    // other-payer evidence for the same client.
     const { data: claim, error: claimErr } = await (supabase as any)
       .from("professional_claims")
       .select("id, organization_id, patient_id")

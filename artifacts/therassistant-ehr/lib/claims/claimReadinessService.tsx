@@ -483,7 +483,7 @@ export async function validateProfessionalClaimReadiness(
     };
   }
 
-  addRequired(errors, "claim.patient_id", claim.patient_id, "Claim is missing patient/client link");
+  addRequired(errors, "claim.patient_id", claim.patient_id, "Claim is missing client/client link");
   addRequired(errors, "claim.place_of_service", claim.place_of_service, "Claim is missing place of service");
 
   if (!Array.isArray(claim.diagnosis_codes) || claim.diagnosis_codes.length === 0) {
@@ -613,9 +613,9 @@ export async function validateProfessionalClaimReadiness(
       addRequired(errors, "claim_parties_snapshot.rendering_provider_npi", (snapshot as DbRecord).rendering_provider_npi, "Rendering provider NPI is required when different from billing provider");
     }
 
-    // Patient DOB is required
+    // Client DOB is required
     if (!(snapshot as DbRecord).patient_is_subscriber) {
-      addRequired(errors, "claim_parties_snapshot.patient_dob", (snapshot as DbRecord).patient_dob, "Patient date of birth is required");
+      addRequired(errors, "claim_parties_snapshot.patient_dob", (snapshot as DbRecord).patient_dob, "Client date of birth is required");
     }
 
     // NPI format: billing provider NPI must be exactly 10 digits

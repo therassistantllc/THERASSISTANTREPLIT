@@ -414,7 +414,7 @@ export default function ClaimCorrectionClient({ claimId }: { claimId: string }) 
             Correct Claim — {claim.claim_number ?? claim.id}
           </h1>
           <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>
-            {claim.patient_name ?? "Unknown patient"} · {claim.payer_name ?? "Unknown payer"}
+            {claim.patient_name ?? "Unknown client"} · {claim.payer_name ?? "Unknown payer"}
             {claim.denial_reason_code
               ? ` · Denial: ${claim.denial_reason_code}${claim.denial_reason_description ? ` — ${claim.denial_reason_description}` : ""}`
               : ""}
@@ -441,7 +441,7 @@ export default function ClaimCorrectionClient({ claimId }: { claimId: string }) 
           </button>
           <button
             onClick={() => {
-              if (confirm("Move this claim to Patient Balances?")) {
+              if (confirm("Move this claim to Client Balances?")) {
                 fetch(`/api/billing/claims/${encodeURIComponent(claimId)}/bill-to-patient`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -465,7 +465,7 @@ export default function ClaimCorrectionClient({ claimId }: { claimId: string }) 
               letterSpacing: ".03em",
             }}
           >
-            Bill to Patient
+            Bill to Client
           </button>
           <button
             onClick={saveAndResubmit}
@@ -554,7 +554,7 @@ export default function ClaimCorrectionClient({ claimId }: { claimId: string }) 
               </span>
             </div>
 
-            {/* Patient & Insured Section */}
+            {/* Client & Insured Section */}
             <div
               style={{
                 padding: "8px 12px",
@@ -567,10 +567,10 @@ export default function ClaimCorrectionClient({ claimId }: { claimId: string }) 
                 letterSpacing: ".06em",
               }}
             >
-              Patient &amp; Insured Information
+              Client &amp; Insured Information
             </div>
 
-            <CmsBox box="2" label="Patient's Name">
+            <CmsBox box="2" label="Client's Name">
               <ReadonlyField value={claim.patient_name} />
             </CmsBox>
 
@@ -623,7 +623,7 @@ export default function ClaimCorrectionClient({ claimId }: { claimId: string }) 
                 width={80}
               />
               <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>
-                11 = Office · 02 = Telehealth · 21 = Inpatient Hospital
+                11 = Office · 02 = Telehealth · 21 = Inclient Hospital
               </div>
             </CmsBox>
 
@@ -758,7 +758,7 @@ export default function ClaimCorrectionClient({ claimId }: { claimId: string }) 
             </div>
             {[
               { label: "Claim #", value: claim.claim_number ?? "—" },
-              { label: "Patient", value: claim.patient_name ?? "—" },
+              { label: "Client", value: claim.patient_name ?? "—" },
               { label: "Payer", value: claim.payer_name ?? "—" },
               { label: "Total Charge", value: fmt$(claim.total_charge) },
               { label: "Payer Paid", value: fmt$(claim.payer_responsibility_amount) },

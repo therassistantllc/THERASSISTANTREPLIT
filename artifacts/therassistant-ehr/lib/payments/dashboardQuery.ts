@@ -2,7 +2,7 @@
  * Payment Posting — master dashboard query layer (Task #111 / PP-5).
  *
  * One typed `queryPaymentsDashboard(filters)` returns:
- *   - rows: unified list of ERA / manual_insurance / patient payments
+ *   - rows: unified list of ERA / manual_insurance / client payments
  *   - totals: imported, posted, unmatched, unapplied, denied, recoupments,
  *             refunds, pending_review (filter-aware)
  *   - filters: echo of the active filter set
@@ -18,7 +18,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type PaymentSource = "era" | "manual_insurance" | "patient";
+export type PaymentSource = "era" | "manual_insurance" | "client";
 
 export interface DashboardFilters {
   organizationId: string;
@@ -28,7 +28,7 @@ export interface DashboardFilters {
   /** One or many payment sources. Empty/undefined = all sources. */
   paymentSource?: PaymentSource[] | null;
   /** Filter by side of the ledger. */
-  paymentType?: "insurance" | "patient" | null;
+  paymentType?: "insurance" | "client" | null;
   postingStatus?: string[] | null;
   /** Deposit date = payer-side received date (era.received_date, manual.posted_at). */
   depositDateFrom?: string | null;
@@ -47,7 +47,7 @@ interface DashboardRow {
   /** Composite id `era:|cp:|mi:<uuid>` matching the posted-payment detail. */
   id: string;
   source: PaymentSource;
-  paymentType: "insurance" | "patient";
+  paymentType: "insurance" | "client";
   postingStatus: string;
   /** ERA-only; "matched" | "unmatched" | "review" | null for non-ERA. */
   claimMatchStatus: string | null;
@@ -126,8 +126,8 @@ function clampLimit(n: number | null | undefined): number {
 }
 
 function wantSource(filters: DashboardFilters, src: PaymentSource): boolean {
-  if (filters.paymentType === "insurance" && src === "patient") return false;
-  if (filters.paymentType === "patient" && src !== "patient") return false;
+  if (filters.paymentType === "insurance" && src === "client") return false;
+  if (filters.paymentType === "client" && src !== "client") return false;
   const list = filters.paymentSource;
   if (!list || list.length === 0) return true;
   return list.includes(src);
@@ -344,14 +344,14 @@ function mapManualRow(r: Record<string, unknown>): DashboardRow {
   };
 }
 
-// ── patient payment rows ────────────────────────────────────────────────────
+// ── client payment rows ────────────────────────────────────────────────────
 
 async function loadPatientRows(
   supabase: SupabaseClient,
   filters: DashboardFilters,
   providerClaimIds: string[] | null,
 ): Promise<DashboardRow[]> {
-  if (!wantSource(filters, "patient")) return [];
+  if (!wantSource(filters, "client")) return [];
   if (providerClaimIds && providerClaimIds.length === 0) return [];
   let q = supabase
     .from("client_payments")
@@ -394,8 +394,8 @@ async function loadPatientRows(
 function mapPatientRow(r: Record<string, unknown>): DashboardRow {
   return {
     id: `cp:${String(r["id"] ?? "")}`,
-    source: "patient",
-    paymentType: "patient",
+    source: "client",
+    paymentType: "client",
     postingStatus: String(r["posting_status"] ?? "posted"),
     claimMatchStatus: null,
     payerName: (r["payment_method"] as string | null) ?? null,
@@ -428,7 +428,7 @@ async function annotateRemainingRecoupable(
   for (const r of rows) {
     if (r.postingStatus !== "posted") continue;
     if (r.source === "era") eraIds.push(r.id.slice(4));
-    else if (r.source === "patient") cpIds.push(r.id.slice(3));
+    else if (r.source === "client") cpIds.push(r.id.slice(3));
   }
   if (eraIds.length === 0 && cpIds.length === 0) return;
 
@@ -523,7 +523,7 @@ async function annotateRemainingRecoupable(
           0,
           Math.round((Number(r.amount ?? 0) - used) * 100) / 100,
         );
-      } else if (r.source === "patient") {
+      } else if (r.source === "client") {
         const id = r.id.slice(3);
         const used = (cpRecoupSum.get(id) ?? 0) + (cpRefundSum.get(id) ?? 0);
         r.remainingRecoupable = Math.max(
@@ -659,7 +659,7 @@ async function loadTotals(
 
   const wantEra = wantSource(filters, "era");
   const wantManual = wantSource(filters, "manual_insurance");
-  const wantPatient = wantSource(filters, "patient");
+  const wantClient = wantSource(filters, "client");
 
   try {
     const [
@@ -686,26 +686,26 @@ async function loadTotals(
         ? eraScoped(countQ("era_claim_payments")).lte("clp04_payment_amount", 0)
         : Promise.resolve({ count: 0 }),
       wantManual ? manualScoped(countQ("insurance_manual_payments")) : Promise.resolve({ count: 0 }),
-      wantPatient ? patientScoped(countQ("client_payments")) : Promise.resolve({ count: 0 }),
-      wantPatient
+      wantClient ? patientScoped(countQ("client_payments")) : Promise.resolve({ count: 0 }),
+      wantClient
         ? patientScoped(countQ("client_payments")).is("claim_id", null).is("patient_invoice_id", null)
         : Promise.resolve({ count: 0 }),
-      wantPatient
+      wantClient
         ? patientScoped(countQ("client_payments")).eq("posting_status", "posted")
         : Promise.resolve({ count: 0 }),
       // Recoupments/refunds are ERA-and-patient-side concepts (manual
       // insurance posts don't generate them). When the user filters
       // paymentSource down to *only* manual_insurance, zero these out
       // so the KPI matches the visible scope.
-      wantEra || wantPatient
+      wantEra || wantClient
         ? sideScoped(countQ("payment_recoupments"), { dateCol: "created_at" })
         : Promise.resolve({ count: 0 }),
-      wantEra || wantPatient
+      wantEra || wantClient
         ? sideScoped(countQ("payment_refunds"), { dateCol: "created_at" })
         : Promise.resolve({ count: 0 }),
       // pendingReview gates work types by which sources are visible
       // under the current filter so the KPI tracks the visible scope
-      // (e.g., when only patient is selected, ERA-only work types like
+      // (e.g., when only client is selected, ERA-only work types like
       // era_unmatched_claim drop out of the count).
       sideScoped(countQ("workqueue_items"), { dateCol: "created_at" })
         .in(
@@ -723,7 +723,7 @@ async function loadTotals(
               );
             }
             if (wantEra) out.push("era_unmatched_claim", "recoupment");
-            if (wantPatient) out.push("refund_review", "recoupment");
+            if (wantClient) out.push("refund_review", "recoupment");
             return [...new Set(out)];
           })(),
         )
@@ -759,13 +759,13 @@ async function loadTotals(
           AMOUNT_CAP,
         )
       : Promise.resolve({ data: [] });
-    const amountFromPatient = wantPatient
+    const amountFromClient = wantClient
       ? patientScoped(
           supabase.from("client_payments").select("amount, posting_status") as any,
         ).limit(AMOUNT_CAP)
       : Promise.resolve({ data: [] });
     /* eslint-enable @typescript-eslint/no-explicit-any */
-    const [era, manual, patient] = await Promise.all([amountFromEra, amountFromManual, amountFromPatient]);
+    const [era, manual, client] = await Promise.all([amountFromEra, amountFromManual, amountFromClient]);
     for (const r of ((era as { data?: unknown[] }).data ?? []) as Array<Record<string, unknown>>) {
       const amt = Number(r.clp04_payment_amount ?? 0);
       if (!Number.isFinite(amt)) continue;
@@ -776,7 +776,7 @@ async function loadTotals(
       const amt = Number(r.paid_amount ?? 0);
       if (Number.isFinite(amt)) totals.amountPosted += amt;
     }
-    for (const r of ((patient as { data?: unknown[] }).data ?? []) as Array<Record<string, unknown>>) {
+    for (const r of ((client as { data?: unknown[] }).data ?? []) as Array<Record<string, unknown>>) {
       const amt = Number(r.amount ?? 0);
       if (!Number.isFinite(amt)) continue;
       if (r.posting_status === "posted") totals.amountPosted += amt;

@@ -17,7 +17,7 @@
  *                            the ERA paid one line and zero-allowed
  *                            another with CO group code.
  *   - split_responsibility   ERA reports both insurance payment AND
- *                            patient responsibility (`clp05` > 0 with
+ *                            client responsibility (`clp05` > 0 with
  *                            `clp04` > 0).
  *   - secondary_needed       Primary paid less than billed AND the
  *                            client has an active secondary policy.
@@ -167,7 +167,7 @@ function stateLabel(s: PartialState): string {
     case "payment_accepted": return "Payment accepted";
     case "appealed": return "Appeal filed";
     case "billed_secondary": return "Billed secondary";
-    case "transferred_to_patient": return "On patient";
+    case "transferred_to_patient": return "On client";
     case "resolved": return "Resolved";
   }
 }
@@ -229,7 +229,7 @@ function deriveResponsibilityType(
   const hasOA = groups.has("OA");
   const hasPI = groups.has("PI");
   const parts: string[] = [];
-  if (hasPR) parts.push("Patient");
+  if (hasPR) parts.push("Client");
   if (hasCO) parts.push("Contractual");
   if (hasOA) parts.push("Other");
   if (hasPI) parts.push("Payer");
@@ -560,8 +560,8 @@ export async function GET(request: Request) {
         : Math.round(Math.max(0, billed - adjustmentAmount) * 100) / 100;
       const remaining = Math.round(Math.max(0, billed - paid - adjustmentAmount) * 100) / 100;
 
-      // Skip claims that are either fully paid (remaining ~0 and patient
-      // resp 0) or pre-payment (no paid amount and no patient resp).
+      // Skip claims that are either fully paid (remaining ~0 and client
+      // resp 0) or pre-payment (no paid amount and no client resp).
       if (paid === 0 && patientResp === 0 && remaining === 0) continue;
       if (remaining === 0 && patientResp === 0) continue;
 
@@ -623,8 +623,8 @@ export async function GET(request: Request) {
         ? [client.first_name, client.last_name]
             .map(text)
             .filter(Boolean)
-            .join(" ") || "Unknown patient"
-        : "Unknown patient";
+            .join(" ") || "Unknown client"
+        : "Unknown client";
 
       const payerProfileId = text(claim.payer_profile_id) || null;
       const payer = payerProfileId ? payerById.get(payerProfileId) : undefined;

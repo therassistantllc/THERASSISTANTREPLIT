@@ -40,7 +40,7 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
       .maybeSingle();
 
     if (clientError || !client) {
-      return NextResponse.json({ success: false, error: "Patient not found" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Client not found" }, { status: 404 });
     }
 
     const { data: invoices, error: invoiceError } = await supabase
@@ -215,7 +215,7 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
     return NextResponse.json({
       success: true,
       organizationId,
-      patient: {
+      client: {
         id: client.id,
         name: fullName(client),
         dateOfBirth: client.date_of_birth,
@@ -239,9 +239,9 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
       pendingVisits,
     });
   } catch (error) {
-    console.error("Patient balance API error:", error);
+    console.error("Client balance API error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Patient balance failed" },
+      { success: false, error: error instanceof Error ? error.message : "Client balance failed" },
       { status: 500 },
     );
   }

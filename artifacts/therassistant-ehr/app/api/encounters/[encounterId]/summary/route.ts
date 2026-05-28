@@ -83,7 +83,7 @@ export async function GET(request: Request, context: { params: Promise<{ encount
       success: true,
       organizationId,
       encounter,
-      patient: client
+      client: client
         ? {
             id: client.id,
             name: fullName(client as DbRow),

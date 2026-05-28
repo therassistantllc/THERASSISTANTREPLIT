@@ -18,14 +18,14 @@ export default function CreditBalancesPage() {
       filterUrlNamespace="credit_balances"
       summaryLabels={{ count: "Accounts with credit", dollars: "Credit $" }}
       tabs={[
-        { id: "patient", label: "Patient Credits" },
+        { id: "client", label: "Client Credits" },
         { id: "payer", label: "Payer Credits" },
         { id: "needs_refund", label: "Needs Refund" },
         { id: "transfer_pending", label: "Transfer Pending" },
         { id: "resolved", label: "Resolved" },
       ]}
       columns={[
-        { id: "holder", header: "Patient / Payer", cell: (r) => String(r.holder ?? "—") },
+        { id: "holder", header: "Client / Payer", cell: (r) => String(r.holder ?? "—") },
         { id: "account", header: "Account / Claim", cell: (r) => String(r.account ?? "—") },
         {
           id: "balance",

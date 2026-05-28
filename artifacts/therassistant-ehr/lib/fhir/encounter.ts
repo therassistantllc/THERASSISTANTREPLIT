@@ -78,7 +78,7 @@ export function encounterRowToFhir(row: EncounterRow, baseUrl: string): FhirEnco
       code: "AMB",
       display: "ambulatory",
     },
-    subject: { reference: `${baseUrl}/Patient/${row.client_id}`, type: "Patient" },
+    subject: { reference: `${baseUrl}/Patient/${row.client_id}`, type: "Client" },
     participant,
     period: start || end ? period : undefined,
     appointment: row.appointment_id

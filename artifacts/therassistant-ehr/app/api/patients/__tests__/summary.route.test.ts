@@ -1,4 +1,4 @@
-// Coverage for the patient summary endpoint's "Credit on account" rollup.
+// Coverage for the client summary endpoint's "Credit on account" rollup.
 //
 // Pins two contracts the UI's Summary card depends on:
 //   1. `creditOnAccount` equals the sum of `balance_amount` across the

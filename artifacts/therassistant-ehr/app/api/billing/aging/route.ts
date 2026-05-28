@@ -120,7 +120,7 @@ export async function GET(request: Request) {
     ];
 
     const [
-      { data: patients },
+      { data: clients },
       { data: payerProfiles },
       { data: serviceLines },
       { data: notes },
@@ -200,7 +200,7 @@ export async function GET(request: Request) {
     ]);
 
     const patientById = new Map<string, DbRow>(
-      ((patients ?? []) as DbRow[]).map((p) => [text(p.id), p]),
+      ((clients ?? []) as DbRow[]).map((p) => [text(p.id), p]),
     );
     const payerById = new Map<string, DbRow>(
       ((payerProfiles ?? []) as DbRow[]).map((p) => [text(p.id), p]),
@@ -338,11 +338,11 @@ export async function GET(request: Request) {
 
     const rows: Row[] = claims.map((claim) => {
       const id = text(claim.id);
-      const patient = patientById.get(text(claim.patient_id));
-      const patientName = patient
-        ? [patient.first_name, patient.last_name].map(text).filter(Boolean).join(" ") ||
-          "Unknown patient"
-        : "Unknown patient";
+      const client = patientById.get(text(claim.patient_id));
+      const patientName = client
+        ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ") ||
+          "Unknown client"
+        : "Unknown client";
       const payer = payerById.get(text(claim.payer_profile_id));
       const dates = serviceLinesByClaim.get(id) ?? { from: null, to: null };
       const claimNotes = notesByClaim.get(id) ?? [];

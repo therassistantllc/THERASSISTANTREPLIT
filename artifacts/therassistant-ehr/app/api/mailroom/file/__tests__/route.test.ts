@@ -317,7 +317,7 @@ describe("POST /api/mailroom/file — org scoping", () => {
     );
   });
 
-  it("returns 404 when the target_id (patient) belongs to a different org", async () => {
+  it("returns 404 when the target_id (client) belongs to a different org", async () => {
     scenario.sessionOrg = ORG_A;
     scenario.mailroomItem = { id: "item-1", organizationId: ORG_A, row: defaultItemRow };
     // The target client exists, but in ORG_B. The org-scoped lookup misses,

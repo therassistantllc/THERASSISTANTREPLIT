@@ -137,7 +137,7 @@ function patientNameFromRawSegments(raw: unknown): string | null {
   // Common shapes used elsewhere: nm1Qc { firstName, lastName, middleName }
   // or arrays of { tag, elements: [...] }.
   const obj = raw as Record<string, unknown>;
-  const nm1 = (obj.nm1Qc ?? obj.patient ?? obj.nm1_qc) as
+  const nm1 = (obj.nm1Qc ?? obj.client ?? obj.nm1_qc) as
     | Record<string, unknown>
     | undefined;
   if (nm1) {
@@ -476,7 +476,7 @@ export async function GET(request: Request) {
         primaryClinicianUserId: client
           ? (text(client.primary_clinician_user_id) || null)
           : null,
-        patientName: patientName || "Unknown patient",
+        patientName: patientName || "Unknown client",
         claimNumberFromEra: text(p.clp01_claim_control_number),
         payerClaimControlNumber:
           (p.payer_claim_control_number as string | null) ?? null,

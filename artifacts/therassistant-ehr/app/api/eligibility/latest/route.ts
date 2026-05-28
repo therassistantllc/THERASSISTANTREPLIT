@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getLatestEligibilityForPatient } from "@/lib/eligibility/latestEligibilityService";
+import { getLatestEligibilityForClient } from "@/lib/eligibility/latestEligibilityService";
 
 import { requireOrgAccess } from "@/lib/auth/requireOrgAccess";
 export async function GET(req: NextRequest) {
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const eligibility = await getLatestEligibilityForPatient({
+    const eligibility = await getLatestEligibilityForClient({
       organization_id: organizationId,
       patient_id: patientId,
       payer_id: payerId,

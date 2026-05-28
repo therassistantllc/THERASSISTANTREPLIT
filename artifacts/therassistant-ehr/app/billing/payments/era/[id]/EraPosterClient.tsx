@@ -590,7 +590,7 @@ export default function EraPosterClient({ batchId }: { batchId: string }) {
           <table className={styles.postingTable}>
             <thead>
               <tr>
-                <th>Patient / Claim</th>
+                <th>Client / Claim</th>
                 <th>CLP01 / ICN</th>
                 <th>DOS</th>
                 <th className={styles.numCell}>Charge</th>
@@ -630,7 +630,7 @@ export default function EraPosterClient({ batchId }: { batchId: string }) {
                     }}
                   >
                     <td>
-                      {row.client?.displayName ?? <span className={styles.muted}>Unmatched patient</span>}
+                      {row.client?.displayName ?? <span className={styles.muted}>Unmatched client</span>}
                       <div className={`${styles.muted} ${styles.mono}`} style={{ fontSize: 10 }}>
                         {row.professionalClaim?.claimNumber ?? "—"}
                       </div>
@@ -942,7 +942,7 @@ export default function EraPosterClient({ batchId }: { batchId: string }) {
               <table className={styles.adjustmentsTable}>
                 <thead>
                   <tr>
-                    <th>Patient</th>
+                    <th>Client</th>
                     <th>Claim #</th>
                     <th>DOS</th>
                     <th className={styles.numCell}>Charge</th>

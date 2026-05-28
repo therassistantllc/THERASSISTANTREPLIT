@@ -366,7 +366,7 @@ export default function CasesPanel({
       const createdPolicyIds: string[] = [];
       // Rollback archives the case we just made. The policy DELETE endpoint
       // doesn't exist yet, so any policies already saved remain in the
-      // patient's "available policies" list — the user can attach them to a
+      // client's "available policies" list — the user can attach them to a
       // new case or ignore them.
       const rollback = async (): Promise<{ caseRolledBack: boolean; orphanPolicies: string[] }> => {
         let caseRolledBack = false;
@@ -410,7 +410,7 @@ export default function CasesPanel({
           const proceed =
             typeof window !== "undefined" &&
             window.confirm(
-              `This patient already has a different ${c.priority} insurance on file (${c.existingPlanName ?? "policy"} #${c.existingPolicyNumber ?? "—"}).\n\nReplace it with the new ${c.priority} insurance? The old one will be archived (kept for history, not deleted).`,
+              `This client already has a different ${c.priority} insurance on file (${c.existingPlanName ?? "policy"} #${c.existingPolicyNumber ?? "—"}).\n\nReplace it with the new ${c.priority} insurance? The old one will be archived (kept for history, not deleted).`,
             );
           if (proceed) {
             polRes = await fetch(`/api/clients/${clientId}/policies`, {
@@ -726,7 +726,7 @@ export default function CasesPanel({
                   {primary
                     ? primary.payerName ?? primary.planName ?? "—"
                     : c.caseType === "self_pay" || c.caseType === "charity"
-                      ? "Patient responsibility"
+                      ? "Client responsibility"
                       : "Not set"}
                 </div>
 
@@ -969,7 +969,7 @@ function PolicyDetails({ p }: { p: CasePolicy }) {
 
       <section>
         <h5 style={{ margin: "0 0 0.25rem", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted-color, #6b7280)" }}>
-          Patient responsibility
+          Client responsibility
         </h5>
         <dl
           style={{

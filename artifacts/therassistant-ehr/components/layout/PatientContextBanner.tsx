@@ -48,7 +48,7 @@ export default function PatientContextBanner({ clientId }: { clientId: string })
       .then((r) => r.json())
       .then((json) => {
         if (cancelled) return;
-        if (json.success && json.patient) {
+        if (json.success && json.client) {
           const policies: Array<{ plan_name?: string | null; active_flag?: boolean | null }> = json.insurance?.policies ?? [];
           const primaryPolicy = policies.find((p) => p.active_flag) ?? policies[0] ?? null;
           const elig = json.insurance?.latestEligibility ?? null;
@@ -58,8 +58,8 @@ export default function PatientContextBanner({ clientId }: { clientId: string })
             return Number.isFinite(n) ? n : null;
           };
           setData({
-            name: json.patient.name,
-            dateOfBirth: json.patient.dateOfBirth ?? null,
+            name: json.client.name,
+            dateOfBirth: json.client.dateOfBirth ?? null,
             insurancePlan: primaryPolicy?.plan_name ?? null,
             eligibilityStatus: elig?.eligibility_status ?? null,
             openBalance: json.balance?.total ?? 0,
@@ -76,13 +76,13 @@ export default function PatientContextBanner({ clientId }: { clientId: string })
   }, [clientId, organizationId]);
 
   if (loading) {
-    return <div className={styles.patientBannerLoading}>Loading patient…</div>;
+    return <div className={styles.patientBannerLoading}>Loading client…</div>;
   }
 
   if (!data) {
     return (
       <div className={styles.patientBanner}>
-        <span className={styles.patientBannerName}>Patient Chart</span>
+        <span className={styles.patientBannerName}>Client Chart</span>
       </div>
     );
   }
@@ -95,7 +95,7 @@ export default function PatientContextBanner({ clientId }: { clientId: string })
     "#5c6e82";
 
   return (
-    <div className={styles.patientBanner} role="banner" aria-label="Patient context">
+    <div className={styles.patientBanner} role="banner" aria-label="Client context">
       <span className={styles.patientBannerName}>{data.name}</span>
       {dob && (
         <span className={styles.patientBannerField}>
@@ -118,7 +118,7 @@ export default function PatientContextBanner({ clientId }: { clientId: string })
         </Link>
       )}
       {data.copay !== null && (
-        <span className={styles.patientBannerField} title="Patient copay from latest 271">
+        <span className={styles.patientBannerField} title="Client copay from latest 271">
           Copay: <strong>{formatMoney(data.copay)}</strong>
         </span>
       )}

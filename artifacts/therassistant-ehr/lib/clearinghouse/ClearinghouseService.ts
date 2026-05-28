@@ -4,7 +4,7 @@ import { resolveAttributionRouting } from "@/lib/clearinghouse/attributionRoutin
 import { buildBenefitSegmentRow } from "@/lib/clearinghouse/buildBenefitSegmentRow";
 import { buildEligibility270InputFromContext } from "@/lib/clearinghouse/buildEligibility270InputFromContext";
 import { pickEligibilityAdapter } from "@/lib/clearinghouse/pickEligibilityAdapter";
-import { attributeResponseToPatient } from "@/lib/edi/availity270/attribution";
+import { attributeResponseToClient } from "@/lib/edi/availity270/attribution";
 import { createServerSupabaseAdminClient as createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import type {
   ClaimStatusCheck,
@@ -16,7 +16,7 @@ import type {
   EligibilityRequestInput,
 } from "@/types/clearinghouse";
 
-interface AppPatient {
+interface AppClient {
   id: string;
   organization_id: string;
   first_name?: string | null;
@@ -53,8 +53,8 @@ function uuid() {
   return `mock-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function patientName(patient: AppPatient) {
-  return [patient.first_name, patient.last_name].filter(Boolean).join(" ") || patient.id;
+function patientName(client: AppClient) {
+  return [client.first_name, client.last_name].filter(Boolean).join(" ") || client.id;
 }
 
 async function getActiveConnection(organizationId: string): Promise<ClearinghouseConnection | null> {
@@ -123,11 +123,11 @@ export class ClearinghouseService {
 
     const patientResp = await supabase.from("clients").select("*").eq("id", input.patientId).maybeSingle();
     if (patientResp.error || !patientResp.data) {
-      throw new Error("Patient not found.");
+      throw new Error("Client not found.");
     }
 
-    const patient = patientResp.data as AppPatient;
-    const organizationId = patient.organization_id;
+    const client = patientResp.data as AppClient;
+    const organizationId = client.organization_id;
 
     const connection = (await getActiveConnection(organizationId)) ?? {
       id: uuid(),
@@ -148,7 +148,7 @@ export class ClearinghouseService {
       const policyResp = await supabase
         .from("insurance_policies")
         .select("*")
-        .eq("client_id", patient.id)
+        .eq("client_id", client.id)
         .eq("active_flag", true)
         .order("priority", { ascending: true })
         .limit(1)
@@ -157,7 +157,7 @@ export class ClearinghouseService {
     }
 
     if (!policy) {
-      throw new Error("Missing patient insurance.");
+      throw new Error("Missing client insurance.");
     }
     if (!policy.payer_id) {
       throw new Error("Missing payer ID.");
@@ -168,29 +168,29 @@ export class ClearinghouseService {
 
     const adapterInput: EligibilityRequestInput = {
       organizationId,
-      patientId: patient.id,
+      patientId: client.id,
       appointmentId: input.appointmentId ?? null,
       insurancePolicyId: policy.id,
       clearinghouseConnectionId: connection.id,
       payerId: policy.payer_id,
       payerName: policy.plan_name ?? "Mock Payer",
       memberId: policy.subscriber_id ?? policy.policy_number ?? null,
-      subscriberName: patientName(patient),
-      patientName: patientName(patient),
+      subscriberName: patientName(client),
+      patientName: patientName(client),
       serviceTypeCode: input.serviceTypeCode ?? "98",
     };
 
-    // Phase 2 — build the rich Eligibility270Input from patient + policy
+    // Phase 2 — build the rich Eligibility270Input from client + policy
     // + connection so the SOAP/X12 path (AvailityRealtimeAdapter) and
     // the Mock path share one canonical shape. The factory routes by
     // `connection.vendor`: "availity" → CORE Phase II SOAP+WSDL,
     // anything else → MockClearinghouseAdapter.
     const eligibility270Input = buildEligibility270InputFromContext({
       connection,
-      patient: {
-        first_name: patient.first_name ?? null,
-        last_name: patient.last_name ?? null,
-        date_of_birth: patient.date_of_birth ?? null,
+      client: {
+        first_name: client.first_name ?? null,
+        last_name: client.last_name ?? null,
+        date_of_birth: client.date_of_birth ?? null,
       },
       policy: {
         payer_id: policy.payer_id ?? null,
@@ -204,7 +204,7 @@ export class ClearinghouseService {
 
     const outbound = await insertTransaction({
       organization_id: organizationId,
-      client_id: patient.id,
+      client_id: client.id,
       appointment_id: input.appointmentId ?? null,
       clearinghouse_connection_id: connection.id,
       transaction_type: "270",
@@ -219,7 +219,7 @@ export class ClearinghouseService {
 
     const inbound = await insertTransaction({
       organization_id: organizationId,
-      client_id: patient.id,
+      client_id: client.id,
       appointment_id: input.appointmentId ?? null,
       clearinghouse_connection_id: connection.id,
       transaction_type: "271",
@@ -252,27 +252,27 @@ export class ClearinghouseService {
     // ---------------------------------------------------------------
     // Phase 6 — compute attribution decision + routing BEFORE building
     // the eligibility insert so client_id can be steered to the
-    // matching dependent patient chart when one uniquely exists.
+    // matching dependent client chart when one uniquely exists.
     // ---------------------------------------------------------------
     const parsedAttributionRaw = result.normalized.attribution ?? null;
     const attributionDecision = parsedAttributionRaw && parsedAttributionRaw.subscriber
-      ? attributeResponseToPatient(
+      ? attributeResponseToClient(
           {
             target: parsedAttributionRaw.target,
             subscriber: parsedAttributionRaw.subscriber,
             dependent: parsedAttributionRaw.dependent ?? null,
           },
           {
-            firstName: patient.first_name ?? null,
-            lastName: patient.last_name ?? null,
-            dob: patient.date_of_birth ?? null,
+            firstName: client.first_name ?? null,
+            lastName: client.last_name ?? null,
+            dob: client.date_of_birth ?? null,
             memberId: policy.subscriber_id ?? policy.policy_number ?? null,
           },
         )
       : null;
 
     const routing = await resolveAttributionRouting({
-      requestedClientId: patient.id,
+      requestedClientId: client.id,
       organizationId,
       decision: attributionDecision,
       parsedDependent: parsedAttributionRaw?.dependent ?? null,
@@ -291,9 +291,9 @@ export class ClearinghouseService {
       },
     });
 
-    if (attributionDecision && !attributionDecision.matchesRequestedPatient) {
+    if (attributionDecision && !attributionDecision.matchesRequestedClient) {
       console.warn(
-        `[eligibility] Attribution mismatch for patient ${patient.id}: ${attributionDecision.mismatchReasons.join(",")} ` +
+        `[eligibility] Attribution mismatch for client ${client.id}: ${attributionDecision.mismatchReasons.join(",")} ` +
           `(271 attributed to ${attributionDecision.target} "${attributionDecision.attributedName ?? "—"}"; ` +
           `routed to ${routing.routedClientId}${routing.unresolved ? ` UNRESOLVED:${routing.unresolvedReason}` : ""})`,
       );
@@ -345,9 +345,9 @@ export class ClearinghouseService {
       other_payer_id: result.normalized.otherPayers?.[0]?.payerId ?? null,
       other_payer_effective_date: result.normalized.otherPayers?.[0]?.effectiveDate ?? null,
       other_payer_termination_date: result.normalized.otherPayers?.[0]?.terminationDate ?? null,
-      // Phase 6 — AAA + Single Patient Attribution decision + routing
+      // Phase 6 — AAA + Single Client Attribution decision + routing
       // resolution (vEB.1.0 §4.2–§4.3). attributionDecision compares
-      // parsed 271 identity against the requested patient; routing
+      // parsed 271 identity against the requested client; routing
       // captures which client_id the row was attached to and whether
       // dependent rerouting was unresolved.
       response_summary: {
@@ -355,9 +355,9 @@ export class ClearinghouseService {
         attribution: parsedAttributionRaw,
         attributionDecision,
         attributionRouting: {
-          requestedClientId: patient.id,
+          requestedClientId: client.id,
           routedClientId: routing.routedClientId,
-          routedToRequestedPatient: routing.routedToRequestedPatient,
+          routedToRequestedClient: routing.routedToRequestedClient,
           unresolved: routing.unresolved,
           unresolvedReason: routing.unresolvedReason,
           candidateIds: routing.candidateIds,
@@ -415,7 +415,7 @@ export class ClearinghouseService {
 
     await insertEvent({
       organization_id: organizationId,
-      client_id: patient.id,
+      client_id: client.id,
       edi_transaction_id: inbound?.id ?? outbound?.id ?? null,
       event_type: "eligibility_result",
       severity: result.normalized.status === "active" ? "info" : result.normalized.status === "inactive" ? "warning" : "error",

@@ -28,7 +28,7 @@ import {
 // --- MOCK DATA ---
 const GLOBAL_NAV = [
   { id: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { id: "patients", icon: Users, label: "Patients" },
+  { id: "clients", icon: Users, label: "Clients" },
   { id: "schedule", icon: Calendar, label: "Schedule" },
   { id: "mailroom", icon: Inbox, label: "Mailroom" },
   { id: "billing", icon: CreditCard, label: "Billing", active: true },
@@ -41,7 +41,7 @@ const GLOBAL_NAV = [
 const BILLING_QUEUES = [
   { id: "no_response", label: "No Response", count: 47, value: 12840, dist: [10, 15, 12, 10], active: true },
   { id: "denials", label: "Denials", count: 12, value: 4200, dist: [5, 4, 2, 1] },
-  { id: "pt_resp", label: "Patient Responsibility", count: 23, value: 3150, dist: [8, 10, 5, 0] },
+  { id: "pt_resp", label: "Client Responsibility", count: 23, value: 3150, dist: [8, 10, 5, 0] },
   { id: "writeoffs", label: "Write-offs", count: 4, value: 850, dist: [0, 1, 1, 2] },
   { id: "submitted", label: "Submitted", count: 156, value: 45200, dist: [120, 26, 10, 0] },
   { id: "recently_posted", label: "Recently Posted", count: 18, value: 0, dist: [18, 0, 0, 0] },
@@ -49,16 +49,16 @@ const BILLING_QUEUES = [
 ];
 
 const CLAIMS = [
-  { id: "CLM-20281", patient: "Sarah Jenkins", dob: "1985-04-12", dos: "2023-10-15", payer: "Aetna", billed: 150.00, daysOut: 42, status: "No Response", lastAction: "Submitted", assignee: "JD", aged: false },
-  { id: "CLM-20282", patient: "Michael Chen", dob: "1990-08-22", dos: "2023-09-02", payer: "BCBS", billed: 200.00, daysOut: 85, status: "No Response", lastAction: "Followed up 14d ago", assignee: "JD", aged: false },
-  { id: "CLM-20283", patient: "Emily Rodriguez", dob: "1978-11-05", dos: "2023-07-20", payer: "UHC", billed: 175.00, daysOut: 128, status: "No Response", lastAction: "Call logged", assignee: "AM", aged: true },
-  { id: "CLM-20284", patient: "David Smith", dob: "1982-01-30", dos: "2023-10-01", payer: "Medicare", billed: 120.00, daysOut: 56, status: "No Response", lastAction: "Submitted", assignee: "JD", aged: false },
-  { id: "CLM-20285", patient: "Jessica Taylor", dob: "1995-06-18", dos: "2023-08-15", payer: "Cigna", billed: 180.00, daysOut: 103, status: "No Response", lastAction: "Appealed", assignee: "AM", aged: true },
-  { id: "CLM-20286", patient: "Robert Johnson", dob: "1970-03-25", dos: "2023-11-05", payer: "Aetna", billed: 150.00, daysOut: 21, status: "No Response", lastAction: "Submitted", assignee: "Unassigned", aged: false },
-  { id: "CLM-20287", patient: "Amanda Davis", dob: "1988-09-14", dos: "2023-08-01", payer: "BCBS", billed: 200.00, daysOut: 117, status: "No Response", lastAction: "Followed up 30d ago", assignee: "JD", aged: true },
-  { id: "CLM-20288", patient: "James Wilson", dob: "1975-12-08", dos: "2023-10-20", payer: "UHC", billed: 175.00, daysOut: 37, status: "No Response", lastAction: "Submitted", assignee: "AM", aged: false },
-  { id: "CLM-20289", patient: "Ashley Moore", dob: "1992-05-19", dos: "2023-09-15", payer: "Medicare", billed: 120.00, daysOut: 72, status: "No Response", lastAction: "Submitted", assignee: "Unassigned", aged: false },
-  { id: "CLM-20290", patient: "William Taylor", dob: "1980-02-28", dos: "2023-07-05", payer: "Cigna", billed: 180.00, daysOut: 143, status: "No Response", lastAction: "Call logged", assignee: "JD", aged: true },
+  { id: "CLM-20281", client: "Sarah Jenkins", dob: "1985-04-12", dos: "2023-10-15", payer: "Aetna", billed: 150.00, daysOut: 42, status: "No Response", lastAction: "Submitted", assignee: "JD", aged: false },
+  { id: "CLM-20282", client: "Michael Chen", dob: "1990-08-22", dos: "2023-09-02", payer: "BCBS", billed: 200.00, daysOut: 85, status: "No Response", lastAction: "Followed up 14d ago", assignee: "JD", aged: false },
+  { id: "CLM-20283", client: "Emily Rodriguez", dob: "1978-11-05", dos: "2023-07-20", payer: "UHC", billed: 175.00, daysOut: 128, status: "No Response", lastAction: "Call logged", assignee: "AM", aged: true },
+  { id: "CLM-20284", client: "David Smith", dob: "1982-01-30", dos: "2023-10-01", payer: "Medicare", billed: 120.00, daysOut: 56, status: "No Response", lastAction: "Submitted", assignee: "JD", aged: false },
+  { id: "CLM-20285", client: "Jessica Taylor", dob: "1995-06-18", dos: "2023-08-15", payer: "Cigna", billed: 180.00, daysOut: 103, status: "No Response", lastAction: "Appealed", assignee: "AM", aged: true },
+  { id: "CLM-20286", client: "Robert Johnson", dob: "1970-03-25", dos: "2023-11-05", payer: "Aetna", billed: 150.00, daysOut: 21, status: "No Response", lastAction: "Submitted", assignee: "Unassigned", aged: false },
+  { id: "CLM-20287", client: "Amanda Davis", dob: "1988-09-14", dos: "2023-08-01", payer: "BCBS", billed: 200.00, daysOut: 117, status: "No Response", lastAction: "Followed up 30d ago", assignee: "JD", aged: true },
+  { id: "CLM-20288", client: "James Wilson", dob: "1975-12-08", dos: "2023-10-20", payer: "UHC", billed: 175.00, daysOut: 37, status: "No Response", lastAction: "Submitted", assignee: "AM", aged: false },
+  { id: "CLM-20289", client: "Ashley Moore", dob: "1992-05-19", dos: "2023-09-15", payer: "Medicare", billed: 120.00, daysOut: 72, status: "No Response", lastAction: "Submitted", assignee: "Unassigned", aged: false },
+  { id: "CLM-20290", client: "William Taylor", dob: "1980-02-28", dos: "2023-07-05", payer: "Cigna", billed: 180.00, daysOut: 143, status: "No Response", lastAction: "Call logged", assignee: "JD", aged: true },
 ];
 
 export default function RailLayout() {
@@ -239,7 +239,7 @@ export default function RailLayout() {
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   <th className="px-5 py-3 w-10 text-center"><input type="checkbox" className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/20" /></th>
-                  <th className="px-5 py-3">Patient</th>
+                  <th className="px-5 py-3">Client</th>
                   <th className="px-5 py-3">Claim Info</th>
                   <th className="px-5 py-3">Payer</th>
                   <th className="px-5 py-3 text-right">Billed</th>
@@ -263,7 +263,7 @@ export default function RailLayout() {
                       <input type="checkbox" className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/20" onClick={e=>e.stopPropagation()} />
                     </td>
                     <td className="px-5 py-3.5">
-                      <div className="font-medium text-slate-900">{claim.patient}</div>
+                      <div className="font-medium text-slate-900">{claim.client}</div>
                       <div className="text-xs text-slate-500 mt-0.5">DOB: {claim.dob}</div>
                     </td>
                     <td className="px-5 py-3.5">
@@ -343,7 +343,7 @@ export default function RailLayout() {
                     </span>
                   </div>
                   <p className="text-sm text-slate-500">
-                    <span className="font-medium text-slate-700">{claim.patient}</span> • DOS: {claim.dos}
+                    <span className="font-medium text-slate-700">{claim.client}</span> • DOS: {claim.dos}
                   </p>
                 </div>
                 <button 

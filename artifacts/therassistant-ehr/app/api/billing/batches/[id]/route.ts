@@ -126,7 +126,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
       const client = clientById.get(text(c.patient_id));
       const patientName = client
         ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ")
-        : "Unknown patient";
+        : "Unknown client";
       const cn = text(c.claim_number);
       claimNumberById.set(cid, cn);
       return {

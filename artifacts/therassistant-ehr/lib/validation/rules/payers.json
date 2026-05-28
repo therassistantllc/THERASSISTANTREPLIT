@@ -5,7 +5,7 @@
     "severity": "blocking",
     "message": "No active payer profiles are configured.",
     "fixRoute": "/settings/payers",
-    "whyItMatters": "Patients must be linked to a payer profile to bill any insurance. Without at least one active payer, only self-pay encounters can be billed.",
+    "whyItMatters": "Clients must be linked to a payer profile to bill any insurance. Without at least one active payer, only self-pay encounters can be billed.",
     "resolution": "Add the payers you bill on the Payers settings page and mark them active.",
     "conditions": {
       "all": [

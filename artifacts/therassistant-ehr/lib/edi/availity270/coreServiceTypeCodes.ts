@@ -14,7 +14,7 @@
 // / units / visits where applicable, with the appropriate Time Period
 // (DTP) and Quantity (QTY) qualifiers.
 //
-// PATIENT FINANCIAL RESPONSIBILITY (§1.3.2.7–§1.3.2.13, Appendix Table 3):
+// CLIENT FINANCIAL RESPONSIBILITY (§1.3.2.7–§1.3.2.13, Appendix Table 3):
 // for the codes flagged `financialResponsibility: true`, payers MUST
 // return co-pay (EB*B), coinsurance (EB*A), deductible base + remaining
 // (EB*C with QTY=29 for remaining), and out-of-pocket (EB*G) where the
@@ -62,7 +62,7 @@ export interface CoreServiceTypeCode {
   generic: boolean;
   /** True iff payer must return Remaining Coverage Benefits for this STC. */
   remaining: boolean;
-  /** True iff payer must return Patient Financial Responsibility for this STC. */
+  /** True iff payer must return Client Financial Responsibility for this STC. */
   financialResponsibility: boolean;
   /** Free-form notes about CORE response obligations specific to this code. */
   notes?: string;
@@ -122,7 +122,7 @@ const CORE_SERVICE_TYPE_CODES: CoreServiceTypeCode[] = [
   },
   {
     code: "48",
-    description: "Hospital - Inpatient",
+    description: "Hospital - Inclient",
     category: "facility",
     explicit: true,
     generic: false,
@@ -131,7 +131,7 @@ const CORE_SERVICE_TYPE_CODES: CoreServiceTypeCode[] = [
   },
   {
     code: "50",
-    description: "Hospital - Outpatient",
+    description: "Hospital - Outclient",
     category: "facility",
     explicit: true,
     generic: false,
@@ -178,7 +178,7 @@ const CORE_SERVICE_TYPE_CODES: CoreServiceTypeCode[] = [
     code: "98",
     description: "Professional (Physician) Visit - Office",
     longDescription:
-      "Standard office visit; the bread-and-butter inquiry for outpatient behavioral-health practices.",
+      "Standard office visit; the bread-and-butter inquiry for outclient behavioral-health practices.",
     category: "professional_visit",
     explicit: true,
     generic: false,
@@ -234,7 +234,7 @@ const CORE_SERVICE_TYPE_CODES: CoreServiceTypeCode[] = [
   },
   {
     code: "A7",
-    description: "Psychiatric - Inpatient",
+    description: "Psychiatric - Inclient",
     category: "behavioral_health",
     explicit: true,
     generic: false,
@@ -243,7 +243,7 @@ const CORE_SERVICE_TYPE_CODES: CoreServiceTypeCode[] = [
   },
   {
     code: "A8",
-    description: "Psychiatric - Outpatient",
+    description: "Psychiatric - Outclient",
     category: "behavioral_health",
     explicit: true,
     generic: false,

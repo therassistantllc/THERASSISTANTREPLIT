@@ -9,8 +9,8 @@ function value(v: unknown) {
 }
 
 /**
- * Mark a patient journal entry as reviewed by the clinician — a lightweight
- * acknowledgement that does NOT pull the entry into a SOAP note. Patients see
+ * Mark a client journal entry as reviewed by the clinician — a lightweight
+ * acknowledgement that does NOT pull the entry into a SOAP note. Clients see
  * "Reviewed by <clinician> on <date>" in their portal once set.
  *
  * Auth: staff session in the same org (requireOrgAccess + view_patient_chart).

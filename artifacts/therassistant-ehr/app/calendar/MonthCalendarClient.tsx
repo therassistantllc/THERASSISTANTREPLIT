@@ -15,8 +15,8 @@ const CPT_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "90832", label: "90832 — Psychotherapy 30 min" },
   { value: "90834", label: "90834 — Psychotherapy 45 min" },
   { value: "90837", label: "90837 — Psychotherapy 60 min" },
-  { value: "90846", label: "90846 — Family w/o patient" },
-  { value: "90847", label: "90847 — Family w/ patient" },
+  { value: "90846", label: "90846 — Family w/o client" },
+  { value: "90847", label: "90847 — Family w/ client" },
   { value: "90853", label: "90853 — Group psychotherapy" },
 ];
 
@@ -896,7 +896,7 @@ export default function MonthCalendarClient() {
                   </div>
 
                   <div className={styles.section}>
-                    <div className={styles.sectionLabel}>Patient balance</div>
+                    <div className={styles.sectionLabel}>Client balance</div>
                     <div className={styles.sectionValue}>
                       {money(detail.balance.openBalance)} open
                     </div>
@@ -1154,7 +1154,7 @@ function CancelAppointmentModal({
               className={styles.input}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. patient called, late cancel"
+              placeholder="e.g. client called, late cancel"
               disabled={busy}
             />
           </div>
@@ -1169,7 +1169,7 @@ function CancelAppointmentModal({
               disabled={busy}
               style={{ marginRight: 6 }}
             />
-            Charge the patient a cancellation fee
+            Charge the client a cancellation fee
           </label>
         </div>
 
@@ -1715,7 +1715,7 @@ export function CreateAppointmentModal({
           >
             {lockedClientId ? (
               <option value={lockedClientId}>
-                {clients.find((c) => c.id === lockedClientId)?.name ?? "This patient"}
+                {clients.find((c) => c.id === lockedClientId)?.name ?? "This client"}
               </option>
             ) : (
               clients.map((c) => (

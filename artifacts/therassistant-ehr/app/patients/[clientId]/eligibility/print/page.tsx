@@ -51,7 +51,7 @@ type EligibilityCheck = {
 
 type Payload = {
   success?: boolean;
-  patient?: { id: string; name: string; dateOfBirth: string };
+  client?: { id: string; name: string; dateOfBirth: string };
   latestEligibility?: EligibilityCheck | null;
   eligibilityHistory?: EligibilityCheck[];
 };
@@ -109,7 +109,7 @@ export default function EligibilityPrintPage() {
   }, [data]);
 
   if (error) return <div style={{ padding: 24 }}>{error}</div>;
-  if (!data?.patient) return <div style={{ padding: 24 }}>Loading eligibility report…</div>;
+  if (!data?.client) return <div style={{ padding: 24 }}>Loading eligibility report…</div>;
 
   const check =
     (checkId && (data.eligibilityHistory ?? []).find((c) => c.id === checkId)) ||
@@ -136,9 +136,9 @@ export default function EligibilityPrintPage() {
       </header>
 
       <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-        <Box label="Patient">
-          <div><strong>{data.patient.name}</strong></div>
-          <div style={{ color: "#475569", fontSize: 12 }}>DOB {fmtDate(data.patient.dateOfBirth)}</div>
+        <Box label="Client">
+          <div><strong>{data.client.name}</strong></div>
+          <div style={{ color: "#475569", fontSize: 12 }}>DOB {fmtDate(data.client.dateOfBirth)}</div>
           {check.memberId ? <div style={{ fontSize: 12 }}>Member ID: {check.memberId}</div> : null}
           {check.subscriberName ? <div style={{ fontSize: 12 }}>Subscriber: {check.subscriberName}</div> : null}
         </Box>

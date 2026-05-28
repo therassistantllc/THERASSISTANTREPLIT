@@ -70,9 +70,9 @@ function statusForEvent(eventType: string): {
   if (normalized === "email.sent") return { status: "sent", errorText: null };
   if (normalized === "email.delivered") return { status: "delivered", errorText: null };
   if (normalized === "email.bounced")
-    return { status: "bounced", errorText: "Email bounced. The patient's address rejected the message." };
+    return { status: "bounced", errorText: "Email bounced. The client's address rejected the message." };
   if (normalized === "email.complained")
-    return { status: "complained", errorText: "Patient marked the intake email as spam." };
+    return { status: "complained", errorText: "Client marked the intake email as spam." };
   if (normalized === "email.delivery_delayed")
     return { status: "sent", errorText: null };
   if (normalized === "email.failed")

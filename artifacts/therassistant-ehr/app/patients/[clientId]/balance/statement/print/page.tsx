@@ -26,7 +26,7 @@ type Invoice = {
 
 type Payload = {
   success: boolean;
-  patient?: { id: string; name: string; dateOfBirth?: string | null };
+  client?: { id: string; name: string; dateOfBirth?: string | null };
   totals?: { openBalance: number; totalPaid: number; totalResponsibility: number; invoiceCount: number };
   invoices?: Invoice[];
 };
@@ -75,7 +75,7 @@ export default function PatientStatementPrintPage() {
   }, [data]);
 
   if (error) return <div style={{ padding: 24 }}>{error}</div>;
-  if (!data?.patient) return <div style={{ padding: 24 }}>Loading statement…</div>;
+  if (!data?.client) return <div style={{ padding: 24 }}>Loading statement…</div>;
 
   const today = new Date().toLocaleDateString();
 
@@ -90,15 +90,15 @@ export default function PatientStatementPrintPage() {
       `}</style>
 
       <header style={{ borderBottom: "2px solid #0f172a", paddingBottom: 16, marginBottom: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 24 }}>Patient Account Statement</h1>
+        <h1 style={{ margin: 0, fontSize: 24 }}>Client Account Statement</h1>
         <div style={{ marginTop: 8, fontSize: 14, color: "#475569" }}>Statement date: {today}</div>
       </header>
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 14, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Patient</h2>
+        <h2 style={{ fontSize: 14, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Client</h2>
         <div style={{ fontSize: 16 }}>
-          <strong>{data.patient.name}</strong>
-          {data.patient.dateOfBirth ? <span style={{ marginLeft: 12, color: "#64748b" }}>DOB {fmtDate(data.patient.dateOfBirth)}</span> : null}
+          <strong>{data.client.name}</strong>
+          {data.client.dateOfBirth ? <span style={{ marginLeft: 12, color: "#64748b" }}>DOB {fmtDate(data.client.dateOfBirth)}</span> : null}
         </div>
       </section>
 

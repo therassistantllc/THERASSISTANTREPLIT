@@ -55,7 +55,7 @@ Map of all protected routes to their required permissions:
 - `/scheduling` — requires `view_calendar` OR `create_appointments`
 - `/scheduling/new` — requires `create_appointments`
 
-**Patients:**
+**Clients:**
 - `/patients` — requires `view_patient_chart` OR `view_patient_billing`
 - `/patients/[id]` — requires `view_patient_chart`
 - `/patients/[id]/edit` — requires `view_patient_chart` + `edit_patient_demographics`
@@ -211,7 +211,7 @@ if (orgError) return orgError;  // Returns 403 if mismatch
 
 This prevents:
 - Admin from Org A accessing staff from Org B
-- Clinician from Org A viewing patients from Org B
+- Clinician from Org A viewing clients from Org B
 - Cross-organization data leakage
 
 ## Permission Aggregation
@@ -227,19 +227,19 @@ When a user has multiple roles, their effective permissions are the **union** of
 
 ### Scenario 1: Admin User Full Access ✓
 - Create staff with `admin` role
-- Admin should access: calendar, patients, encounters, billing, work schedule, staff, settings
+- Admin should access: calendar, clients, encounters, billing, work schedule, staff, settings
 - GET `/api/auth/me` returns all permissions
 
 ### Scenario 2: Clinician Restricted Access ✓
 - Create staff with `clinician` role
-- Clinician should access: calendar, patient chart, encounters, work schedule
+- Clinician should access: calendar, client chart, encounters, work schedule
 - Clinician should NOT access: billing, staff, settings
 - GET `/api/staff/[id]` returns `403 Insufficient permissions`
 
 ### Scenario 3: Biller Billing-Only Access ✓
 - Create staff with `biller` role
 - Biller should access: billing, claims
-- Biller should NOT access: appointments, patient chart, clinical notes
+- Biller should NOT access: appointments, client chart, clinical notes
 - GET `/encounters/new` returns `403 Insufficient permissions`
 
 ### Scenario 4: Inactive Staff Denied ✓

@@ -197,10 +197,10 @@ export default function ServiceLocationsClient() {
                 Place of Service Code
                 <select value={form.place_of_service_code} onChange={(e) => setForm((p) => ({ ...p, place_of_service_code: e.target.value }))}>
                   <option value="02">02 – Telehealth</option>
-                  <option value="10">10 – Telehealth (Patient Home)</option>
+                  <option value="10">10 – Telehealth (Client Home)</option>
                   <option value="11">11 – Office</option>
                   <option value="12">12 – Home</option>
-                  <option value="21">21 – Inpatient Hospital</option>
+                  <option value="21">21 – Inclient Hospital</option>
                   <option value="49">49 – Independent Clinic</option>
                   <option value="53">53 – Community Mental Health Center</option>
                 </select>

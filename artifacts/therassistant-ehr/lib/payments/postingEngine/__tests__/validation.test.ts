@@ -79,7 +79,7 @@ describe("validateEra835Posting", () => {
     );
   });
 
-  it("warns when patient responsibility exists but no client linked", () => {
+  it("warns when client responsibility exists but no client linked", () => {
     const result = validateEra835Posting(baseRow({ client_id: null }));
     assert.equal(
       result.warning.some((issue) => issue.code === "patient_resp_without_client"),

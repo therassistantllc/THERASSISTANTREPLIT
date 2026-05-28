@@ -29,7 +29,7 @@ import {
 
 describe("destination → entity-type mapping", () => {
   it("maps each non-practice destination to the matching search type", () => {
-    assert.equal(DESTINATION_TO_ENTITY.patient_chart, "patient");
+    assert.equal(DESTINATION_TO_ENTITY.patient_chart, "client");
     assert.equal(DESTINATION_TO_ENTITY.claim, "claim");
     assert.equal(DESTINATION_TO_ENTITY.encounter, "encounter");
   });
@@ -40,7 +40,7 @@ describe("destination → entity-type mapping", () => {
   });
 
   it("getEntityTypeForDestination returns the correct entity type for each chart destination", () => {
-    assert.equal(getEntityTypeForDestination("patient_chart"), "patient");
+    assert.equal(getEntityTypeForDestination("patient_chart"), "client");
     assert.equal(getEntityTypeForDestination("claim"), "claim");
     assert.equal(getEntityTypeForDestination("encounter"), "encounter");
     assert.equal(destinationRequiresTarget("patient_chart"), true);

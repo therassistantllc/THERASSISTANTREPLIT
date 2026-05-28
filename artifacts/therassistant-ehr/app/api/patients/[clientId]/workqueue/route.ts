@@ -47,7 +47,7 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
     }));
 
     // Surface blocked charge_capture_items as synthetic workqueue entries so
-    // the patient's workqueue tab shows signed visits that can't progress to
+    // the client's workqueue tab shows signed visits that can't progress to
     // a claim yet (missing payer info, diagnosis codes, credentialing, etc.).
     // These are not persisted rows — they reflect the live blocker state.
     const seenChargeIds = new Set(

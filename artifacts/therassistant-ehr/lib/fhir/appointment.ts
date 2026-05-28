@@ -57,7 +57,7 @@ function mapAppointmentStatus(status: string | null | undefined): FhirAppointmen
 export function appointmentRowToFhir(row: AppointmentRow, baseUrl: string): FhirAppointment {
   const participants: FhirAppointment["participant"] = [
     {
-      actor: { reference: `${baseUrl}/Patient/${row.client_id}`, type: "Patient" },
+      actor: { reference: `${baseUrl}/Patient/${row.client_id}`, type: "Client" },
       status: "accepted",
       required: "required",
     },

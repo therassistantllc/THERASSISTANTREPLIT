@@ -26,7 +26,7 @@ type Invoice = {
 
 type Payload = {
   success: boolean;
-  patient?: { id: string; name: string; dateOfBirth?: string | null };
+  client?: { id: string; name: string; dateOfBirth?: string | null };
   invoices?: Invoice[];
 };
 
@@ -75,7 +75,7 @@ export default function InvoicePrintPage() {
   }, [data]);
 
   if (error) return <div style={{ padding: 24 }}>{error}</div>;
-  if (!data?.patient) return <div style={{ padding: 24 }}>Loading invoice…</div>;
+  if (!data?.client) return <div style={{ padding: 24 }}>Loading invoice…</div>;
 
   const invoice = (data.invoices ?? []).find((i) => i.id === invoiceId);
   if (!invoice) return <div style={{ padding: 24 }}>Invoice not found.</div>;
@@ -106,8 +106,8 @@ export default function InvoicePrintPage() {
       <section style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 14, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Bill to</h2>
         <div style={{ fontSize: 16 }}>
-          <strong>{data.patient.name}</strong>
-          {data.patient.dateOfBirth ? <span style={{ marginLeft: 12, color: "#64748b" }}>DOB {fmtDate(data.patient.dateOfBirth)}</span> : null}
+          <strong>{data.client.name}</strong>
+          {data.client.dateOfBirth ? <span style={{ marginLeft: 12, color: "#64748b" }}>DOB {fmtDate(data.client.dateOfBirth)}</span> : null}
         </div>
       </section>
 
@@ -120,7 +120,7 @@ export default function InvoicePrintPage() {
         </thead>
         <tbody>
           <tr>
-            <td style={td()}>Patient responsibility</td>
+            <td style={td()}>Client responsibility</td>
             <td style={{ ...td(), textAlign: "right" }}>{fmtMoney(invoice.patientResponsibilityAmount)}</td>
           </tr>
         </tbody>

@@ -3,7 +3,7 @@
 // Builds the rich `Eligibility270Input` (the shape consumed by
 // `lib/edi/availity270/generate270.ts` and by
 // `AvailityRealtimeAdapter.runEligibility`) from the database rows the
-// `ClearinghouseService` already has on hand: the patient (`clients`
+// `ClearinghouseService` already has on hand: the client (`clients`
 // row), their `insurance_policies` row, and the active
 // `clearinghouse_connections` row.
 //
@@ -28,7 +28,7 @@ import type {
   Eligibility270Input,
 } from "@/lib/edi/availity270/types";
 
-export interface BuilderPatient {
+export interface BuilderClient {
   first_name?: string | null;
   last_name?: string | null;
   date_of_birth?: string | null;
@@ -47,9 +47,9 @@ export interface BuilderPolicy {
    */
   group_number?: string | null;
   /**
-   * If the subscriber differs from the patient, the caller is
+   * If the subscriber differs from the client, the caller is
    * responsible for passing the subscriber identity here. When omitted,
-   * we assume self-coverage and project the patient identity into the
+   * we assume self-coverage and project the client identity into the
    * subscriber loop — by far the dominant case for psych practices.
    */
   subscriber_first_name?: string | null;
@@ -100,7 +100,7 @@ function resolveAvailityMode(mode: string | null | undefined): "test" | "product
 
 export function buildEligibility270InputFromContext(args: {
   connection: BuilderConnectionLike;
-  patient: BuilderPatient;
+  client: BuilderClient;
   policy: BuilderPolicy;
   /** Optional explicit provider override (e.g. from Settings UI). */
   provider?: BuilderProvider;
@@ -108,7 +108,7 @@ export function buildEligibility270InputFromContext(args: {
   serviceDate?: string | null;
   traceId?: string;
 }): Eligibility270Input {
-  const { connection, patient, policy, provider, serviceTypeCodes, serviceDate, traceId } = args;
+  const { connection, client, policy, provider, serviceTypeCodes, serviceDate, traceId } = args;
 
   const mode = resolveAvailityMode(connection.mode ?? null);
 
@@ -156,13 +156,13 @@ export function buildEligibility270InputFromContext(args: {
     (policy.subscriber_id?.trim() || policy.policy_number?.trim() || "").trim();
 
   const subscriberLast =
-    policy.subscriber_last_name?.trim() || patient.last_name?.trim() || "";
+    policy.subscriber_last_name?.trim() || client.last_name?.trim() || "";
   const subscriberFirst =
-    policy.subscriber_first_name?.trim() || patient.first_name?.trim() || "";
+    policy.subscriber_first_name?.trim() || client.first_name?.trim() || "";
   const subscriberDob =
-    policy.subscriber_dob?.trim() || patient.date_of_birth?.trim() || "";
+    policy.subscriber_dob?.trim() || client.date_of_birth?.trim() || "";
   const subscriberGender =
-    normalizeGender(policy.subscriber_gender ?? null) ?? normalizeGender(patient.gender ?? null);
+    normalizeGender(policy.subscriber_gender ?? null) ?? normalizeGender(client.gender ?? null);
 
   return {
     connection: availityConnection,

@@ -67,7 +67,7 @@ test("CO total becomes a single contractual write-off suggestion", () => {
   assert.equal(contractual?.suggestedValue, 32);
 });
 
-test("zero payment + adjustments + no patient resp ⇒ denial review", () => {
+test("zero payment + adjustments + no client resp ⇒ denial review", () => {
   const out = generatePostingSuggestions({
     ...base,
     clp04PaymentAmount: 0,

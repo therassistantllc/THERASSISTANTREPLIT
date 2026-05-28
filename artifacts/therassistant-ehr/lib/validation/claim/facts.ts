@@ -377,8 +377,8 @@ function projectFactsForEngine(facts: CanonicalClaimFacts) {
   }
 
   // Subscriber relationship: when payer requires it, the snapshot must define
-  // who the patient is relative to the subscriber. We treat the rule as
-  // satisfied when either patient_is_subscriber === true OR the patient
+  // who the client is relative to the subscriber. We treat the rule as
+  // satisfied when either patient_is_subscriber === true OR the client
   // identity fields (last_name + dob) are populated so the relationship is
   // unambiguous downstream.
   const partiesObj = facts.parties ?? {};

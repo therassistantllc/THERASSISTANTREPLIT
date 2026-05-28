@@ -178,7 +178,7 @@ async function loadPortalData(
   const invoiceRows = (invoicesRes.data ?? []) as Row[];
   const invoiceIds = invoiceRows.map((r) => value(r.id)).filter(Boolean);
 
-  // Task #674: surface recent autopay-charge failures so the patient
+  // Task #674: surface recent autopay-charge failures so the client
   // can self-serve. Source-of-truth = open `autopay_charge_failed` rows
   // filed by attemptAutopayForInvoice; we also look at the most recent
   // failed payment_invoice_payments row for the human-readable reason.
@@ -304,7 +304,7 @@ export default async function PatientPortalHomePage() {
       <main className="portal-shell-narrow">
         <div className="portal-header">
           <div>
-            <div className="eyebrow">Patient portal</div>
+            <div className="eyebrow">Client portal</div>
             <h1>Portal unavailable</h1>
           </div>
         </div>
@@ -456,9 +456,9 @@ export default async function PatientPortalHomePage() {
                         value={inv.balance.toFixed(2)}
                       />
                       {/* Task #674: tells the server action to bind the
-                          Checkout to the patient's Stripe Customer with
+                          Checkout to the client's Stripe Customer with
                           setup_future_usage='off_session' so the card
-                          the patient pays with also becomes the new
+                          the client pays with also becomes the new
                           saved card on file. Without this flag the next
                           autopay cycle would re-use the stale card. */}
                       <input type="hidden" name="isRecovery" value="1" />

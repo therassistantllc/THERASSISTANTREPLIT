@@ -1,9 +1,9 @@
 /**
  * POST /api/billing/payments/posted/:id/refund
  *
- * Records an insurance refund OR a patient refund against a posted payment.
+ * Records an insurance refund OR a client refund against a posted payment.
  * `refundType` defaults to the natural fit for the source (client_payment →
- * patient; era_835/insurance_manual → insurance). Stripe issuance is
+ * client; era_835/insurance_manual → insurance). Stripe issuance is
  * handled outside this route (Task #114 webhook); callers that have
  * already issued via Stripe may pass `stripeRefundId` + `alreadyIssued`.
  *
@@ -27,7 +27,7 @@ import { parseCompositePostedPaymentId as parseCompositeId } from "../_composite
 
 interface Body {
   organizationId?: string;
-  refundType?: "insurance" | "patient";
+  refundType?: "insurance" | "client";
   amount?: number;
   reason?: string;
   stripeRefundId?: string | null;
@@ -80,10 +80,10 @@ export async function processRefundRequest(
     };
   }
   const actor = await deps.requireAuth(organizationId);
-  const refundType: "insurance" | "patient" =
-    body.refundType ?? (target.kind === "client_payment" ? "patient" : "insurance");
+  const refundType: "insurance" | "client" =
+    body.refundType ?? (target.kind === "client_payment" ? "client" : "insurance");
   const fn =
-    refundType === "patient" ? deps.recordPatientRefund : deps.recordInsuranceRefund;
+    refundType === "client" ? deps.recordPatientRefund : deps.recordInsuranceRefund;
   const result = await fn(
     {
       organizationId,

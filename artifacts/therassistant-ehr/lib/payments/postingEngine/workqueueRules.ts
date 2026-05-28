@@ -46,7 +46,7 @@ const DENIAL_CARC_CODES = new Set([
   "151", // Information from another provider was not provided
   "167", // Diagnosis not covered
   "197", // Pre-cert/authorization absent
-  "204", // Service not covered by patient's benefit plan
+  "204", // Service not covered by client's benefit plan
   "236", // Duplicate claim/service
 ]);
 
@@ -334,7 +334,7 @@ async function deriveEligibilityEmissions(
     const billingPayer =
       (claim as { payer_profile_id: string | null }).payer_profile_id;
 
-    // cob_issue: secondary insurance is *expected* (patient has ≥2 active
+    // cob_issue: secondary insurance is *expected* (client has ≥2 active
     // coverages on file) but *no secondary payment* has been recorded for
     // this claim under a payer other than the one we just posted under.
     // This matches the spec — fires on "secondary expected but missing,"
@@ -395,7 +395,7 @@ async function deriveEligibilityEmissions(
               workType: "cob_issue",
               title: "COB issue — secondary payment missing",
               description:
-                "Patient has additional active insurance coverage on file, but no secondary payment has been recorded for this claim. Bill secondary payer or document COB.",
+                "Client has additional active insurance coverage on file, but no secondary payment has been recorded for this claim. Bill secondary payer or document COB.",
               priority: "normal",
               contextPayload: {
                 rule: "cob_issue",
@@ -433,7 +433,7 @@ async function deriveEligibilityEmissions(
             ruleKind: "eligibility_issue",
             workType: "eligibility_issue",
             title: "Eligibility conflict — posted payer ≠ eligibility-active payer",
-            description: `This payment was posted under payer ${postedPayerProfileId} but the patient's eligibility-active payer is ${activePayer}. Verify coverage and payer routing.`,
+            description: `This payment was posted under payer ${postedPayerProfileId} but the client's eligibility-active payer is ${activePayer}. Verify coverage and payer routing.`,
             priority: "normal",
             contextPayload: {
               rule: "eligibility_issue",

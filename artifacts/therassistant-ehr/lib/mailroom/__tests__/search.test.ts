@@ -6,7 +6,7 @@
  * client that records every chained call, so we can pin:
  *
  *   - org scoping (every table query is filtered by organization_id)
- *   - per-type result shapes (patient / claim / encounter)
+ *   - per-type result shapes (client / claim / encounter)
  *   - empty-query default list (no .or() filter is attached)
  *   - ILIKE-injection safety (%, _, \, , are escaped)
  *   - rejection of invalid `type` (via isMailroomSearchType)
@@ -107,7 +107,7 @@ describe("isMailroomSearchType", () => {
     for (const t of MAILROOM_SEARCH_TYPES) assert.equal(isMailroomSearchType(t), true);
   });
   it("rejects unknown / malformed types (prevents the route from ever calling the helper with garbage)", () => {
-    for (const bad of ["", "patients", "Patient", "claims; drop", null, undefined, 42, {}]) {
+    for (const bad of ["", "clients", "Client", "claims; drop", null, undefined, 42, {}]) {
       assert.equal(isMailroomSearchType(bad as unknown), false);
     }
   });
@@ -132,7 +132,7 @@ describe("searchMailroomEntities — org scoping", () => {
     const { supabase, calls } = makeFakeSupabase({
       clients: [{ id: "c1", first_name: "Jane", last_name: "Doe", date_of_birth: "1990-01-01" }],
     });
-    await searchMailroomEntities(supabase, ORG_A, "patient", "jane", 10);
+    await searchMailroomEntities(supabase, ORG_A, "client", "jane", 10);
     const eqCalls = calls.filter((c) => c.method === "eq");
     assert.ok(
       eqCalls.some((c) => c.table === "clients" && c.args[0] === "organization_id" && c.args[1] === ORG_A),
@@ -154,8 +154,8 @@ describe("searchMailroomEntities — org scoping", () => {
     assert.equal(claimEq?.args[1], ORG_A);
   });
 
-  it("scopes the encounters query AND the patient-name pre-filter to the session org", async () => {
-    // Patient pre-filter must hit a row, otherwise the helper short-circuits
+  it("scopes the encounters query AND the client-name pre-filter to the session org", async () => {
+    // Client pre-filter must hit a row, otherwise the helper short-circuits
     // before querying encounters and we can't assert org scope on that table.
     const { supabase, calls } = makeFakeSupabase({
       clients: [{ id: "c1", first_name: "Jane", last_name: "Doe" }],
@@ -171,21 +171,21 @@ describe("searchMailroomEntities — org scoping", () => {
 });
 
 describe("searchMailroomEntities — per-type result shapes", () => {
-  it("patient: returns id + name label + DOB sublabel", async () => {
+  it("client: returns id + name label + DOB sublabel", async () => {
     const { supabase } = makeFakeSupabase({
       clients: [
         { id: "c1", first_name: "Jane", last_name: "Doe", date_of_birth: "1990-01-01" },
         { id: "c2", first_name: "", last_name: "", date_of_birth: "" },
       ],
     });
-    const results = await searchMailroomEntities(supabase, ORG_A, "patient", "", 10);
+    const results = await searchMailroomEntities(supabase, ORG_A, "client", "", 10);
     assert.deepEqual(results, [
       { id: "c1", label: "Jane Doe", sublabel: "DOB 1990-01-01" },
       { id: "c2", label: "Unnamed client", sublabel: "" },
     ]);
   });
 
-  it("claim: returns 'Claim <number>' label and joins patient/payer for the sublabel", async () => {
+  it("claim: returns 'Claim <number>' label and joins client/payer for the sublabel", async () => {
     const { supabase } = makeFakeSupabase({
       professional_claims: [
         {
@@ -211,7 +211,7 @@ describe("searchMailroomEntities — per-type result shapes", () => {
     assert.match(results[0].sublabel, /DOS 2025-01-01/);
   });
 
-  it("encounter: returns 'service_date · patient' label and provider sublabel", async () => {
+  it("encounter: returns 'service_date · client' label and provider sublabel", async () => {
     const { supabase } = makeFakeSupabase({
       encounters: [
         { id: "enc-1", client_id: "c1", provider_id: "pr1", service_date: "2025-03-04", started_at: "", encounter_status: "completed" },
@@ -229,9 +229,9 @@ describe("searchMailroomEntities — per-type result shapes", () => {
 });
 
 describe("searchMailroomEntities — empty-query default list", () => {
-  it("patient: does NOT attach an .or() filter when q is empty (returns the recent list)", async () => {
+  it("client: does NOT attach an .or() filter when q is empty (returns the recent list)", async () => {
     const { supabase, calls } = makeFakeSupabase({ clients: [] });
-    await searchMailroomEntities(supabase, ORG_A, "patient", "", 10);
+    await searchMailroomEntities(supabase, ORG_A, "client", "", 10);
     assert.equal(
       calls.filter((c) => c.method === "or").length,
       0,
@@ -245,7 +245,7 @@ describe("searchMailroomEntities — empty-query default list", () => {
     assert.equal(calls.filter((c) => c.method === "or").length, 0);
   });
 
-  it("encounter: empty q skips the patient pre-filter and queries encounters directly", async () => {
+  it("encounter: empty q skips the client pre-filter and queries encounters directly", async () => {
     const { supabase, calls } = makeFakeSupabase({ encounters: [] });
     await searchMailroomEntities(supabase, ORG_A, "encounter", "", 10);
     // No client name lookup happens (no .or on clients) and the encounters
@@ -259,9 +259,9 @@ describe("searchMailroomEntities — empty-query default list", () => {
 });
 
 describe("searchMailroomEntities — ILIKE-injection safety", () => {
-  it("escapes wildcards in the patient .or() filter so a '%' search can't match every row", async () => {
+  it("escapes wildcards in the client .or() filter so a '%' search can't match every row", async () => {
     const { supabase, calls } = makeFakeSupabase({ clients: [] });
-    await searchMailroomEntities(supabase, ORG_A, "patient", "100%_off,go\\", 10);
+    await searchMailroomEntities(supabase, ORG_A, "client", "100%_off,go\\", 10);
     const orCall = calls.find((c) => c.method === "or");
     assert.ok(orCall, "an .or() call must be attached when q is non-empty");
     const filter = String((orCall!.args[0] ?? "") as string);
@@ -279,7 +279,7 @@ describe("searchMailroomEntities — ILIKE-injection safety", () => {
     assert.match(String(orCall!.args[0]), /\\%admin\\%/);
   });
 
-  it("escapes wildcards in the encounter patient pre-filter", async () => {
+  it("escapes wildcards in the encounter client pre-filter", async () => {
     const { supabase, calls } = makeFakeSupabase({ clients: [], encounters: [] });
     await searchMailroomEntities(supabase, ORG_A, "encounter", "_drop_", 10);
     const orCall = calls.find((c) => c.method === "or" && c.table === "clients");

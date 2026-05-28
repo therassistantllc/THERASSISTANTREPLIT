@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       memo: body.memo ?? null,
     });
 
-    // Task #602: auto-charge enrolled patients on statement send.
+    // Task #602: auto-charge enrolled clients on statement send.
     const autopayResult = result.ok
       ? await attemptAutopayForInvoice({ organizationId, patientInvoiceId }).catch(
           (err) => ({
@@ -37,9 +37,9 @@ export async function POST(request: Request) {
       { status: result.ok ? 200 : 422 },
     );
   } catch (error) {
-    console.error("Patient invoice mark sent API error:", error);
+    console.error("Client invoice mark sent API error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Patient invoice mark sent failed" },
+      { success: false, error: error instanceof Error ? error.message : "Client invoice mark sent failed" },
       { status: 500 },
     );
   }

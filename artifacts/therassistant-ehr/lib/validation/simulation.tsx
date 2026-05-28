@@ -8,7 +8,7 @@ import type { ValidationReport } from "./types";
  *
  * Walks the same configuration the 837P generator would use, picks the first
  * viable row of each entity, and verifies they can be linked into a coherent
- * test claim. Uses a SYNTHETIC patient/payload — no real PHI is read or
+ * test claim. Uses a SYNTHETIC client/payload — no real PHI is read or
  * transmitted, no DB rows are written, and the clearinghouse adapter is never
  * invoked. The output is a report only.
  */
@@ -44,7 +44,7 @@ export interface SimulationReport {
     clearinghouseVendor: string | null;
   };
   syntheticClaim: {
-    patientName: "TEST, PATIENT";
+    patientName: "TEST, CLIENT";
     patientDob: "2000-01-01";
     memberId: "TEST-MEMBER-0001";
     serviceDate: string;
@@ -398,7 +398,7 @@ export async function runTestClaimSimulation(
     checks,
     chosenEntities: chosen,
     syntheticClaim: {
-      patientName: "TEST, PATIENT",
+      patientName: "TEST, CLIENT",
       patientDob: "2000-01-01",
       memberId: "TEST-MEMBER-0001",
       serviceDate: new Date().toISOString().slice(0, 10),

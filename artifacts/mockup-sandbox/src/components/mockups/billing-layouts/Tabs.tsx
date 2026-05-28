@@ -9,7 +9,7 @@ import {
 
 const GLOBAL_NAV = [
   { icon: LayoutDashboard, label: 'Dashboard' },
-  { icon: Users, label: 'Patients' },
+  { icon: Users, label: 'Clients' },
   { icon: Calendar, label: 'Schedule' },
   { icon: Inbox, label: 'Mailroom' },
   { icon: DollarSign, label: 'Billing', active: true },
@@ -25,7 +25,7 @@ const BILLING_TABS = [
   { id: 'no_response', label: 'No Response', count: 47, active: true },
   { id: 'denials', label: 'Denials', count: 12 },
   { id: 'manual_review', label: 'Manual Review', count: 7 },
-  { id: 'patient_resp', label: 'Patient Resp.', count: 23 },
+  { id: 'patient_resp', label: 'Client Resp.', count: 23 },
   { id: 'write_offs', label: 'Write-offs', count: 4 },
 ];
 
@@ -37,14 +37,14 @@ const KPIS = [
 ];
 
 const MOCK_CLAIMS = [
-  { id: 'CLM-20281', patient: 'Sarah Jenkins', dob: '1985-04-12', dos: '2024-02-15', payer: 'Aetna', billed: 185.00, daysOut: 42, status: 'No Response', lastAction: 'Submitted 42d ago', assignee: 'JD', aged: false },
-  { id: 'CLM-20282', patient: 'Marcus Chen', dob: '1990-11-23', dos: '2024-01-10', payer: 'BCBS', billed: 210.00, daysOut: 78, status: 'No Response', lastAction: 'Followed up 14d ago', assignee: 'JD', aged: false },
-  { id: 'CLM-20283', patient: 'Elena Rodriguez', dob: '1978-08-05', dos: '2023-11-20', payer: 'Cigna', billed: 150.00, daysOut: 95, status: 'No Response', lastAction: 'Submitted 95d ago', assignee: 'AS', aged: true },
-  { id: 'CLM-20284', patient: 'James Wilson', dob: '1965-02-18', dos: '2023-11-15', payer: 'UHC', billed: 185.00, daysOut: 102, status: 'No Response', lastAction: 'Called payer 30d ago', assignee: 'JD', aged: true },
-  { id: 'CLM-20285', patient: 'Olivia Taylor', dob: '1992-09-30', dos: '2024-02-01', payer: 'Medicare', billed: 125.00, daysOut: 56, status: 'No Response', lastAction: 'Submitted 56d ago', assignee: 'AS', aged: false },
-  { id: 'CLM-20286', patient: 'David Miller', dob: '1980-12-14', dos: '2024-02-28', payer: 'Aetna', billed: 185.00, daysOut: 30, status: 'No Response', lastAction: 'Submitted 30d ago', assignee: 'JD', aged: false },
-  { id: 'CLM-20287', patient: 'Sophia Anderson', dob: '1988-06-22', dos: '2023-12-05', payer: 'BCBS', billed: 210.00, daysOut: 85, status: 'No Response', lastAction: 'Followed up 21d ago', assignee: 'AS', aged: false },
-  { id: 'CLM-20288', patient: 'Lucas Thomas', dob: '1975-03-08', dos: '2023-10-10', payer: 'Cigna', billed: 150.00, daysOut: 110, status: 'No Response', lastAction: 'Submitted 110d ago', assignee: 'JD', aged: true },
+  { id: 'CLM-20281', client: 'Sarah Jenkins', dob: '1985-04-12', dos: '2024-02-15', payer: 'Aetna', billed: 185.00, daysOut: 42, status: 'No Response', lastAction: 'Submitted 42d ago', assignee: 'JD', aged: false },
+  { id: 'CLM-20282', client: 'Marcus Chen', dob: '1990-11-23', dos: '2024-01-10', payer: 'BCBS', billed: 210.00, daysOut: 78, status: 'No Response', lastAction: 'Followed up 14d ago', assignee: 'JD', aged: false },
+  { id: 'CLM-20283', client: 'Elena Rodriguez', dob: '1978-08-05', dos: '2023-11-20', payer: 'Cigna', billed: 150.00, daysOut: 95, status: 'No Response', lastAction: 'Submitted 95d ago', assignee: 'AS', aged: true },
+  { id: 'CLM-20284', client: 'James Wilson', dob: '1965-02-18', dos: '2023-11-15', payer: 'UHC', billed: 185.00, daysOut: 102, status: 'No Response', lastAction: 'Called payer 30d ago', assignee: 'JD', aged: true },
+  { id: 'CLM-20285', client: 'Olivia Taylor', dob: '1992-09-30', dos: '2024-02-01', payer: 'Medicare', billed: 125.00, daysOut: 56, status: 'No Response', lastAction: 'Submitted 56d ago', assignee: 'AS', aged: false },
+  { id: 'CLM-20286', client: 'David Miller', dob: '1980-12-14', dos: '2024-02-28', payer: 'Aetna', billed: 185.00, daysOut: 30, status: 'No Response', lastAction: 'Submitted 30d ago', assignee: 'JD', aged: false },
+  { id: 'CLM-20287', client: 'Sophia Anderson', dob: '1988-06-22', dos: '2023-12-05', payer: 'BCBS', billed: 210.00, daysOut: 85, status: 'No Response', lastAction: 'Followed up 21d ago', assignee: 'AS', aged: false },
+  { id: 'CLM-20288', client: 'Lucas Thomas', dob: '1975-03-08', dos: '2023-10-10', payer: 'Cigna', billed: 150.00, daysOut: 110, status: 'No Response', lastAction: 'Submitted 110d ago', assignee: 'JD', aged: true },
 ];
 
 export default function TabsLayout() {
@@ -167,7 +167,7 @@ export default function TabsLayout() {
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-xs font-semibold sticky top-0 z-10">
                     <tr>
                       <th className="py-3 px-4 w-10"><input type="checkbox" className="rounded border-slate-300" /></th>
-                      <th className="py-3 px-4">Patient</th>
+                      <th className="py-3 px-4">Client</th>
                       <th className="py-3 px-4">Claim #</th>
                       <th className="py-3 px-4">DOS</th>
                       <th className="py-3 px-4">Payer</th>
@@ -193,7 +193,7 @@ export default function TabsLayout() {
                           <input type="checkbox" className="rounded border-slate-300" onClick={e => e.stopPropagation()} />
                         </td>
                         <td className="py-3 px-4">
-                          <div className="font-medium text-slate-800">{claim.patient}</div>
+                          <div className="font-medium text-slate-800">{claim.client}</div>
                           <div className="text-xs text-slate-500">DOB: {claim.dob}</div>
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-600">{claim.id}</td>
@@ -239,7 +239,7 @@ export default function TabsLayout() {
               <div className="px-6 py-5 border-b border-slate-200 bg-slate-50/50">
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <h2 className="text-lg font-bold text-slate-800">{selectedClaim.patient}</h2>
+                    <h2 className="text-lg font-bold text-slate-800">{selectedClaim.client}</h2>
                     <div className="flex items-center gap-2 text-sm text-slate-500 mt-1">
                       <span className="font-mono">{selectedClaim.id}</span>
                       <span>•</span>

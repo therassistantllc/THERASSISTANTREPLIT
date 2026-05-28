@@ -43,7 +43,7 @@ test("perfect match (charge + DOS + payer + name) scores ≥ 0.85", () => {
   assert.ok(reasons.includes("Charge match"));
   assert.ok(reasons.includes("DOS overlap"));
   assert.ok(reasons.includes("Payer match"));
-  assert.ok(reasons.includes("Patient last name match"));
+  assert.ok(reasons.includes("Client last name match"));
 });
 
 test("charge mismatch beyond $0.50 tolerance kills the charge bonus", () => {
@@ -124,7 +124,7 @@ test("name match is case-insensitive and whitespace-tolerant", () => {
       patientLastName: "smith",
     },
   );
-  assert.ok(reasons.includes("Patient last name match"));
+  assert.ok(reasons.includes("Client last name match"));
 });
 
 test("no signals at all still returns a baseline (0.5) — caller's threshold drops it", () => {

@@ -109,7 +109,7 @@ export async function GET(request: Request) {
     // We resolve them to a concrete set of batch ids first, then restrict the
     // batches query, so paging/limit honors the filter rather than truncating
     // pre-filter.
-    const patientFilter = searchParams.get("patient")?.trim() || null;
+    const patientFilter = searchParams.get("client")?.trim() || null;
     // Typeahead picker sends the canonical client UUID instead of (or in
     // addition to) the partial name. When set we restrict era_claim_payments
     // by client_id directly — no ilike fuzziness — so a selected suggestion
@@ -217,7 +217,7 @@ export async function GET(request: Request) {
 
       let clientIdSet: Set<string> | null = null;
       if (clientIdFilter) {
-        // A typeahead-picked patient already resolves to a single UUID, so we
+        // A typeahead-picked client already resolves to a single UUID, so we
         // skip the name search entirely and constrain directly.
         clientIdSet = new Set([clientIdFilter]);
       } else if (patientFilter) {
@@ -298,7 +298,7 @@ export async function GET(request: Request) {
         totalApplied: number;
       }
     >();
-    // Per-batch enrichment maps for the universal filter rail (patient,
+    // Per-batch enrichment maps for the universal filter rail (client,
     // clinician, practice/POS, DOS-from, DOS-to). Populated below alongside
     // the child rollup so the list payload contains everything the UI needs.
     const patientsByBatch = new Map<string, Set<string>>();
@@ -466,7 +466,7 @@ export async function GET(request: Request) {
         deferred,
         markedDuplicateOf,
         assignedBiller,
-        patients: Array.from(patientsByBatch.get(row.id) ?? []),
+        clients: Array.from(patientsByBatch.get(row.id) ?? []),
         clinicians: Array.from(cliniciansByBatch.get(row.id) ?? []),
         practices: Array.from(practicesByBatch.get(row.id) ?? []),
         dosFrom: dosFromByBatch.get(row.id) ?? null,

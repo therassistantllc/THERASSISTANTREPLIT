@@ -135,8 +135,8 @@ export async function POST(
   }
 
   // Kick off transcription in the background. We deliberately do not await
-  // this — the upload response returns immediately so the patient sees the
-  // entry as saved; clinicians (and the patient on refresh) see the
+  // this — the upload response returns immediately so the client sees the
+  // entry as saved; clinicians (and the client on refresh) see the
   // transcript appear once the model call finishes. Errors are swallowed so
   // a failing transcription never blocks the audio upload itself.
   void (async () => {
@@ -153,7 +153,7 @@ export async function POST(
         .eq("organization_id", session.organizationId)
         .eq("client_id", session.clientId)
         // Only stamp if the same upload is still the current audio. If the
-        // patient re-recorded in the meantime, audio_storage_path will have
+        // client re-recorded in the meantime, audio_storage_path will have
         // changed and we'd be writing a stale transcript.
         .eq("audio_storage_path", path);
     } catch (err) {

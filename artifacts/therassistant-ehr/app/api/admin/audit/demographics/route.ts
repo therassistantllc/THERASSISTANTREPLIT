@@ -156,7 +156,7 @@ export async function GET(request: Request) {
         const name =
           [row.first_name, row.last_name].filter(Boolean).join(" ") ||
           row.preferred_name ||
-          "Unnamed patient";
+          "Unnamed client";
         patientById.set(row.id, name);
       }
     }

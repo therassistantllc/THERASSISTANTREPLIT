@@ -7,7 +7,7 @@ _Last audited: 2026-05-21 against working-tree code and the Supabase schema dump
 > production.** Multiple critical gaps remain (see Gap List). Do not transmit real
 > PHI through this platform until the Phase 1 gaps are closed and a written BAA
 > with Availity is executed. Do not represent to any payer, clearinghouse,
-> auditor, or patient that this platform is HIPAA-compliant, EDI-certified, or
+> auditor, or client that this platform is HIPAA-compliant, EDI-certified, or
 > production-ready based on its current state.
 
 ## Executive Summary

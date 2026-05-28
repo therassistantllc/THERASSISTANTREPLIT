@@ -5,7 +5,7 @@
  * `cloneClaimForSecondary` clones a primary-billed `professional_claims`
  * row into a child claim payable to the secondary policy's payer. The
  * child is stamped with the prior-payer (primary) paid / adjustment /
- * patient-responsibility amounts pulled from the most recent ERA on the
+ * client-responsibility amounts pulled from the most recent ERA on the
  * original claim (or the manually-attached EOB reference if no ERA is
  * on file). The 837P assembler reads `prior_payer_*` off the child when
  * it is later batched, so Loop 2320 (SBR*S / AMT / CAS) can be filled
@@ -428,7 +428,7 @@ export async function billSecondary(
     return {
       ok: false,
       status: 422,
-      error: "Original claim has no patient — cannot bill secondary",
+      error: "Original claim has no client — cannot bill secondary",
     };
   }
 
@@ -618,7 +618,7 @@ export async function billPrimary(
     return {
       ok: false,
       status: 422,
-      error: "Original claim has no patient — cannot bill primary",
+      error: "Original claim has no client — cannot bill primary",
     };
   }
 

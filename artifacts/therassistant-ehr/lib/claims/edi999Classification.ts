@@ -147,7 +147,7 @@ const CLAIM_LOOP_PREFIXES = ["2000", "2010", "2300", "2310", "2320", "2330", "24
 function isClaimLoop(loopId: string | undefined): boolean {
   if (!loopId) return false;
   if (loopId === "2000A" || loopId === "2010AA" || loopId === "2010AB") {
-    // Billing/Pay-To provider loops live above the patient loop but are
+    // Billing/Pay-To provider loops live above the client loop but are
     // still claim-content for the operator who has to fix the claim.
     return true;
   }

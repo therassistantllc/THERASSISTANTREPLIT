@@ -3,10 +3,10 @@
  * — Task #500.
  *
  * The refund-issuance helper is verified end-to-end through the route:
- *   - patient refund with a Stripe-origin client_payment → calls
+ *   - client refund with a Stripe-origin client_payment → calls
  *     createConnectRefund (with stripe_connected_account_id threaded
  *     through) and stamps stripe_refund_id + refund_status='issued'
- *   - patient refund where Stripe rejects → refund_status='failed' with
+ *   - client refund where Stripe rejects → refund_status='failed' with
  *     the error in note, response success:false
  *   - insurance refund → confirmInsuranceRefund is called with the
  *     synthetic check number, stub appears in note, status='issued'
@@ -23,7 +23,7 @@ const CP_ID = "33333333-3333-3333-3333-333333333333";
 
 type RefundRow = {
   id: string;
-  refund_type: "patient" | "insurance";
+  refund_type: "client" | "insurance";
   client_id: string | null;
   professional_claim_id: string | null;
   payer_profile_id: string | null;
@@ -68,7 +68,7 @@ const state: {
 function makeRefund(overrides: Partial<RefundRow>): RefundRow {
   return {
     id: REFUND_ID,
-    refund_type: "patient",
+    refund_type: "client",
     client_id: "cli-1",
     professional_claim_id: null,
     payer_profile_id: null,
@@ -245,7 +245,7 @@ function postRequest(body: Record<string, unknown>) {
   });
 }
 
-test("patient refund issuance: calls Stripe with connected-account header, stamps stripe_refund_id", async () => {
+test("client refund issuance: calls Stripe with connected-account header, stamps stripe_refund_id", async () => {
   state.clientPayment = {
     id: CP_ID,
     stripe_charge_id: "ch_test_1",
@@ -277,7 +277,7 @@ test("patient refund issuance: calls Stripe with connected-account header, stamp
   assert.equal(stripeUpdate?.refund_status, "issued");
 });
 
-test("patient refund: Stripe failure → refund_status='failed' and error in note", async () => {
+test("client refund: Stripe failure → refund_status='failed' and error in note", async () => {
   state.clientPayment = {
     id: CP_ID,
     stripe_charge_id: "ch_test_1",

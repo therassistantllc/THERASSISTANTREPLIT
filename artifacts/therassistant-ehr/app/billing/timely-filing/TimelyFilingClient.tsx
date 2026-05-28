@@ -437,7 +437,7 @@ function UncollectibleModal({
         <option value="timely_filing_expired">Timely filing expired</option>
         <option value="no_authorization">No authorization on file</option>
         <option value="bad_debt">Bad debt</option>
-        <option value="patient_deceased">Patient deceased</option>
+        <option value="patient_deceased">Client deceased</option>
         <option value="other">Other</option>
       </select>
       <div style={{ marginTop: 12 }}>
@@ -856,7 +856,7 @@ export default function TimelyFilingClient() {
         })),
       },
       { id: "payer", label: "Payer", kind: "select", options: payerOptions },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },
       {

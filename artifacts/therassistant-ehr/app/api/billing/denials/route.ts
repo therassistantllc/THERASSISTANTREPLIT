@@ -59,7 +59,7 @@ export async function GET(request: Request) {
     const payerProfileIds = [...new Set(claimRows.map((c) => text(c.payer_profile_id)).filter(Boolean))];
 
     const [
-      { data: patients },
+      { data: clients },
       { data: payerProfiles },
       { data: serviceLines },
       { data: parties },
@@ -115,7 +115,7 @@ export async function GET(request: Request) {
           .in("payer_id", payerOfficeIds)
       : { data: [] as DbRow[] };
 
-    const patientById = new Map<string, DbRow>(((patients as DbRow[]) ?? []).map((p) => [text(p.id), p]));
+    const patientById = new Map<string, DbRow>(((clients as DbRow[]) ?? []).map((p) => [text(p.id), p]));
     const payerProfileById = new Map<string, DbRow>(
       ((payerProfiles as DbRow[]) ?? []).map((p) => [text(p.id), p]),
     );
@@ -147,7 +147,7 @@ export async function GET(request: Request) {
 
     const rows = claimRows.map((claim) => {
       const claimId = text(claim.id);
-      const patient = patientById.get(text(claim.patient_id));
+      const client = patientById.get(text(claim.patient_id));
       const payerProfile = payerProfileById.get(text(claim.payer_profile_id));
       const insurancePayer = payerProfile
         ? insurancePayerByExternalId.get(text(payerProfile.office_ally_payer_id))
@@ -172,14 +172,14 @@ export async function GET(request: Request) {
       // professional_claims, so default to total_charge minus any write-off.
       const outstanding = Math.max(0, Math.round((totalCharge - writeOff) * 100) / 100);
 
-      const patientName = patient
-        ? [patient.first_name, patient.last_name].map(text).filter(Boolean).join(" ")
+      const patientName = client
+        ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ")
         : party
           ? [party.patient_first_name || party.subscriber_first_name, party.patient_last_name || party.subscriber_last_name]
               .map(text)
               .filter(Boolean)
               .join(" ")
-          : "Unknown patient";
+          : "Unknown client";
 
       const payerName =
         text(payerProfile?.payer_name) || text(insurancePayer?.payer_name) || "";

@@ -1,6 +1,6 @@
 import { requireOrgAccess } from "@/lib/auth/requireOrgAccess";
 /**
- * GET /api/mailroom/search?organizationId=&type=patient|claim|encounter&q=
+ * GET /api/mailroom/search?organizationId=&type=client|claim|encounter&q=
  *
  * Lightweight typeahead search powering the mailroom filing destination picker.
  * Returns a small, display-ready list of entities scoped to the org so users
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
     if (!isMailroomSearchType(rawType)) {
       return NextResponse.json(
-        { success: false, error: "type must be patient, claim, or encounter" },
+        { success: false, error: "type must be client, claim, or encounter" },
         { status: 400 },
       );
     }

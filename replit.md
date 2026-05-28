@@ -65,7 +65,7 @@ To deploy for a different clinic: update `NEXT_PUBLIC_ORGANIZATION_ID` to the ne
 
 ## Product
 
-TherassistantEHR covers the full billing lifecycle for outpatient mental health practices:
+TherassistantEHR covers the full billing lifecycle for outclient mental health practices:
 - **Schedule** — appointment calendar and charge capture queue
 - **Charge Capture** — review and release charges from appointments
 - **Claim Submission** — 837P batch creation and clearinghouse tracking

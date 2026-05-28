@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       .is("archived_at", null)
       .maybeSingle();
     if (clientError || !client) {
-      return NextResponse.json({ success: false, error: "Patient not found" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Client not found" }, { status: 404 });
     }
 
     const openBalance = Number(body.openBalance ?? 0) || 0;
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
         event_type: "patient_statement_generated",
         action: "generate",
         object_type: "patient_statement",
-        event_summary: `Patient statement generated; open balance ${openBalance.toFixed(2)}`,
+        event_summary: `Client statement generated; open balance ${openBalance.toFixed(2)}`,
         event_metadata: {
           open_balance: openBalance,
           memo,
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       openBalance,
     });
   } catch (error) {
-    console.error("Patient statement generate error:", error);
+    console.error("Client statement generate error:", error);
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Statement generation failed" },
       { status: 500 },

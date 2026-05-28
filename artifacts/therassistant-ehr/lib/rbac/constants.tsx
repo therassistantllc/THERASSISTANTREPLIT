@@ -28,7 +28,7 @@ export const PERMISSIONS = {
   CANCEL_APPOINTMENTS: "cancel_appointments",
   MANAGE_AVAILABILITY: "manage_availability",
 
-  // Patients
+  // Clients
   VIEW_PATIENT_CHART: "view_patient_chart",
   EDIT_PATIENT_DEMOGRAPHICS: "edit_patient_demographics",
   VIEW_PATIENT_BILLING: "view_patient_billing",

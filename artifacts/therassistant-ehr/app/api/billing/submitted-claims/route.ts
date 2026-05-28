@@ -415,7 +415,7 @@ export async function GET(request: Request) {
       claimsQuery = claimsQuery.in("payer_profile_id", ids);
     }
 
-    // Resolve client (patient-name) filter via id lookup.
+    // Resolve client (client-name) filter via id lookup.
     if (filters.client) {
       const term = filters.client.trim();
       const { data: clientMatches } = await supabase
@@ -607,8 +607,8 @@ export async function GET(request: Request) {
 
       const patientName = client
         ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ") ||
-          "Unknown patient"
-        : "Unknown patient";
+          "Unknown client"
+        : "Unknown client";
 
       const serviceFromEnc = encounter?.service_date ? String(encounter.service_date) : null;
       const serviceDateFrom = firstLine?.service_date_from

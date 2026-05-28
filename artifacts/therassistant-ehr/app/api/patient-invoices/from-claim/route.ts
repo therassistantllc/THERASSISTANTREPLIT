@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Claim not found" }, { status: 404 });
     }
     if (!claim.patient_id) {
-      return NextResponse.json({ success: false, error: "Claim has no responsible patient" }, { status: 422 });
+      return NextResponse.json({ success: false, error: "Claim has no responsible client" }, { status: 422 });
     }
 
     const totalCharge = Number(claim.total_charge ?? 0);
@@ -72,9 +72,9 @@ export async function POST(request: Request) {
       patientInvoiceId: invoiceId,
     });
 
-    // Best-effort autopay: if the patient has autopay on with a saved
+    // Best-effort autopay: if the client has autopay on with a saved
     // card, charge the new invoice immediately. Never fails the request —
-    // failures get surfaced into the Patient Billing queue separately.
+    // failures get surfaced into the Client Billing queue separately.
     const autopayResult = await attemptAutopayForInvoice({
       organizationId,
       patientInvoiceId: invoiceId,
@@ -93,7 +93,7 @@ export async function POST(request: Request) {
 
     const patientName = patientRow
       ? [patientRow.first_name, patientRow.last_name].filter(Boolean).join(" ")
-      : "patient";
+      : "client";
 
     return NextResponse.json({
       success: sentResult.ok,
@@ -104,9 +104,9 @@ export async function POST(request: Request) {
       autopayResult,
     });
   } catch (error) {
-    console.error("Patient invoice from-claim error:", error);
+    console.error("Client invoice from-claim error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Failed to create patient invoice" },
+      { success: false, error: error instanceof Error ? error.message : "Failed to create client invoice" },
       { status: 500 },
     );
   }

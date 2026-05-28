@@ -1,5 +1,5 @@
 /**
- * Coverage for the demographics audit trail on the patient detail endpoints.
+ * Coverage for the demographics audit trail on the client detail endpoints.
  *
  * Pins the HIPAA-critical contracts:
  *
@@ -8,8 +8,8 @@
  *       unchanged fields.
  *     - before_value / after_value carry the prior + new values for the
  *       right column, and user_id is taken from the authenticated staff.
- *     - Audit is written BEFORE the patient row is updated, and if the
- *       audit insert fails the patient row is NOT mutated (audit-first,
+ *     - Audit is written BEFORE the client row is updated, and if the
+ *       audit insert fails the client row is NOT mutated (audit-first,
  *       refuse-on-failure — opposite of best-effort, see task notes).
  *
  *   GET /api/patients/[clientId]/audit
@@ -298,7 +298,7 @@ test("PATCH writes one audit_logs row per CHANGED field and none for unchanged o
   assert.deepEqual(cityRow.before_value, { city: "Portland" });
   assert.deepEqual(cityRow.after_value, { city: "Seattle" });
 
-  assert.ok(patientUpdated, "patient row must be updated after audit succeeds");
+  assert.ok(patientUpdated, "client row must be updated after audit succeeds");
 });
 
 test("PATCH emits NO audit rows (and no update) when nothing actually changes", async () => {
@@ -333,7 +333,7 @@ test("PATCH emits NO audit rows (and no update) when nothing actually changes", 
   assert.ok(updateCalls <= 1);
 });
 
-test("PATCH refuses to update the patient row when the audit insert fails (audit-first)", async () => {
+test("PATCH refuses to update the client row when the audit insert fails (audit-first)", async () => {
   setStaff();
   let patientUpdated = false;
   setHandlers({
@@ -358,7 +358,7 @@ test("PATCH refuses to update the patient row when the audit insert fails (audit
   assert.equal(
     patientUpdated,
     false,
-    "HIPAA gate: a failed audit insert must block the patient update entirely",
+    "HIPAA gate: a failed audit insert must block the client update entirely",
   );
 });
 
@@ -456,10 +456,10 @@ test("GET /audit returns rows newest-first and resolves staff display names", as
     "audit_logs query must request descending created_at order",
   );
 
-  // Filtered to this org + this patient + the tracked chart actions.
+  // Filtered to this org + this client + the tracked chart actions.
   // The route filters by patient_id (set on every chart-tracked audit row)
   // rather than object_type/object_id, so policy/case rows surface alongside
-  // client rows in the patient audit log.
+  // client rows in the client audit log.
   const has = (field: string, value: unknown) =>
     auditFilters.some((f) => f.field === field && f.value === value);
   const hasIn = (field: string, predicate: (value: unknown) => boolean) =>

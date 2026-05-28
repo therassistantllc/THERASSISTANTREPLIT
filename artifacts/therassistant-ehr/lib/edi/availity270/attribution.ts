@@ -1,11 +1,11 @@
-// CAQH CORE Single Patient Attribution Data Content Rule vEB.1.0
+// CAQH CORE Single Client Attribution Data Content Rule vEB.1.0
 // §4.2–§4.3.
 //
 // A 271 may carry benefit content for the subscriber (Loop 2100C) OR
 // for a dependent (Loop 2100D / NM1*03) beneath the same subscriber.
-// The receiving system MUST route that content to the matching patient
+// The receiving system MUST route that content to the matching client
 // chart — never cross-attribute. This helper compares the 271's
-// attribution rollup against the patient identity the inquirer expected
+// attribution rollup against the client identity the inquirer expected
 // the response for.
 
 import type { Parsed271Attribution, Parsed271Dependent, Parsed271Subscriber } from "./types";
@@ -28,9 +28,9 @@ export interface AttributionDecision {
   target: "subscriber" | "dependent";
   /** Display name of the attributed party (for UI banners). */
   attributedName: string | null;
-  /** True when the response identity matches the requested patient. */
-  matchesRequestedPatient: boolean;
-  /** Populated when matchesRequestedPatient = false. */
+  /** True when the response identity matches the requested client. */
+  matchesRequestedClient: boolean;
+  /** Populated when matchesRequestedClient = false. */
   mismatchReasons: AttributionMismatchReason[];
 }
 
@@ -95,9 +95,9 @@ function compareIdentity(
 
 /**
  * Resolve which 271 loop the response belongs to and confirm that
- * loop's identity matches the patient the EHR asked about.
+ * loop's identity matches the client the EHR asked about.
  */
-export function attributeResponseToPatient(
+export function attributeResponseToClient(
   attribution: Parsed271Attribution | undefined,
   expected: RequestedPatientIdentity,
 ): AttributionDecision {
@@ -105,7 +105,7 @@ export function attributeResponseToPatient(
     return {
       target: "subscriber",
       attributedName: null,
-      matchesRequestedPatient: false,
+      matchesRequestedClient: false,
       mismatchReasons: ["missing_response_identity"],
     };
   }
@@ -118,7 +118,7 @@ export function attributeResponseToPatient(
     return {
       target: "dependent",
       attributedName: joinName(dep.firstName, dep.lastName),
-      matchesRequestedPatient: compareIdentity(
+      matchesRequestedClient: compareIdentity(
         dep.firstName,
         dep.lastName,
         dep.dob,
@@ -139,7 +139,7 @@ export function attributeResponseToPatient(
   return {
     target: "subscriber",
     attributedName: joinName(sub.firstName, sub.lastName),
-    matchesRequestedPatient: reasons.length === 0,
+    matchesRequestedClient: reasons.length === 0,
     mismatchReasons: reasons,
   };
 }

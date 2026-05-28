@@ -99,7 +99,7 @@ export function InboxEmptyOnboarding({
           <h2 className={styles.onboardTitle}>Connect your Gmail</h2>
           <p className={styles.onboardCopy}>
             Sync your personal Gmail to manage clinical communications,
-            documentation requests, signatures, and patient-related messages
+            documentation requests, signatures, and client-related messages
             in one place. Each clinician connects their own mailbox — messages
             are visible only to you.
           </p>
@@ -144,7 +144,7 @@ export function InboxEmptyOnboarding({
         {showLearn ? (
           <p className={styles.learnPanel}>
             Once connected, TherAssistant scans incoming email and routes
-            patient-related messages into your clinical inbox.{" "}
+            client-related messages into your clinical inbox.{" "}
             <strong>Documentation requests, signature follow-ups, and chart
             questions</strong> appear here. Marketing, billing statements, and
             unrelated mail stay in your normal mailbox. You can disconnect or
@@ -314,7 +314,7 @@ export function InboxConnectModal({
                     <span>
                       <strong>Read incoming messages</strong>{" "}
                       <span className={styles.scopeMuted}>
-                        to identify and route patient-related email.
+                        to identify and route client-related email.
                       </span>
                     </span>
                   </li>
@@ -378,7 +378,7 @@ export function InboxConnectModal({
               </p>
               <div className={styles.syncStatusBox}>
                 <span className={styles.syncDot} aria-hidden />
-                Initial sync running — patient-related messages will appear
+                Initial sync running — client-related messages will appear
                 shortly.
               </div>
             </div>

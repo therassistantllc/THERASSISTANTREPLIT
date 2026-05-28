@@ -1,7 +1,7 @@
 /**
  * Task #674: persistRecoveredSavedCardFromPaymentIntent unit tests.
  *
- * After the patient completes the portal "Fix payment" Checkout flow
+ * After the client completes the portal "Fix payment" Checkout flow
  * (setup_future_usage='off_session'), the webhook calls this helper to
  * mirror the resulting PaymentMethod onto clients.stripe_payment_method_*
  * so the next autopay cycle uses the fresh card.

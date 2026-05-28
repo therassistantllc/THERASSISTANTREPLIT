@@ -59,7 +59,7 @@ type Attribution = {
 type AttributionDecision = {
   target?: "subscriber" | "dependent";
   attributedName?: string | null;
-  matchesRequestedPatient?: boolean;
+  matchesRequestedClient?: boolean;
   mismatchReasons?: string[];
 } | null;
 
@@ -107,7 +107,7 @@ type EligibilityCheck = {
 
 type EligibilityResponse = {
   success?: boolean;
-  patient?: { id: string; name: string; dateOfBirth: string; email: string; phone: string };
+  client?: { id: string; name: string; dateOfBirth: string; email: string; phone: string };
   policies?: Policy[];
   latestEligibility?: EligibilityCheck | null;
   eligibilityHistory?: EligibilityCheck[];
@@ -207,7 +207,7 @@ function deriveBanner(latest: EligibilityCheck | null): Banner | null {
     return { tone: "warn", message: `Last eligibility check was ${days} days ago (older than ${STALE_DAYS} days). Re-check before billing.` };
   }
   if (status === "inactive") {
-    return { tone: "error", message: "Payer reports coverage is INACTIVE. Verify insurance with patient." };
+    return { tone: "error", message: "Payer reports coverage is INACTIVE. Verify insurance with client." };
   }
   return null;
 }
@@ -378,7 +378,7 @@ export default function EligibilityDetailClient({ clientId }: { clientId: string
     }
   }, [clientId, load]);
 
-  const patient = data?.patient;
+  const client = data?.client;
   const latest = data?.latestEligibility ?? null;
   const history = data?.eligibilityHistory ?? [];
 
@@ -423,7 +423,7 @@ export default function EligibilityDetailClient({ clientId }: { clientId: string
       <section className="hero-panel">
         <div>
           <p className="eyebrow">Eligibility</p>
-          <h1>{patient?.name || "Patient eligibility"}</h1>
+          <h1>{client?.name || "Client eligibility"}</h1>
           <p className="hero-copy">Coverage, copay, deductible, and benefit history for the visit workflow.</p>
         </div>
         <div className="hero-actions no-print">
@@ -443,7 +443,7 @@ export default function EligibilityDetailClient({ clientId }: { clientId: string
           >
             Print to PDF
           </button>
-          <Link className="button button-secondary" href={`/clients/${clientId}`}>Patient Chart</Link>
+          <Link className="button button-secondary" href={`/clients/${clientId}`}>Client Chart</Link>
         </div>
       </section>
 
@@ -487,13 +487,13 @@ export default function EligibilityDetailClient({ clientId }: { clientId: string
         </div>
       ) : null}
 
-      {selectedCheck?.attributionDecision && selectedCheck.attributionDecision.matchesRequestedPatient === false ? (
+      {selectedCheck?.attributionDecision && selectedCheck.attributionDecision.matchesRequestedClient === false ? (
         <div className="alert-panel" style={{ background: "#fef2f2", borderColor: "#fecaca", color: "#991b1b" }}>
-          <strong style={{ display: "block", marginBottom: 4 }}>Patient attribution mismatch</strong>
+          <strong style={{ display: "block", marginBottom: 4 }}>Client attribution mismatch</strong>
           <span>
             271 was attributed to {selectedCheck.attributionDecision.target ?? "subscriber"}
             {selectedCheck.attributionDecision.attributedName ? ` "${selectedCheck.attributionDecision.attributedName}"` : ""}
-            , which does not match this patient (
+            , which does not match this client (
             {(selectedCheck.attributionDecision.mismatchReasons ?? [])
               .map((r) => MISMATCH_LABELS[r] ?? r)
               .join("; ") || "no identifying details returned"}
@@ -716,7 +716,7 @@ export default function EligibilityDetailClient({ clientId }: { clientId: string
               <div className="panel-header">
                 <div>
                   <h2>Current eligibility</h2>
-                  <p>{patient?.dateOfBirth ? `DOB ${formatDate(patient.dateOfBirth)}` : "Patient benefit detail"}</p>
+                  <p>{client?.dateOfBirth ? `DOB ${formatDate(client.dateOfBirth)}` : "Client benefit detail"}</p>
                 </div>
                 <span className={statusClass(selectedCheck?.status || "not_checked")}>{selectedCheck?.status || "not checked"}</span>
               </div>

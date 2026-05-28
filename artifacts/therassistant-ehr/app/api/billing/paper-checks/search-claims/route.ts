@@ -4,11 +4,11 @@
  *
  * Searchable claim picker used by the Match Claims modal in the
  * Paper Checks workqueue. Returns open professional claims with
- * patient name, DOS, claim number, charge and a remaining balance
+ * client name, DOS, claim number, charge and a remaining balance
  * (total_charge minus what's already been applied from paper checks).
  *
  * Filters:
- *   - q          patient name OR claim_number / patient_account_number
+ *   - q          client name OR claim_number / patient_account_number
  *   - payerId    payer_profile_id; usually pre-set to the check's payer
  *   - excludePaperCheckId — drop claims already matched on THIS check
  */
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
     const excludeCheckId = (url.searchParams.get("excludePaperCheckId") ?? "").trim();
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 25), 1), 100);
 
-    // Step 1: optional patient name pre-filter so we can search by name.
+    // Step 1: optional client name pre-filter so we can search by name.
     let nameMatchedPatientIds: string[] | null = null;
     if (q) {
       const tokens = q.split(/\s+/).filter(Boolean).slice(0, 3);
@@ -96,7 +96,7 @@ export async function GET(request: Request) {
     const claimList = (claims ?? []) as DbRow[];
     const claimIds = claimList.map((c) => text(c.id)).filter(Boolean);
 
-    // Step 3: pull DOS from service_lines (one batch), patient names, applied totals.
+    // Step 3: pull DOS from service_lines (one batch), client names, applied totals.
     const patientIds = [
       ...new Set(claimList.map((c) => text(c.patient_id)).filter(Boolean)),
     ];
@@ -155,9 +155,9 @@ export async function GET(request: Request) {
     const results = claimList
       .map((c) => {
         const id = text(c.id);
-        const patient = patientById.get(text(c.patient_id));
-        const patientName = patient
-          ? [patient.first_name, patient.last_name].map(text).filter(Boolean).join(" ") ||
+        const client = patientById.get(text(c.patient_id));
+        const patientName = client
+          ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ") ||
             null
           : null;
         const charge = money(c.total_charge);

@@ -10,7 +10,7 @@ export type EntryType = (typeof ENTRY_TYPES)[number];
 export const SOAP_FIELDS = ["subjective", "objective", "assessment", "plan"] as const;
 export type SoapField = (typeof SOAP_FIELDS)[number];
 
-export const JOURNAL_AUDIO_BUCKET = "patient-journal-audio";
+export const JOURNAL_AUDIO_BUCKET = "client-journal-audio";
 
 export type JournalBody = Record<string, unknown>;
 

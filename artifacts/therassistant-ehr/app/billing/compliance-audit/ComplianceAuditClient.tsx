@@ -597,7 +597,7 @@ export default function ComplianceAuditClient() {
         options: clinicians.map((c) => ({ value: c.id, label: c.displayName })),
       },
       { id: "payer", label: "Payer", kind: "text", placeholder: "Payer name" },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name" },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },
       {
@@ -829,7 +829,7 @@ export default function ComplianceAuditClient() {
           selectedRow ? (
             <div>
               <DetailKV label="Claim #" value={selectedRow.claimNumber} />
-              <DetailKV label="Patient" value={selectedRow.patientName} />
+              <DetailKV label="Client" value={selectedRow.patientName} />
               <DetailKV
                 label="Clinician"
                 value={selectedRow.clinicianName ?? "—"}

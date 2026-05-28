@@ -25,7 +25,7 @@ export default function PatientTabNav({ clientId }: { clientId: string }) {
   const orgId = searchParams.get("organizationId") || process.env.NEXT_PUBLIC_ORGANIZATION_ID || DEFAULT_ORG_ID;
 
   return (
-    <div className={styles.patientTabs} role="navigation" aria-label="Patient chart tabs">
+    <div className={styles.patientTabs} role="navigation" aria-label="Client chart tabs">
       {PATIENT_TABS.map(({ label, slug }) => {
         const base = `/clients/${clientId}${slug ? `/${slug}` : ""}`;
         const href = orgId ? `${base}?organizationId=${encodeURIComponent(orgId)}` : base;

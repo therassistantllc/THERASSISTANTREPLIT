@@ -24,7 +24,7 @@
  *                                 and inserts a patient_invoice_payments row
  *                                 with method='manual' to track the write-off
  *   - charge_card:                runs a real Stripe charge off-session
- *                                 against the patient's previously-stored
+ *                                 against the client's previously-stored
  *                                 customer + payment_method (recovered
  *                                 from the most recent successful
  *                                 client_payments row). On Stripe success
@@ -60,12 +60,12 @@ const ALLOWED = [
 type Action = (typeof ALLOWED)[number];
 
 const SUMMARIES: Record<Action, string> = {
-  send_invoice: "Patient invoice sent",
-  charge_card: "Card charge posted against patient balance",
-  create_payment_plan: "Patient payment plan created",
-  send_reminder: "Reminder sent to patient",
-  write_off: "Patient balance written off",
-  send_to_collections_review: "Patient balance routed for collections review",
+  send_invoice: "Client invoice sent",
+  charge_card: "Card charge posted against client balance",
+  create_payment_plan: "Client payment plan created",
+  send_reminder: "Reminder sent to client",
+  write_off: "Client balance written off",
+  send_to_collections_review: "Client balance routed for collections review",
 };
 
 type DbRow = Record<string, unknown>;
@@ -225,7 +225,7 @@ export async function POST(
             amount: apply,
             payment_method: "manual",
             payment_status: "posted",
-            memo: text(body.note) || "Patient balance written off",
+            memo: text(body.note) || "Client balance written off",
             paid_at: new Date().toISOString(),
           });
         if (payErr) throw payErr;
@@ -250,7 +250,7 @@ export async function POST(
           { status: 422 },
         );
       }
-      // Cap charge at the patient's total open balance so we never
+      // Cap charge at the client's total open balance so we never
       // collect more on Stripe than we can post to the local ledger
       // (the leftover would be unaccounted money on the connected
       // account). Reject explicitly instead of silently truncating —
@@ -276,7 +276,7 @@ export async function POST(
       }
 
       // Recover a reusable (customer, payment_method) pair from the
-      // patient's most-recent successful Stripe charge so we can run an
+      // client's most-recent successful Stripe charge so we can run an
       // off-session charge. We don't store card metadata locally — we
       // rely on Stripe being the source of truth.
       const { data: lastChargeRow, error: lastChargeErr } = await (supabase as any)
@@ -306,7 +306,7 @@ export async function POST(
           {
             success: false,
             error:
-              "No saved card on file — ask the patient to pay an invoice via the portal first, then retry.",
+              "No saved card on file — ask the client to pay an invoice via the portal first, then retry.",
           },
           { status: 422 },
         );
@@ -340,7 +340,7 @@ export async function POST(
           {
             success: false,
             error:
-              "Saved Stripe payment method is missing — ask the patient to re-enter their card via the portal.",
+              "Saved Stripe payment method is missing — ask the client to re-enter their card via the portal.",
           },
           { status: 422 },
         );
@@ -374,7 +374,7 @@ export async function POST(
           connectedAccountId,
           customerId,
           paymentMethodId,
-          description: `Patient balance charge for client ${id}`,
+          description: `Client balance charge for client ${id}`,
           metadata: {
             origin: "patient_billing_charge_card",
             organization_id: organizationId,
@@ -448,7 +448,7 @@ export async function POST(
       // supabase-js cannot wrap multi-row writes in a SQL transaction, so
       // if a DB write fails mid-loop we have already collected money on
       // Stripe but only partially recorded it locally. Compensate by
-      // refunding the Stripe charge so the patient is never silently
+      // refunding the Stripe charge so the client is never silently
       // overcharged. The compensating refund is itself idempotent (keyed
       // off the charge id) so a retry collapses to the same Stripe
       // refund object.
@@ -574,7 +574,7 @@ export async function POST(
             refundError =
               refundErr instanceof Error ? refundErr.message : String(refundErr);
             console.error(
-              "[patient-billing.charge_card] compensating refund failed",
+              "[client-billing.charge_card] compensating refund failed",
               { chargeId, persistMessage, refundError },
             );
           }
@@ -665,7 +665,7 @@ export async function POST(
       metadata,
     });
   } catch (error) {
-    console.error("Patient Billing action error:", error);
+    console.error("Client Billing action error:", error);
     return NextResponse.json(
       {
         success: false,

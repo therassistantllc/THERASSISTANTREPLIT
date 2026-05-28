@@ -19,7 +19,7 @@ import {
 type EncounterSummary = {
   success: boolean;
   error?: string;
-  patient?: { id: string; name: string; dateOfBirth?: string | null } | null;
+  client?: { id: string; name: string; dateOfBirth?: string | null } | null;
   encounter?: { id: string; appointment_id?: string | null; encounter_status?: string | null; service_date?: string | null; started_at?: string | null; ended_at?: string | null };
   appointment?: { appointment_type?: string | null; scheduled_start_at?: string | null; scheduled_end_at?: string | null; service_location?: string | null; telehealth_url?: string | null } | null;
   diagnoses?: Array<{ id: string; diagnosis_code?: string | null; diagnosis_description?: string | null; is_primary?: boolean | null }>;
@@ -174,7 +174,7 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
             });
             if (block) {
               mergedSubjective = mergeCheckInIntoSubjective(mergedSubjective, block);
-              setMessage("Pulled the patient's pre-session focus into Subjective. Save the draft to keep it.");
+              setMessage("Pulled the client's pre-session focus into Subjective. Save the draft to keep it.");
             }
           }
         } catch {
@@ -463,7 +463,7 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
     if (!noteId) {
       throw new Error("Could not create a draft note to import into. Try Save Draft first.");
     }
-    const clientIdForEntry = summary?.patient?.id ?? "";
+    const clientIdForEntry = summary?.client?.id ?? "";
     const importRes = await fetch(
       `/api/clients/${encodeURIComponent(clientIdForEntry)}/journal/${entry.id}/import`,
       {
@@ -477,7 +477,7 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
       throw new Error(importJson.error ?? "Failed to mark entry as imported");
     }
     const stamp = entry.createdAt ? new Date(entry.createdAt).toLocaleDateString() : "";
-    const attributed = `\n\n${text}\n— From patient journal${stamp ? ` — ${stamp}` : ""}`;
+    const attributed = `\n\n${text}\n— From client journal${stamp ? ` — ${stamp}` : ""}`;
     const current = soapNote[field] ?? "";
     const nextValue = current ? `${current.trimEnd()}${attributed}` : attributed.trimStart();
     const updated: SoapNoteData = { ...soapNote, [field]: nextValue };
@@ -545,7 +545,7 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
   if (error && !summary) return <div className="alert-panel">{error}</div>;
   if (!summary?.encounter) return <div className="alert-panel">Encounter not found.</div>;
 
-  const patient = summary.patient;
+  const client = summary.client;
   const encounter = summary.encounter;
   const appointment = summary.appointment;
 
@@ -554,11 +554,11 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
       <section className="hero-panel">
         <div>
           <p className="eyebrow">Encounter Documentation Workspace</p>
-          <h1>{patient?.name ?? "Encounter"}</h1>
+          <h1>{client?.name ?? "Encounter"}</h1>
           <p className="hero-copy">Service date: {formatDate(encounter.service_date)} · Status: {encounter.encounter_status ?? "not set"}</p>
         </div>
         <div className="hero-actions">
-          {patient?.id ? <Link className="button button-secondary" href={`/clients/${patient.id}`}>Patient Chart</Link> : null}
+          {client?.id ? <Link className="button button-secondary" href={`/clients/${client.id}`}>Client Chart</Link> : null}
           <Link className="button button-secondary" href="/clinician/agenda">Agenda</Link>
           {isSigned && !amending ? (
             <button
@@ -607,7 +607,7 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
           <article className="panel">
             <h2>Visit Context</h2>
             <div className="detail-list">
-              <p><strong>Patient DOB:</strong> {formatDate(patient?.dateOfBirth)}</p>
+              <p><strong>Client DOB:</strong> {formatDate(client?.dateOfBirth)}</p>
               <p><strong>Type:</strong> {appointment?.appointment_type ?? "Not listed"}</p>
               <p><strong>Start:</strong> {formatTime(encounter.started_at ?? appointment?.scheduled_start_at)}</p>
               <p><strong>End:</strong> {formatTime(encounter.ended_at ?? appointment?.scheduled_end_at)}</p>
@@ -721,14 +721,14 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
               <div>
                 <h2 style={{ margin: 0 }}>Between-session journal</h2>
                 <p className="muted" style={{ margin: "4px 0 0 0", fontSize: 13 }}>
-                  Pull individual entries the patient logged between visits into a SOAP field.
+                  Pull individual entries the client logged between visits into a SOAP field.
                 </p>
               </div>
               <button
                 type="button"
                 className="button button-secondary"
                 onClick={() => setShowJournalModal(true)}
-                disabled={!summary?.patient?.id}
+                disabled={!summary?.client?.id}
               >
                 Import from journal
               </button>
@@ -742,7 +742,7 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
 
       <SignNoteModal isOpen={showSignModal} onClose={() => setShowSignModal(false)} onConfirm={signNote} isLoading={saving} />
 
-      {showJournalModal && summary?.patient?.id ? (
+      {showJournalModal && summary?.client?.id ? (
         <div
           role="dialog"
           aria-modal="true"
@@ -772,7 +772,7 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h2 style={{ margin: 0 }}>Import from patient journal</h2>
+              <h2 style={{ margin: 0 }}>Import from client journal</h2>
               <button
                 type="button"
                 className="button button-secondary"
@@ -782,7 +782,7 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
               </button>
             </div>
             <ClinicianJournalPanel
-              clientId={summary.patient.id}
+              clientId={summary.client.id}
               organizationId={organizationId}
               mode="import"
               windowSinceLastSigned

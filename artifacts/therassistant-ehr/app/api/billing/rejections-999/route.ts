@@ -114,7 +114,7 @@ export async function GET(request: Request) {
     };
 
     // Pull every 999 workqueue item for the org. The fan-out (claims,
-    // patients, payers, batches, lines) is small for the volumes we see
+    // clients, payers, batches, lines) is small for the volumes we see
     // — keep it simple, filter the materialised rows server-side.
     let q: any = (supabase as any)
       .from("workqueue_items")
@@ -365,7 +365,7 @@ export async function GET(request: Request) {
       const clientName =
         (client
           ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ")
-          : text(ctx.patient_account_number)) || "Unknown patient";
+          : text(ctx.patient_account_number)) || "Unknown client";
 
       const classification = resolveClassification(ctx);
       const fallbackMessage =

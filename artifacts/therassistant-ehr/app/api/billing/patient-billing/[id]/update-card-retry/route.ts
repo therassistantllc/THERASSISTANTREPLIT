@@ -2,7 +2,7 @@
  * POST /api/billing/patient-billing/:id/update-card-retry
  *
  * `:id` is a client id. Lets a biller resolve a failed-autopay WQ row
- * (work_type='autopay_charge_failed') directly from the Patient Billing
+ * (work_type='autopay_charge_failed') directly from the Client Billing
  * queue: paste in a new card via Stripe Elements (frontend), swap the
  * client's `stripe_payment_method_id`, and re-run autopay for every
  * invoice that has an open `autopay_charge_failed` workqueue row.
@@ -166,7 +166,7 @@ export async function POST(request: Request, ctx: RouteParams) {
   const summary: SavedCardSummary = confirmed.summary;
 
   // Best-effort: ensure autopay is on so the retry actually attempts a
-  // charge. If the patient (or a previous removeSavedCard) flipped it
+  // charge. If the client (or a previous removeSavedCard) flipped it
   // off, attemptAutopayForInvoice would skip with "autopay off". We
   // only flip it on if a saved card now exists.
   if (summary.hasSavedCard) {

@@ -75,12 +75,12 @@ export async function PATCH(
       caseId,
     });
 
-    // Refuse cross-patient URLs: a case must belong to the patient in the
+    // Refuse cross-patient URLs: a case must belong to the client in the
     // path. Without this check, audit_logs.patient_id could be misattributed
     // to a different chart if the URL params are mismatched.
     if (before && String(before.clientId) !== String(clientId)) {
       return NextResponse.json(
-        { success: false, error: "Case does not belong to this patient" },
+        { success: false, error: "Case does not belong to this client" },
         { status: 404 },
       );
     }
@@ -156,7 +156,7 @@ export async function DELETE(
     // Refuse cross-patient URLs so the audit row can't be misattributed.
     if (before && String(before.clientId) !== String(clientId)) {
       return NextResponse.json(
-        { success: false, error: "Case does not belong to this patient" },
+        { success: false, error: "Case does not belong to this client" },
         { status: 404 },
       );
     }

@@ -64,7 +64,7 @@ export const DOC_REQUEST_277CA_CATEGORY_CODES = new Set<string>(["A6"]);
  * - N4    : Missing/Incomplete/Invalid prior treatment documentation
  * - N26   : Missing itemized bill/statement
  * - N29   : Missing documentation/orders/notes/summary/report/chart
- * - N30   : Patient ineligible — need eligibility docs
+ * - N30   : Client ineligible — need eligibility docs
  * - N350  : Missing/incomplete/invalid description of service for unlisted procedure
  * - N479  : Missing Explanation of Benefits (COB)
  * - N569  : Not covered when performed without a qualifying medical record
@@ -265,13 +265,13 @@ export const DOCUMENTATION_CODE_DESCRIPTIONS: Record<string, string> = {
   "55": "Procedure/treatment deemed experimental/investigational",
   "167": "Diagnosis not covered — supporting documentation required",
   // Records-related CARCs
-  "227": "Information requested from patient/insured/responsible party not provided",
+  "227": "Information requested from client/insured/responsible party not provided",
   "252": "An attachment/other documentation is required to adjudicate",
   // Remittance remark codes
   "N4": "Missing/incomplete/invalid prior treatment documentation",
   "N26": "Missing itemized bill/statement",
   "N29": "Missing documentation/orders/notes/summary/report/chart",
-  "N30": "Patient ineligible — eligibility documentation needed",
+  "N30": "Client ineligible — eligibility documentation needed",
   "N350": "Missing/invalid description of service for unlisted procedure",
   "N479": "Missing Explanation of Benefits (COB)",
   "N569": "Not covered without a qualifying medical record",

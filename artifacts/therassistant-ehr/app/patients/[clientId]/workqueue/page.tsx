@@ -130,7 +130,7 @@ export default function ClientWorkqueuePage() {
       <section className="page-header">
         <div>
           <p className="eyebrow">Client Chart</p>
-          <h2>Workqueues for this patient</h2>
+          <h2>Workqueues for this client</h2>
           <p className="muted" style={{ marginTop: 4 }}>
             {totalOpen === 0 ? "No open workqueue items." : `${totalOpen} open item(s) across ${groups.length} queue(s).`}
           </p>
@@ -142,7 +142,7 @@ export default function ClientWorkqueuePage() {
       {actionMessage && <div className="empty-state success-panel">{actionMessage}</div>}
 
       {!loading && groups.length === 0 && !error && (
-        <div className="empty-state">This patient is not in any open workqueue.</div>
+        <div className="empty-state">This client is not in any open workqueue.</div>
       )}
 
       {groups.map(([workType, rows]) => (

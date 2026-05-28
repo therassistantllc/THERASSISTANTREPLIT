@@ -166,7 +166,7 @@ export async function POST(
           { status: 400 },
         );
       }
-      const refundType = sourceEra ? "insurance" : "patient";
+      const refundType = sourceEra ? "insurance" : "client";
       const insertPayload: Record<string, unknown> = {
         organization_id: organizationId,
         refund_type: refundType,

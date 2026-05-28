@@ -234,7 +234,7 @@ export default function MedicalReviewClient() {
     () => [
       { id: "practice", label: "Practice", kind: "select", options: practiceOptions },
       { id: "clinician", label: "Clinician", kind: "select", options: clinicianOptions },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "payer", label: "Payer", kind: "select", options: payerOptions },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },
@@ -944,7 +944,7 @@ export default function MedicalReviewClient() {
                   }}
                   disabled={!row.clientId}
                   style={{ padding: "6px 12px", border: "1px solid #CBD5E1", background: "#fff", color: "#0F172A", borderRadius: 4, fontSize: 13, cursor: row.clientId ? "pointer" : "not-allowed" }}
-                  title={row.clientId ? "Pick from patient chart" : "No patient on this claim"}
+                  title={row.clientId ? "Pick from client chart" : "No client on this claim"}
                 >
                   {chartPickerOpen ? "Hide chart picker" : "Attach from chart"}
                 </button>
@@ -963,7 +963,7 @@ export default function MedicalReviewClient() {
               {chartPickerOpen ? (
                 <div style={{ border: "1px solid #E2E8F0", borderRadius: 6, padding: 10, marginBottom: 12, background: "#F8FAFC" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <strong style={{ fontSize: 13 }}>Patient chart documents</strong>
+                    <strong style={{ fontSize: 13 }}>Client chart documents</strong>
                     <button
                       type="button"
                       onClick={() => void attachFromChart(row)}
@@ -978,7 +978,7 @@ export default function MedicalReviewClient() {
                   ) : chartError ? (
                     <p style={{ fontSize: 12, color: "#B91C1C", margin: 0 }}>{chartError}</p>
                   ) : chartDocs.length === 0 ? (
-                    <p style={{ fontSize: 12, color: "#64748B", margin: 0 }}>No chart documents found for this patient.</p>
+                    <p style={{ fontSize: 12, color: "#64748B", margin: 0 }}>No chart documents found for this client.</p>
                   ) : (
                     <ul style={{ listStyle: "none", padding: 0, margin: 0, maxHeight: 220, overflowY: "auto" }}>
                       {chartDocs.map((d) => {

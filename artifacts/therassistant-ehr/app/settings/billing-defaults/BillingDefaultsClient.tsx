@@ -312,7 +312,7 @@ export default function BillingDefaultsClient() {
                 Default Place of Service
                 <select value={form.default_pos} onChange={(e) => setForm((p) => ({ ...p, default_pos: e.target.value }))}>
                   <option value="02">02 – Telehealth</option>
-                  <option value="10">10 – Telehealth (Patient Home)</option>
+                  <option value="10">10 – Telehealth (Client Home)</option>
                   <option value="11">11 – Office</option>
                   <option value="12">12 – Home</option>
                   <option value="49">49 – Independent Clinic</option>

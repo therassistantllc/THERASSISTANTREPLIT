@@ -488,7 +488,7 @@ export default function DenialsByRarcClient() {
       { id: "practice", label: "Practice", kind: "text", placeholder: "Practice…" },
       { id: "clinician", label: "Clinician", kind: "text", placeholder: "Clinician…" },
       { id: "payer", label: "Payer", kind: "select", options: payerOptions },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },
       {
@@ -723,7 +723,7 @@ export default function DenialsByRarcClient() {
               <thead>
                 <tr style={{ textAlign: "left", color: "#64748B" }}>
                   <th style={{ padding: "4px 6px" }}>Claim</th>
-                  <th style={{ padding: "4px 6px" }}>Patient</th>
+                  <th style={{ padding: "4px 6px" }}>Client</th>
                   <th style={{ padding: "4px 6px" }}>Payer</th>
                   <th style={{ padding: "4px 6px", textAlign: "right" }}>Denied</th>
                   <th style={{ padding: "4px 6px", textAlign: "right" }}>Age</th>

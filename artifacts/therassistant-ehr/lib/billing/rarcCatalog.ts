@@ -50,7 +50,7 @@ export const RARC_CATALOG: Record<string, RarcCatalogEntry> = {
     relatedCarc: "18",
     recommendedAction: "Check for duplicate; void or correct frequency.",
     payerExplanation:
-      "The payer believes this service overlaps a previously paid claim for the same patient and date range.",
+      "The payer believes this service overlaps a previously paid claim for the same client and date range.",
     suggestedCorrection:
       "Pull the prior remit; if truly distinct, resubmit with modifier 76/77 or adjusted DOS. Otherwise mark duplicate.",
     priority: "normal",
@@ -68,24 +68,24 @@ export const RARC_CATALOG: Record<string, RarcCatalogEntry> = {
   },
   N30: {
     code: "N30",
-    message: "Patient ineligible for this service.",
+    message: "Client ineligible for this service.",
     relatedCarc: "27",
-    recommendedAction: "Re-run eligibility; bill correct payer or patient.",
+    recommendedAction: "Re-run eligibility; bill correct payer or client.",
     payerExplanation:
-      "Coverage was not active for the patient on the date of service.",
+      "Coverage was not active for the client on the date of service.",
     suggestedCorrection:
-      "Run a fresh 270/271, confirm policy/effective dates with the patient, and either rebill the correct payer or transfer to patient responsibility.",
+      "Run a fresh 270/271, confirm policy/effective dates with the client, and either rebill the correct payer or transfer to client responsibility.",
     priority: "urgent",
   },
   N130: {
     code: "N130",
     message: "Consult plan benefit documents/guidelines for information about restrictions.",
     relatedCarc: "96",
-    recommendedAction: "Review benefit limits; consider appeal or patient bill.",
+    recommendedAction: "Review benefit limits; consider appeal or client bill.",
     payerExplanation:
       "Plan-specific limits or exclusions apply to the billed service.",
     suggestedCorrection:
-      "Review the plan summary, document the restriction, and either appeal with medical necessity or transfer to patient responsibility.",
+      "Review the plan summary, document the restriction, and either appeal with medical necessity or transfer to client responsibility.",
     priority: "normal",
   },
   N290: {

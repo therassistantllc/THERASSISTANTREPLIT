@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * Patient payment posting workspace (PP-3, Task #109).
+ * Client payment posting workspace (PP-3, Task #109).
  *
  * Accepts a payment from any source (Stripe / cash / check / external_card /
  * refund / unapplied_credit / transferred_balance) and applies it to one of:
- * an invoice, a claim's patient-responsibility, the account-balance bucket
+ * an invoice, a claim's client-responsibility, the account-balance bucket
  * (becomes unapplied credit). Lists existing unapplied credits and supports
  * applying them to an invoice/claim.
  */
@@ -200,7 +200,7 @@ export default function PatientPaymentClient() {
         <a href="/billing/payments" className="text-[12px] font-medium text-slate-500 hover:text-slate-800">
           ← Payments
         </a>
-        <span className="text-[13px] font-semibold tracking-tight text-slate-900">Patient payment posting</span>
+        <span className="text-[13px] font-semibold tracking-tight text-slate-900">Client payment posting</span>
       </header>
 
       <div className="grid flex-1 grid-cols-[1fr_1fr] gap-0 overflow-hidden">
@@ -208,7 +208,7 @@ export default function PatientPaymentClient() {
           <h2 className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-slate-500">Post a payment</h2>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Patient">
+            <Field label="Client">
               <select className="input" value={clientId} onChange={(e) => setClientId(e.target.value)}>
                 <option value="">— Select —</option>
                 {clients.map((c) => (
@@ -240,7 +240,7 @@ export default function PatientPaymentClient() {
                 onChange={(e) => setApplyToKind(e.target.value as "invoice" | "claim" | "encounter" | "account_balance")}
               >
                 <option value="invoice">Invoice</option>
-                <option value="claim">Claim (patient resp.)</option>
+                <option value="claim">Claim (client resp.)</option>
                 <option value="encounter">Encounter (appointment)</option>
                 <option value="account_balance">Account balance (unapplied credit)</option>
               </select>
@@ -358,7 +358,7 @@ export default function PatientPaymentClient() {
         <div className="flex h-full flex-col overflow-auto bg-white p-5">
           <h2 className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-slate-500">Unapplied credit bucket</h2>
           {!clientId ? (
-            <div className="text-[12px] text-slate-400">Select a patient to see their unapplied credits.</div>
+            <div className="text-[12px] text-slate-400">Select a client to see their unapplied credits.</div>
           ) : credits.length === 0 ? (
             <div className="rounded border border-slate-200 bg-slate-50 p-3 text-[12px] text-slate-500">
               No unapplied credits on file.

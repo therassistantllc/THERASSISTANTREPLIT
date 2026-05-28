@@ -138,7 +138,7 @@ const RULE_META: Record<string, RuleMeta> = {
   "claim.payer_subscriber_relationship_missing": {
     tab: "invalid_client_data",
     errorType: "Subscriber relationship missing",
-    missingField: "Patient identity (last name / DOB)",
+    missingField: "Client identity (last name / DOB)",
     fieldLocation: "Loop 2010CA / NM103",
   },
   "claim.payer_rendering_taxonomy_missing": {

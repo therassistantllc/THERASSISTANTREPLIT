@@ -24,7 +24,7 @@ type Tab =
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "payer_refunds", label: "Payer Refunds" },
-  { id: "patient_refunds", label: "Patient Refunds" },
+  { id: "patient_refunds", label: "Client Refunds" },
   { id: "credit_balance_review", label: "Credit Balance Review" },
   { id: "offset_requested", label: "Offset Requested" },
   { id: "refund_completed", label: "Refund Completed" },
@@ -40,8 +40,8 @@ interface RefundRow {
   clientId: string | null;
   clientName: string;
   payerProfileId: string | null;
-  payerOrPatient: string;
-  payerType: "payer" | "patient";
+  payerOrClient: string;
+  payerType: "payer" | "client";
   professionalClaimId: string | null;
   claimNumber: string | null;
   creditAmount: number;
@@ -225,7 +225,7 @@ const MODAL_COPY: Record<ActionId, { title: string; prompt: string; reasonRequir
   apply_to_balance: {
     title: "Apply credit to balance",
     prompt:
-      "Apply this credit to the patient's outstanding balance instead of refunding. This cancels the refund record.",
+      "Apply this credit to the client's outstanding balance instead of refunding. This cancels the refund record.",
     reasonRequired: false,
   },
   dispute_refund: {
@@ -295,7 +295,7 @@ function ActionModal({
           }}
         >
           <div>
-            <strong>{state.row.clientName}</strong> · {state.row.payerOrPatient}
+            <strong>{state.row.clientName}</strong> · {state.row.payerOrClient}
           </div>
           <div style={{ marginTop: 4, color: "#475569" }}>
             Credit{" "}
@@ -593,15 +593,15 @@ export default function RefundsClient() {
     () => [
       { id: "client", header: "Client", cell: (r) => r.clientName },
       {
-        id: "payerOrPatient",
+        id: "payerOrClient",
         header: "Payer/patient",
         cell: (r) => (
           <span>
-            {r.payerOrPatient}{" "}
+            {r.payerOrClient}{" "}
             <span
               style={{
                 fontSize: 11,
-                color: r.payerType === "patient" ? "#0369A1" : "#475569",
+                color: r.payerType === "client" ? "#0369A1" : "#475569",
                 marginLeft: 4,
               }}
             >
@@ -773,7 +773,7 @@ export default function RefundsClient() {
         label: "Apply to balance",
         onClick: (r) => openModal(r, "apply_to_balance"),
         disabled: (r) =>
-          r.payerType !== "patient" && r.tab !== "credit_balance_review",
+          r.payerType !== "client" && r.tab !== "credit_balance_review",
       },
       {
         id: "dispute_refund",
@@ -820,7 +820,7 @@ export default function RefundsClient() {
                 value={formatDate(selectedRow.serviceDate)}
               />
               <KV
-                label="Patient"
+                label="Client"
                 value={selectedRow.clientName}
               />
               <PaymentLedger
@@ -868,8 +868,8 @@ export default function RefundsClient() {
               <KV
                 label="Type"
                 value={
-                  selectedRow.payerType === "patient"
-                    ? "Patient refund"
+                  selectedRow.payerType === "client"
+                    ? "Client refund"
                     : "Payer refund"
                 }
               />
@@ -977,7 +977,7 @@ export default function RefundsClient() {
         label: "Apply to balance",
         onClick: () => openModal(selectedRow, "apply_to_balance"),
         disabled:
-          selectedRow.payerType !== "patient" &&
+          selectedRow.payerType !== "client" &&
           selectedRow.tab !== "credit_balance_review",
       },
       {
@@ -1073,7 +1073,7 @@ function ledgerKindLabel(kind: LedgerEntry["kind"]): string {
     case "client_payment":
       return "Payment";
     case "patient_invoice_payment":
-      return "Patient invoice";
+      return "Client invoice";
     case "refund":
       return "Refund";
   }
@@ -1304,7 +1304,7 @@ function CreditSourceDetail({
   if (!source || source.kind === "none") {
     return (
       <p style={{ marginTop: 12, color: "#64748B", fontSize: 12.5 }}>
-        No originating ERA or patient payment is linked to this credit.
+        No originating ERA or client payment is linked to this credit.
       </p>
     );
   }
@@ -1334,7 +1334,7 @@ function CreditSourceDetail({
             value={money(source.era.paymentAmount)}
           />
           <KV
-            label="Patient responsibility"
+            label="Client responsibility"
             value={money(source.era.patientResponsibility)}
           />
           {source.era.allowedAmount != null ? (
@@ -1413,7 +1413,7 @@ function CreditSourceDetail({
       ) : source.clientPayment ? (
         <>
           <SectionTitle>
-            Patient payment ({shortId(source.clientPayment.id)})
+            Client payment ({shortId(source.clientPayment.id)})
           </SectionTitle>
           <KV label="Amount" value={money(source.clientPayment.amount)} />
           <KV

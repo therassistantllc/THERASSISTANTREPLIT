@@ -13,8 +13,8 @@ function asNumber(value: unknown) {
 }
 
 function patientName(client: DbRow | null) {
-  if (!client) return "Unknown patient";
-  return [asString(client.first_name), asString(client.last_name)].filter(Boolean).join(" ") || "Unknown patient";
+  if (!client) return "Unknown client";
+  return [asString(client.first_name), asString(client.last_name)].filter(Boolean).join(" ") || "Unknown client";
 }
 
 function policyDto(policy: DbRow) {
@@ -122,7 +122,7 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
       .maybeSingle();
 
     if (clientError || !client) {
-      return NextResponse.json({ success: false, error: "Patient not found" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Client not found" }, { status: 404 });
     }
 
     const { data: policies, error: policiesError } = await supabase
@@ -178,7 +178,7 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
 
     return NextResponse.json({
       success: true,
-      patient: {
+      client: {
         id: asString((client as DbRow).id),
         name: patientName(client as DbRow),
         dateOfBirth: asString((client as DbRow).date_of_birth),
@@ -190,9 +190,9 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
       eligibilityHistory: checkDtos,
     });
   } catch (error) {
-    console.error("Patient eligibility detail API error:", error);
+    console.error("Client eligibility detail API error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Patient eligibility detail failed" },
+      { success: false, error: error instanceof Error ? error.message : "Client eligibility detail failed" },
       { status: 500 },
     );
   }

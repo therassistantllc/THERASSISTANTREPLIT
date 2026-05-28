@@ -130,7 +130,7 @@ describe("queryPaymentsDashboard", () => {
     assert.equal(r.rows[2].id, "era:e1");
   });
 
-  it("paymentType='patient' filters out insurance rows", async () => {
+  it("paymentType='client' filters out insurance rows", async () => {
     const fake = makeFakeSupabase({
       era_claim_payments: [
         {
@@ -156,10 +156,10 @@ describe("queryPaymentsDashboard", () => {
     });
     const r = await queryPaymentsDashboard(fake.client, {
       organizationId: ORG,
-      paymentType: "patient",
+      paymentType: "client",
     });
     assert.equal(r.rows.length, 1);
-    assert.equal(r.rows[0].source, "patient");
+    assert.equal(r.rows[0].source, "client");
   });
 
   it("paymentSource list restricts rows to listed sources", async () => {

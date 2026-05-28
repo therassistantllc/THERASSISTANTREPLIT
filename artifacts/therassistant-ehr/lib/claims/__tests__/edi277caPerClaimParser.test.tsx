@@ -27,12 +27,12 @@ const MIXED_REJECT_277CA = [
   // Billing Provider (2000C)
   "HL*3*2*19*1",
   "NM1*85*2*PRACTICE*****XX*1234567890",
-  // Patient / Claim 1 (2000D)
+  // Client / Claim 1 (2000D)
   "HL*4*3*23",
   "NM1*QC*1*SMITH*JOHN",
   "TRN*2*PAT-MEM",
   "STC*A7:562:IL*20260524*U*100.00*******Subscriber not found",
-  // Patient / Claim 2 (2000D)
+  // Client / Claim 2 (2000D)
   "HL*5*3*23",
   "NM1*QC*1*JONES*JANE",
   "TRN*2*PAT-PRV",

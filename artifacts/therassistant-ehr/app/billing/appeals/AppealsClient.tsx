@@ -116,7 +116,7 @@ function daysUntil(value: string | null) {
 
 function applyPlaceholders(body: string, row: Row): string {
   return body
-    .replace(/\[Patient Name\]/g, row.clientName || "")
+    .replace(/\[Client Name\]/g, row.clientName || "")
     .replace(/\[Member ID\]/g, row.memberId || "")
     .replace(/\[Payer Name\]/g, row.payerName || "")
     .replace(/\[Claim Number\]/g, row.claimNumber || "")
@@ -1048,7 +1048,7 @@ export default function AppealsClient() {
     { id: "practice", label: "Practice", kind: "text", placeholder: "Search…" },
     { id: "clinician", label: "Clinician", kind: "text", placeholder: "Search…" },
     { id: "payer", label: "Payer", kind: "select", options: payers },
-    { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+    { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
     { id: "dosFrom", label: "DOS from", kind: "date" },
     { id: "dosTo", label: "DOS to", kind: "date" },
     {

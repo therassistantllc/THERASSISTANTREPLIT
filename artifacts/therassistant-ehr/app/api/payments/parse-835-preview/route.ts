@@ -2,7 +2,7 @@
  * POST /api/payments/parse-835-preview
  *
  * Parses an 835 ERA file and returns structured preview data
- * (header fields + service-line rows with patient-match status).
+ * (header fields + service-line rows with client-match status).
  * Does NOT write anything to the database — use /api/payments/import-835
  * to commit.
  */
@@ -22,7 +22,7 @@ function money(v: number | null | undefined): number {
 export interface PreviewRow {
   rowId: string;
   claimControlNumber: string | null;
-  // Patient info
+  // Client info
   patientName: string | null;
   patientId: string | null;
   patientFound: boolean;
@@ -109,7 +109,7 @@ export async function POST(request: Request) {
     let totalAdjustment = 0;
     let totalPatientResponsibility = 0;
 
-    // Gather claim control numbers for batch patient matching
+    // Gather claim control numbers for batch client matching
     const claimControlNumbers = parsed.claims
       .map((c) => c.patientControlNumber)
       .filter((n): n is string => Boolean(n));
@@ -166,13 +166,13 @@ export async function POST(request: Request) {
       const claimPR = money(claim.patientResponsibilityAmount);
       totalPatientResponsibility += claimPR;
 
-      // Build patient name from ERA data or matched client
+      // Build client name from ERA data or matched client
       const patientFirstName = claim.patientFirstName ?? null;
       const patientLastName = claim.patientLastName ?? null;
       const patientName = match?.clientName ?? 
         (patientFirstName && patientLastName ? `${patientFirstName} ${patientLastName}`.trim() : null);
 
-      // Patient responsibility: use service line PR adjustments, not proportional distribution
+      // Client responsibility: use service line PR adjustments, not proportional distribution
       const numLines = claim.serviceLines.length || 1;
 
       for (const sl of claim.serviceLines) {
@@ -189,7 +189,7 @@ export async function POST(request: Request) {
           .reduce((sum, a) => sum + money(a.amount), 0);
         const allowedAmt = chargeAmt - coAdj;
 
-        // Patient Responsibility (PR) = sum of PR group adjustments
+        // Client Responsibility (PR) = sum of PR group adjustments
         const prAdj = sl.adjustments
           .filter((a) => a.groupCode === "PR")
           .reduce((sum, a) => sum + money(a.amount), 0);

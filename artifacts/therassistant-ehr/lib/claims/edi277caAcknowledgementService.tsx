@@ -81,7 +81,7 @@ function isAcceptStc(entry: ParsedStc): boolean {
 }
 
 export type Parsed277CaClaimRef = {
-  /** TRN02 from the 2200D loop — echoes the original 837P CLM01 (patient
+  /** TRN02 from the 2200D loop — echoes the original 837P CLM01 (client
    *  account number) so we can match each per-claim status back to the
    *  professional_claims row we submitted. */
   trn: string;

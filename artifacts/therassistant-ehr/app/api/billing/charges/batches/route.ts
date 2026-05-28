@@ -20,6 +20,15 @@ function isClinicianScoped(roles: string[]) {
   return hasClinician && !hasExpandedAccess;
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "object" && error !== null) {
+    const maybeMessage = (error as { message?: unknown }).message;
+    if (typeof maybeMessage === "string" && maybeMessage.trim()) return maybeMessage;
+  }
+  return "Failed to load charge batches";
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -35,21 +44,42 @@ export async function GET(request: Request) {
     const clinicianOnly = isClinicianScoped(guard.roles ?? []);
     const providerId = clinicianOnly && guard.userId ? await getProviderIdForUser(guard.userId, guard.organizationId) : null;
 
-    const batchQuery = supabase
-      .from("claim_837p_batches")
-      .select(
-        "id, batch_number, batch_status, claim_count, total_charge_amount, generated_file_name, submitted_at, created_at, updated_at, payer_profile_id, billing_provider_tax_id",
-      )
-      .eq("organization_id", guard.organizationId)
-      .eq("batch_source", "charge_auto")
-      .is("archived_at", null)
-      .order("created_at", { ascending: false })
-      .limit(250);
+    const primarySelect =
+      "id, batch_number, batch_status, claim_count, total_charge_amount, generated_file_name, submitted_at, created_at, updated_at, payer_profile_id, billing_provider_tax_id";
+    const fallbackSelect =
+      "id, batch_number, batch_status, claim_count, total_charge_amount, generated_file_name, submitted_at, created_at, updated_at";
 
-    const { data: batchRows, error: batchError } = await batchQuery;
+    const fetchBatches = async (applySourceFilter: boolean, selectClause: string) => {
+      let query = supabase
+        .from("claim_837p_batches")
+        .select(selectClause)
+        .eq("organization_id", guard.organizationId)
+        .is("archived_at", null)
+        .order("created_at", { ascending: false })
+        .limit(250);
+
+      if (applySourceFilter) {
+        query = query.eq("batch_source", "charge_auto");
+      }
+
+      return query;
+    };
+
+    let { data: batchRows, error: batchError } = await fetchBatches(true, primarySelect);
+
+    const isMissingColumnError = (err: unknown) =>
+      String((err as { code?: string })?.code ?? "") === "42703"
+      || String((err as { message?: string })?.message ?? "").toLowerCase().includes("does not exist");
+
+    if (batchError && isMissingColumnError(batchError)) {
+      // Backward-compatible fallback for environments that predate batch_source and newer batch columns.
+      const fallback = await fetchBatches(false, fallbackSelect);
+      batchRows = fallback.data;
+      batchError = fallback.error;
+    }
     if (batchError) throw batchError;
 
-    const batches = (batchRows ?? []) as DbRow[];
+    const batches = (batchRows ?? []) as unknown as DbRow[];
     if (batches.length === 0) {
       return NextResponse.json({
         success: true,
@@ -167,7 +197,7 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Failed to load charge batches" },
+      { success: false, error: getErrorMessage(error) },
       { status: 500 },
     );
   }

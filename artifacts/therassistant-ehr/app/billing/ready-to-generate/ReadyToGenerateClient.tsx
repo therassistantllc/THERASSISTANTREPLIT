@@ -296,7 +296,7 @@ export default function ReadyToGenerateClient() {
   const filters: FilterDef[] = useMemo(
     () => [
       { id: "practice", label: "Practice", kind: "select", options: practiceOptions },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient or claim #" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client or claim #" },
       { id: "clinician", label: "Clinician", kind: "select", options: clinicianOptions },
       { id: "payer", label: "Payer", kind: "select", options: payerOptions },
       { id: "assignedBiller", label: "Assigned biller", kind: "select", options: billerOptions },
@@ -1080,7 +1080,7 @@ export default function ReadyToGenerateClient() {
   const renderChecklistTab = useCallback(() => {
     if (!selected) return null;
     const checks: Array<{ id: ChecklistRowId; ok: boolean; label: string }> = [
-      { id: "ref", ok: !!selected.claim_number, label: "CLM01 — Patient account / claim ref" },
+      { id: "ref", ok: !!selected.claim_number, label: "CLM01 — Client account / claim ref" },
       { id: "amt", ok: selected.charge_amount > 0, label: "CLM02 — Total charge > 0" },
       { id: "pos", ok: !!selected.place_of_service, label: "CLM05 — Place of service" },
       { id: "dx", ok: selected.diagnosis_codes.length > 0, label: "HI — At least one ICD-10 diagnosis" },

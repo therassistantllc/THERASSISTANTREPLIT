@@ -244,7 +244,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
                 id: client.id,
                 displayName:
                   [client.first_name, client.last_name].filter(Boolean).join(" ").trim() ||
-                  "Unknown patient",
+                  "Unknown client",
               }
             : null,
           validation,

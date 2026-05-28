@@ -872,7 +872,7 @@ function MatchClaimsModal({
       width={720}
     >
       <p style={{ color: "#64748B", fontSize: 13, margin: "0 0 10px" }}>
-        Search the org's open claims by patient name, claim #, or account #. Pick the
+        Search the org's open claims by client name, claim #, or account #. Pick the
         rows being paid and enter the applied amount.
         {" "}Check total: <strong>{formatCurrency(row.amount)}</strong>.
       </p>
@@ -882,7 +882,7 @@ function MatchClaimsModal({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by patient name, claim #, or account #"
+          placeholder="Search by client name, claim #, or account #"
           style={fieldInput}
         />
         {row.payer_profile_id ? (
@@ -919,7 +919,7 @@ function MatchClaimsModal({
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ background: "#F8FAFC", color: "#475569" }}>
-                <th style={{ textAlign: "left", padding: "6px 8px" }}>Patient</th>
+                <th style={{ textAlign: "left", padding: "6px 8px" }}>Client</th>
                 <th style={{ textAlign: "left", padding: "6px 8px" }}>DOS</th>
                 <th style={{ textAlign: "left", padding: "6px 8px" }}>Claim #</th>
                 <th style={{ textAlign: "right", padding: "6px 8px" }}>Balance</th>
@@ -971,8 +971,8 @@ function MatchClaimsModal({
       <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
         Enter each line's split: <strong>Paid</strong> is the money applied from
         this check (sums to the check total), <strong>Adj</strong> is the
-        contractual write-off, and <strong>PR</strong> is patient
-        responsibility — any PR &gt; 0 spawns an open patient invoice when you
+        contractual write-off, and <strong>PR</strong> is client
+        responsibility — any PR &gt; 0 spawns an open client invoice when you
         post the payment.
       </div>
       {entries.length === 0 ? (
@@ -1057,7 +1057,7 @@ function MatchClaimsModal({
                   min="0"
                   value={e.patient_resp}
                   placeholder="PR"
-                  title="Patient responsibility (creates a patient invoice when posted)"
+                  title="Client responsibility (creates a client invoice when posted)"
                   onChange={(ev) => updatePatientResp(idx, ev.target.value)}
                   style={fieldInput}
                 />
@@ -1386,7 +1386,7 @@ export default function PaperChecksClient() {
         kind: "select",
         options: payers.map((p) => ({ value: p.id, label: p.name })),
       },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "dosFrom", label: "Check date from", kind: "date" },
       { id: "dosTo", label: "Check date to", kind: "date" },
       {
@@ -1653,7 +1653,7 @@ export default function PaperChecksClient() {
                     }}
                   >
                     <div style={{ fontSize: 13, fontWeight: 600 }}>
-                      {m.patient_name ?? "Unknown patient"}
+                      {m.patient_name ?? "Unknown client"}
                     </div>
                     <div style={{ fontSize: 12, color: "#6B7280" }}>
                       Claim {m.claim_number ?? m.claim_id.slice(0, 8)} · {m.claim_status ?? "—"}

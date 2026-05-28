@@ -1,10 +1,10 @@
 /**
  * Payment Posting Engine — patient_payment source (Task #109).
  *
- * Accepts a patient payment from any source (stripe / cash / check /
+ * Accepts a client payment from any source (stripe / cash / check /
  * external_card / refund / unapplied_credit / transferred_balance) and
  * applies it to one of: a patient_invoice, a professional_claim's
- * patient-responsibility balance, an encounter (via its claim), or the
+ * client-responsibility balance, an encounter (via its claim), or the
  * client's account-balance bucket as unapplied credit.
  *
  * Invariants:
@@ -116,7 +116,7 @@ export function validatePatientPayment(input: CommitPatientPaymentInput): Valida
       severity: "blocking",
       code: "client_required",
       field: "clientId",
-      message: "Patient (client) is required.",
+      message: "Client (client) is required.",
     });
   }
   if ((input.method === "stripe" || input.method === "external_card") && !input.externalPaymentId) {
@@ -214,12 +214,12 @@ export async function commitPatientPayment(
     }
     if (!data) {
       result.blocked = true;
-      result.errors.push({ field: "patientInvoiceId", message: "Patient invoice not found." });
+      result.errors.push({ field: "patientInvoiceId", message: "Client invoice not found." });
       return result;
     }
     if (data.client_id !== input.clientId) {
       result.blocked = true;
-      result.errors.push({ field: "patientInvoiceId", message: "Invoice does not belong to that patient." });
+      result.errors.push({ field: "patientInvoiceId", message: "Invoice does not belong to that client." });
       return result;
     }
     resolvedInvoiceId = String(data.id);
@@ -243,7 +243,7 @@ export async function commitPatientPayment(
     }
     if (data.patient_id && data.patient_id !== input.clientId) {
       result.blocked = true;
-      result.errors.push({ field: "professionalClaimId", message: "Claim does not belong to that patient." });
+      result.errors.push({ field: "professionalClaimId", message: "Claim does not belong to that client." });
       return result;
     }
     resolvedClaimId = String(data.id);
@@ -275,8 +275,8 @@ export async function commitPatientPayment(
   const unapplied = round2(amount - applyAmount);
 
   // Object-level authorization for transferred_balance: source invoice/claim
-  // MUST belong to the same client as input.clientId (the destination patient).
-  // Without this, a biller could move balance off another patient's invoice
+  // MUST belong to the same client as input.clientId (the destination client).
+  // Without this, a biller could move balance off another client's invoice
   // because route-level FK ownership only enforces org scope.
   if (input.method === "transferred_balance" && input.transferFrom) {
     const tf = input.transferFrom;
@@ -290,7 +290,7 @@ export async function commitPatientPayment(
       if (!srcInvAuth || String((srcInvAuth as { client_id: unknown }).client_id) !== String(input.clientId)) {
         result.errors.push({
           field: "transferFrom.fromInvoiceId",
-          message: "Transfer source invoice does not belong to this patient.",
+          message: "Transfer source invoice does not belong to this client.",
         });
         return result;
       }
@@ -305,7 +305,7 @@ export async function commitPatientPayment(
       if (!srcClmAuth || String((srcClmAuth as { patient_id: unknown }).patient_id) !== String(input.clientId)) {
         result.errors.push({
           field: "transferFrom.fromClaimId",
-          message: "Transfer source claim does not belong to this patient.",
+          message: "Transfer source claim does not belong to this client.",
         });
         return result;
       }
@@ -413,13 +413,13 @@ export async function commitPatientPayment(
         source_id: paymentId,
         entry_type: "insurance_payment",
         amount: -applyAmount, // negative = reduces balance
-        description: `Patient payment applied (${input.method})`,
+        description: `Client payment applied (${input.method})`,
       });
 
       result.effects.push({
         entryType: "insurance_payment",
         amount: -applyAmount,
-        description: `Patient payment applied (${input.method})`,
+        description: `Client payment applied (${input.method})`,
       });
 
       if (resolvedInvoiceId) {
@@ -493,7 +493,7 @@ export async function commitPatientPayment(
         unapplied_amount: unapplied,
         external_payment_id: input.externalPaymentId ?? null,
       },
-      summary: `Posted patient payment ${amount.toFixed(2)} (${input.method}) — applied ${applyAmount.toFixed(2)}, unapplied ${unapplied.toFixed(2)}`,
+      summary: `Posted client payment ${amount.toFixed(2)} (${input.method}) — applied ${applyAmount.toFixed(2)}, unapplied ${unapplied.toFixed(2)}`,
       metadata: { source: "patient_payment", warnings: result.validation.warning.map((w) => w.code) },
     });
     if (audit) result.auditLogIds.push(audit.id);
@@ -608,7 +608,7 @@ export async function commitPatientPayment(
   } catch (err) {
     result.errors.push({
       field: "patient_payment",
-      message: err instanceof Error ? err.message : "Failed to post patient payment",
+      message: err instanceof Error ? err.message : "Failed to post client payment",
     });
     return result;
   }
@@ -616,7 +616,7 @@ export async function commitPatientPayment(
 
 /**
  * Apply an existing client_credit balance against a patient_invoice (or
- * professional_claim's patient-responsibility). Produces a
+ * professional_claim's client-responsibility). Produces a
  * client_credit_applications row + ledger entry + invoice/claim updates.
  */
 export interface ApplyClientCreditInput {
@@ -683,7 +683,7 @@ export async function applyClientCredit(
       return { ok: false, applicationId: null, newCreditBalance: available, errors: [{ field: "patientInvoiceId", message: error?.message ?? "Invoice not found." }] };
     }
     if (data.client_id !== credit.client_id) {
-      return { ok: false, applicationId: null, newCreditBalance: available, errors: [{ field: "patientInvoiceId", message: "Invoice belongs to a different patient." }] };
+      return { ok: false, applicationId: null, newCreditBalance: available, errors: [{ field: "patientInvoiceId", message: "Invoice belongs to a different client." }] };
     }
     invoiceId = String(data.id);
     // Cap to invoice balance; never overpay an invoice via a credit application.
@@ -710,12 +710,12 @@ export async function applyClientCredit(
       return { ok: false, applicationId: null, newCreditBalance: available, errors: [{ field: "professionalClaimId", message: error?.message ?? "Claim not found." }] };
     }
     if (data.patient_id !== credit.client_id) {
-      return { ok: false, applicationId: null, newCreditBalance: available, errors: [{ field: "professionalClaimId", message: "Claim belongs to a different patient." }] };
+      return { ok: false, applicationId: null, newCreditBalance: available, errors: [{ field: "professionalClaimId", message: "Claim belongs to a different client." }] };
     }
     claimId = String(data.id);
     const pr = round2(Number(data.patient_responsibility_amount ?? 0));
     if (amount > pr + 0.005) {
-      return { ok: false, applicationId: null, newCreditBalance: available, errors: [{ field: "amount", message: `Requested ${amount.toFixed(2)} exceeds claim patient-responsibility ${pr.toFixed(2)}.` }] };
+      return { ok: false, applicationId: null, newCreditBalance: available, errors: [{ field: "amount", message: `Requested ${amount.toFixed(2)} exceeds claim client-responsibility ${pr.toFixed(2)}.` }] };
     }
     const nextPr = Math.max(0, round2(pr - amount));
     await supabase

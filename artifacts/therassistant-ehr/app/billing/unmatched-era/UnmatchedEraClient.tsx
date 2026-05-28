@@ -301,7 +301,7 @@ export default function UnmatchedEraClient() {
           </div>
         ),
       },
-      { id: "patient", header: "Patient name", cell: (r) => r.patientName },
+      { id: "client", header: "Client name", cell: (r) => r.patientName },
       {
         id: "claimNumber",
         header: "Claim number from ERA",
@@ -603,7 +603,7 @@ export default function UnmatchedEraClient() {
               <dd style={{ margin: 0, fontFamily: "ui-monospace, monospace" }}>
                 {r.payerClaimControlNumber ?? "—"}
               </dd>
-              <dt style={{ color: "#64748B" }}>Patient</dt>
+              <dt style={{ color: "#64748B" }}>Client</dt>
               <dd style={{ margin: 0 }}>{r.patientName}</dd>
               <dt style={{ color: "#64748B" }}>DOS</dt>
               <dd style={{ margin: 0 }}>{formatDate(r.dos)}</dd>
@@ -611,7 +611,7 @@ export default function UnmatchedEraClient() {
               <dd style={{ margin: 0 }}>{money(r.totalCharge)}</dd>
               <dt style={{ color: "#64748B" }}>Paid amount</dt>
               <dd style={{ margin: 0 }}>{money(r.paidAmount)}</dd>
-              <dt style={{ color: "#64748B" }}>Patient resp.</dt>
+              <dt style={{ color: "#64748B" }}>Client resp.</dt>
               <dd style={{ margin: 0 }}>{money(r.patientResponsibility)}</dd>
               <dt style={{ color: "#64748B" }}>Match status</dt>
               <dd style={{ margin: 0 }}>{r.matchStatus}</dd>
@@ -713,7 +713,7 @@ export default function UnmatchedEraClient() {
               <ol style={{ margin: "4px 0 0", paddingLeft: 18, color: "#475569" }}>
                 <li>Payer ICN (CLP07) exact match</li>
                 <li>Internal claim number (CLP01) exact match</li>
-                <li>Patient account number exact match</li>
+                <li>Client account number exact match</li>
                 <li>Probable match: payer + DOS overlap + charge ±$0.50 + last name fuzzy</li>
               </ol>
             </div>
@@ -776,7 +776,7 @@ export default function UnmatchedEraClient() {
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ padding: 6 }}>Patient</td>
+                    <td style={{ padding: 6 }}>Client</td>
                     <td style={{ padding: 6 }}>{r.patientName}</td>
                     <td style={{ padding: 6 }}>{top?.patientDisplayName ?? "—"}</td>
                   </tr>

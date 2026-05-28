@@ -158,7 +158,7 @@ export async function GET(request: Request) {
       ((claimRows ?? []) as DbRow[]).map((c) => [text(c.id), c]),
     );
 
-    // Patient names for matched claims (best-effort, single batch).
+    // Client names for matched claims (best-effort, single batch).
     const patientIds = [
       ...new Set(((claimRows ?? []) as DbRow[]).map((c) => text(c.patient_id)).filter(Boolean)),
     ];
@@ -219,7 +219,7 @@ export async function GET(request: Request) {
       const matches = matchesByCheck.get(id) ?? [];
       const matchedClaims: MatchOut[] = matches.map((m) => {
         const claim = claimById.get(text(m.claim_id));
-        const patient = claim ? patientById.get(text(claim.patient_id)) : null;
+        const client = claim ? patientById.get(text(claim.patient_id)) : null;
         const claimAgeBaseline =
           (claim?.first_billed_date as string | null) ??
           (claim?.created_at as string | null) ??
@@ -227,8 +227,8 @@ export async function GET(request: Request) {
         return {
           claim_id: text(m.claim_id),
           claim_number: claim ? text(claim.claim_number) || null : null,
-          patient_name: patient
-            ? [patient.first_name, patient.last_name].map(text).filter(Boolean).join(" ") || null
+          patient_name: client
+            ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ") || null
             : null,
           claim_status: claim ? text(claim.claim_status) || null : null,
           total_charge: claim ? money(claim.total_charge) : 0,

@@ -208,13 +208,13 @@ export interface StripeCheckoutSession {
 /**
  * Create a Stripe Checkout Session on a connected Express account (Task #206).
  *
- * Used by the patient portal so patients can pay an open invoice with a
+ * Used by the client portal so clients can pay an open invoice with a
  * Stripe-hosted checkout. Funds settle directly to the connected account
  * (direct charge via Stripe-Account header — same model as
  * createConnectPaymentIntent). The session-level metadata AND
  * payment_intent_data.metadata both carry organization_id / client_id /
  * patient_invoice_id so the existing stripe-webhook auto-posts the
- * payment onto the patient ledger.
+ * payment onto the client ledger.
  */
 export async function createConnectCheckoutSession(input: {
   amountCents: number;
@@ -236,7 +236,7 @@ export async function createConnectCheckoutSession(input: {
   /**
    * When `'off_session'`, asks Stripe to save the resulting payment
    * method to the bound customer for future off-session use. Used by
-   * the patient-portal "Fix payment" recovery flow (Task #674) so a
+   * the client-portal "Fix payment" recovery flow (Task #674) so a
    * declined autopay can both pay this invoice AND refresh the saved
    * card on file in a single Checkout.
    */
@@ -288,7 +288,7 @@ export interface StripeCustomer {
 
 /**
  * Create a Customer on a connected Express account (Task #487).
- * Used to pin a patient's saved card to the practice's connected
+ * Used to pin a client's saved card to the practice's connected
  * account, since direct charges require customer + payment method to
  * live on that account.
  */
@@ -345,7 +345,7 @@ export interface StripeChargeLike {
 
 /**
  * Create a SetupIntent on a connected account to collect & save a
- * patient card without charging (Task #487). Frontend uses
+ * client card without charging (Task #487). Frontend uses
  * `client_secret` with Stripe.js to mount Payment Element / confirm.
  */
 export async function createConnectSetupIntent(input: {
@@ -389,7 +389,7 @@ export interface StripePaymentIntentLite {
  * Read a PaymentIntent off a connected Express account. Used by the
  * Task #674 "Fix payment" webhook path so we can pull the
  * payment_method off a successful Checkout PaymentIntent and refresh
- * the patient's saved card on file.
+ * the client's saved card on file.
  */
 export async function retrieveConnectPaymentIntent(input: {
   connectedAccountId: string;
@@ -450,7 +450,7 @@ export async function detachConnectPaymentMethod(input: {
 /**
  * Retrieve a Stripe charge (read-only) on a connected account. Used to
  * recover the (customer, payment_method) pair off a prior successful
- * charge so we can run a new off-session charge for the same patient
+ * charge so we can run a new off-session charge for the same client
  * without storing card metadata locally.
  */
 export async function retrieveConnectCharge(input: {
@@ -468,7 +468,7 @@ export async function retrieveConnectCharge(input: {
  * account (Task #487). Confirms inline and returns the resulting
  * PaymentIntent. Throws StripeRequestError on failure (e.g.
  * `authentication_required` when the bank insists on a 3DS challenge
- * — the caller should surface that so the patient can authenticate
+ * — the caller should surface that so the client can authenticate
  * via the portal).
  */
 export async function createConnectOffSessionCharge(input: {
@@ -540,7 +540,7 @@ export async function createConnectRefund(input: {
 
 /**
  * Charge a previously stored Stripe customer + payment method off-session
- * (i.e. without the patient present). Implements the standard Stripe
+ * (i.e. without the client present). Implements the standard Stripe
  * MIT/off-session pattern: create a PaymentIntent with confirm=true,
  * off_session=true, customer, payment_method, and disable redirects.
  *
@@ -578,7 +578,7 @@ export async function chargeSavedPaymentMethod(input: {
 
 /**
  * Refund a Connect charge. Compensating action used when local
- * persistence fails after a successful off-session charge so the patient
+ * persistence fails after a successful off-session charge so the client
  * is not silently overcharged.
  */
 export async function refundConnectCharge(input: {

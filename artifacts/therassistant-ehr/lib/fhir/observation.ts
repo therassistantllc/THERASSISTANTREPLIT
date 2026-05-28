@@ -86,13 +86,13 @@ export function checkInRowToObservation(row: CheckInRow, baseUrl: string): FhirO
         code: "survey",
         display: "Survey",
       }],
-      text: "Patient check-in",
+      text: "Client check-in",
     }],
     code: {
-      text: "Patient check-in",
-      coding: [{ system: CHECK_IN_SYSTEM, code: "patient-check-in", display: "Patient check-in" }],
+      text: "Client check-in",
+      coding: [{ system: CHECK_IN_SYSTEM, code: "client-check-in", display: "Client check-in" }],
     },
-    subject: { reference: `${baseUrl}/Patient/${row.client_id}`, type: "Patient" },
+    subject: { reference: `${baseUrl}/Patient/${row.client_id}`, type: "Client" },
     encounter: row.encounter_id
       ? { reference: `${baseUrl}/Encounter/${row.encounter_id}`, type: "Encounter" }
       : undefined,

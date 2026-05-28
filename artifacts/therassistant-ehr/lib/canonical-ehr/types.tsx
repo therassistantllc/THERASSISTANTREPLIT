@@ -35,7 +35,7 @@ interface AppUser {
   updated_at: string;
 }
 
-interface Patient {
+interface Client {
   id: ID;
   organization_id: ID;
   first_name: string;
@@ -461,7 +461,7 @@ interface DocumentRecord {
 export interface CanonicalEhrState {
   organizations: Organization[];
   users: AppUser[];
-  patients: Patient[];
+  clients: Client[];
   payers: Payer[];
   insurance_policies: InsurancePolicy[];
   eligibility_checks: EligibilityCheck[];
@@ -489,4 +489,4 @@ export interface CanonicalEhrState {
   documents: DocumentRecord[];
 }
 
-type CanonicalView = "dashboard" | "scheduling" | "patients" | "patient-chart" | "encounters" | "encounter-workspace" | "claims" | "payments" | "workqueue" | "schema";
+type CanonicalView = "dashboard" | "scheduling" | "clients" | "client-chart" | "encounters" | "encounter-workspace" | "claims" | "payments" | "workqueue" | "schema";

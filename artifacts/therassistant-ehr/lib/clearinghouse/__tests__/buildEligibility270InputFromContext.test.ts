@@ -13,7 +13,7 @@ const baseConnection = {
   submitter_contact_email: "billing@example.com",
 };
 
-const basePatient = {
+const baseClient = {
   first_name: "Jane",
   last_name: "Doe",
   date_of_birth: "1985-04-12",
@@ -27,10 +27,10 @@ const basePolicy = {
 };
 
 describe("buildEligibility270InputFromContext", () => {
-  it("projects connection + patient + policy into a valid Eligibility270Input", () => {
+  it("projects connection + client + policy into a valid Eligibility270Input", () => {
     const input = buildEligibility270InputFromContext({
       connection: baseConnection,
-      patient: basePatient,
+      client: baseClient,
       policy: basePolicy,
       serviceTypeCodes: ["30"],
       serviceDate: "2026-06-01",
@@ -62,7 +62,7 @@ describe("buildEligibility270InputFromContext", () => {
   it("flips ISA15 to 'P' when mode is production/live", () => {
     const live = buildEligibility270InputFromContext({
       connection: { ...baseConnection, mode: "live" },
-      patient: basePatient,
+      client: baseClient,
       policy: basePolicy,
       serviceTypeCodes: ["98"],
     });
@@ -73,7 +73,7 @@ describe("buildEligibility270InputFromContext", () => {
   it("falls back to policy_number when subscriber_id is missing", () => {
     const input = buildEligibility270InputFromContext({
       connection: baseConnection,
-      patient: basePatient,
+      client: baseClient,
       policy: { ...basePolicy, subscriber_id: null, policy_number: "POL999" },
       serviceTypeCodes: ["98"],
     });
@@ -83,7 +83,7 @@ describe("buildEligibility270InputFromContext", () => {
   it("defaults service type codes to ['98'] when empty", () => {
     const input = buildEligibility270InputFromContext({
       connection: baseConnection,
-      patient: basePatient,
+      client: baseClient,
       policy: basePolicy,
       serviceTypeCodes: [],
     });
@@ -93,7 +93,7 @@ describe("buildEligibility270InputFromContext", () => {
   it("defaults to test mode when connection.mode is missing or unknown", () => {
     const input = buildEligibility270InputFromContext({
       connection: { ...baseConnection, mode: null },
-      patient: basePatient,
+      client: baseClient,
       policy: basePolicy,
       serviceTypeCodes: ["98"],
     });
@@ -104,7 +104,7 @@ describe("buildEligibility270InputFromContext", () => {
   it("honors provider override when supplied", () => {
     const input = buildEligibility270InputFromContext({
       connection: baseConnection,
-      patient: basePatient,
+      client: baseClient,
       policy: basePolicy,
       serviceTypeCodes: ["98"],
       provider: { npi: "1234567890", lastNameOrOrg: "Smith", firstName: "John" },
@@ -132,7 +132,7 @@ describe("pickEligibilityAdapter", () => {
     const adapter = pickEligibilityAdapter({ vendor: "mock" });
     const input = buildEligibility270InputFromContext({
       connection: baseConnection,
-      patient: basePatient,
+      client: baseClient,
       policy: basePolicy,
       serviceTypeCodes: ["98"],
     });

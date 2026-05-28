@@ -24,7 +24,7 @@ export default function WriteOffsPage() {
       ]}
       columns={[
         { id: "date", header: "Date", cell: (r) => formatDate(r.date) },
-        { id: "patient", header: "Patient", cell: (r) => String(r.patient ?? "—") },
+        { id: "client", header: "Client", cell: (r) => String(r.client ?? "—") },
         { id: "claim", header: "Claim #", cell: (r) => String(r.claim_number ?? "—") },
         { id: "payer", header: "Payer", cell: (r) => String(r.payer_name ?? "—") },
         { id: "reason", header: "Reason", cell: (r) => String(r.reason ?? "—") },
@@ -42,7 +42,7 @@ export default function WriteOffsPage() {
         { id: "mark_reversal", label: "Mark reversal", variant: "danger" },
       ]}
       detailFields={[
-        { label: "Patient", value: (r) => String(r.patient ?? "—") },
+        { label: "Client", value: (r) => String(r.client ?? "—") },
         { label: "Reason", value: (r) => String(r.reason ?? "—") },
         { label: "Amount", value: (r) => formatMoney(r.amount) },
         { label: "Posted by", value: (r) => String(r.posted_by ?? "—") },

@@ -10,7 +10,7 @@ function value(v: unknown) {
 }
 
 /**
- * Clinician view of a patient's journal entries.
+ * Clinician view of a client's journal entries.
  *
  * Auth: requires an authenticated staff session in the same organization
  * (requireOrgAccess). The session-derived `organizationId` is the source of

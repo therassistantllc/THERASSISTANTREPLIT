@@ -122,7 +122,7 @@ interface ChargeDetail {
   placeOfService: string | null;
   totalCharge: number;
   blockerReasons: unknown[];
-  patient: { id: string; firstName: string; lastName: string; dateOfBirth: string | null; accountNumber: string | null } | null;
+  client: { id: string; firstName: string; lastName: string; dateOfBirth: string | null; accountNumber: string | null } | null;
   provider: { id: string; displayName: string; credential: string | null; npi: string | null } | null;
   payer: { id: string; name: string; payerType: string | null } | null;
   policy: { id: string; planName: string | null; policyNumber: string | null; subscriberId: string | null; copay: number; deductible: number; coinsurancePercent: number; priority: string | null } | null;
@@ -635,9 +635,9 @@ export default function ChargeCaptureClient() {
     const a = detail.appointment;
     return (
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
-        <Row label="Patient" value={detail.patient ? `${detail.patient.lastName}, ${detail.patient.firstName}` : "—"} />
-        <Row label="DOB" value={fmtDate(detail.patient?.dateOfBirth ?? null)} />
-        <Row label="Account #" value={detail.patient?.accountNumber ?? "—"} />
+        <Row label="Client" value={detail.client ? `${detail.client.lastName}, ${detail.client.firstName}` : "—"} />
+        <Row label="DOB" value={fmtDate(detail.client?.dateOfBirth ?? null)} />
+        <Row label="Account #" value={detail.client?.accountNumber ?? "—"} />
         <Row label="Appointment type" value={a?.type ?? "—"} />
         <Row label="Appointment status" value={a?.status ?? "—"} />
         <Row label="Scheduled" value={a?.startAt ? `${new Date(a.startAt).toLocaleString()} → ${a.endAt ? new Date(a.endAt).toLocaleTimeString() : "?"}` : "—"} />
@@ -681,7 +681,7 @@ export default function ChargeCaptureClient() {
         {caseId ? (
           <>
             <Row label="Case" value={caseId} />
-            <a href={`/clients/${detail.patient?.id ?? ""}/cases/${caseId}/treatment-plan`} style={{ color: "#3B82F6", fontSize: 12.5 }}>
+            <a href={`/clients/${detail.client?.id ?? ""}/cases/${caseId}/treatment-plan`} style={{ color: "#3B82F6", fontSize: 12.5 }}>
               Open treatment plan →
             </a>
           </>
@@ -910,7 +910,7 @@ export default function ChargeCaptureClient() {
           if (!r.claimId) return;
           setHoldTarget({
             claimId: r.claimId,
-            subtitle: `${r.client?.name ?? "Patient"} · ${r.payer?.name ?? "—"}`,
+            subtitle: `${r.client?.name ?? "Client"} · ${r.payer?.name ?? "—"}`,
             sourceRowId: r.id,
           });
         },
@@ -940,7 +940,7 @@ export default function ChargeCaptureClient() {
           if (!claimId) return;
           setHoldTarget({
             claimId,
-            subtitle: `${row?.client?.name ?? "Patient"} · ${row?.payer?.name ?? "—"}`,
+            subtitle: `${row?.client?.name ?? "Client"} · ${row?.payer?.name ?? "—"}`,
             sourceRowId: detail.id,
           });
         },

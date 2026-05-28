@@ -14,13 +14,13 @@
 | `outlook_oauth_tokens` table | **Built (new migration)** | `supabase/migrations/20260521000000_outlook_oauth_tokens.sql` |
 | Inbound webhook (Resend delivery status) | **Built** | `app/api/intake/email-webhook/route.ts` |
 
-> Note: The standalone Email page (`app/email`) and its `/api/email/*` routes have been removed. Inbound patient email now surfaces through the Inbox / workqueue flow; the Gmail/Outlook OAuth + poller functions above continue to feed it.
+> Note: The standalone Email page (`app/email`) and its `/api/email/*` routes have been removed. Inbound client email now surfaces through the Inbox / workqueue flow; the Gmail/Outlook OAuth + poller functions above continue to feed it.
 
 ## Architecture note (please read)
 
 The existing flow is **one mailbox per organization**, not one per clinician.
 This is the correct HIPAA pattern: a Business Associate Agreement is signed
-between your practice and Google Workspace (or Microsoft 365), and patient
+between your practice and Google Workspace (or Microsoft 365), and client
 email goes to a shared `intake@practice.com` / `front-desk@practice.com`
 mailbox that is then routed inside the EHR. Personal Gmail / Outlook accounts
 cannot legally receive PHI even with consent.
@@ -124,7 +124,7 @@ flow per-user. Tell me if you want that and I'll do it as a follow-up.
   For now, "AI draft reply" is shown but must be copied into Gmail/Outlook to
   send.
 - It does not attempt to send PHI over email — it only ingests inbound mail
-  and routes it to the patient chart / mailroom.
+  and routes it to the client chart / mailroom.
 - It does not implement Gmail push notifications (Pub/Sub) — polling every
   2 minutes is fine for clinical email volume but is not real-time.
 - It does not replace per-user mailboxes. See the architecture note above.

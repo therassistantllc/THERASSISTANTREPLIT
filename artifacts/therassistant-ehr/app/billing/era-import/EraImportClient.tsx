@@ -50,7 +50,7 @@ interface BatchListItem {
   deferred: boolean;
   markedDuplicateOf: string | null;
   assignedBiller: string | null;
-  patients: string[];
+  clients: string[];
   clinicians: string[];
   practices: string[];
   dosFrom: string | null;
@@ -238,7 +238,7 @@ function downloadCsv(filename: string, rows: BatchListItem[]) {
     "Posted",
     "Blocked",
     "Import status",
-    "Patients",
+    "Clients",
     "Clinicians",
     "DOS from",
     "DOS to",
@@ -265,7 +265,7 @@ function downloadCsv(filename: string, rows: BatchListItem[]) {
         b.counts.posted,
         b.counts.blocked,
         b.importStatus,
-        b.patients.join("; "),
+        b.clients.join("; "),
         b.clinicians.join("; "),
         b.dosFrom,
         b.dosTo,
@@ -307,7 +307,7 @@ export default function EraImportClient() {
   const [detailLoading, setDetailLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // The patient/clinician/practice/DOS filters require joining through
+  // The client/clinician/practice/DOS filters require joining through
   // era_claim_payments to professional_claims/clients, so we let the API do
   // the join and refetch whenever any of them change. The remaining filters
   // (payer, status, $ range, aging, …) stay client-side because they're
@@ -318,7 +318,7 @@ export default function EraImportClient() {
   const dosFromFilter = filterValues.dosFrom ?? "";
   const dosToFilter = filterValues.dosTo ?? "";
 
-  // Typeahead options fetched once per org. Patients carry an id so we can
+  // Typeahead options fetched once per org. Clients carry an id so we can
   // send a canonical client UUID when the biller picks a suggestion; the
   // clinician/practice typeaheads are name- and code-based respectively.
   const [patientOptions, setPatientOptions] = useState<Array<{ id: string; name: string }>>([]);
@@ -331,7 +331,7 @@ export default function EraImportClient() {
       .then((r) => r.json())
       .then((json) => {
         if (!json?.success) return;
-        setPatientOptions(Array.isArray(json.patients) ? json.patients : []);
+        setPatientOptions(Array.isArray(json.clients) ? json.clients : []);
         setClinicianOptions(
           Array.isArray(json.clinicians)
             ? json.clinicians.map((c: { name: string }) => c.name).filter(Boolean)
@@ -348,21 +348,21 @@ export default function EraImportClient() {
       });
   }, [organizationId]);
 
-  // The patient filter binds to two pieces of state: the visible text
+  // The client filter binds to two pieces of state: the visible text
   // (mirrored into `filterValues.client` so URL persistence keeps working)
   // and an explicit `selectedClientId` set only when the biller clicks a
   // suggestion in the picker. Typing into the input clears the id, so a
   // selection always carries an unambiguous identifier — two clients with
   // the same display name can't collide because the picker captures the
   // actual UUID at click time. Free-typed text falls back to the legacy
-  // `patient` ilike search.
+  // `client` ilike search.
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
 
   // Keep the explicit UUID in lockstep with the visible filter value: if the
   // text is empty (because the user cleared it or clicked "Clear filters" on
   // the rail) we must drop the id too, otherwise the API keeps filtering by
-  // clientId while the rail shows no patient selected. Same goes for any
+  // clientId while the rail shows no client selected. Same goes for any
   // external mutation (URL nav, etc.) that changes the value out from under
   // the picker.
   useEffect(() => {
@@ -385,7 +385,7 @@ export default function EraImportClient() {
     if (selectedClientId) {
       qs.set("clientId", selectedClientId);
     } else if (patientFilter.trim()) {
-      qs.set("patient", patientFilter.trim());
+      qs.set("client", patientFilter.trim());
     }
     if (clinicianFilter.trim()) qs.set("clinician", clinicianFilter.trim());
     if (practiceFilter.trim()) qs.set("practice", practiceFilter.trim());
@@ -470,10 +470,10 @@ export default function EraImportClient() {
         id: "client",
         label: "Client",
         kind: "text",
-        placeholder: "Patient name…",
+        placeholder: "Client name…",
         // Custom picker: explicit selection captures the client's UUID so
         // duplicate display names can't collide. Free-typing clears the id
-        // and falls back to the legacy ilike `patient` search.
+        // and falls back to the legacy ilike `client` search.
         render: (value, setValue) => {
           const needle = value.trim().toLowerCase();
           const suggestions = needle
@@ -487,7 +487,7 @@ export default function EraImportClient() {
                 aria-label="Client"
                 type="text"
                 className="wq-filter-input"
-                placeholder="Patient name…"
+                placeholder="Client name…"
                 value={value}
                 onChange={(e) => {
                   setValue(e.target.value);
@@ -679,7 +679,7 @@ export default function EraImportClient() {
         // diverge from the bare "first last" string stored on each row
         // and silently filter all matching batches out.
         const needle = v.client.trim().toLowerCase();
-        if (!b.patients.some((p) => p.toLowerCase().includes(needle))) return false;
+        if (!b.clients.some((p) => p.toLowerCase().includes(needle))) return false;
       }
       if (v.clinician) {
         const needle = v.clinician.trim().toLowerCase();
@@ -767,11 +767,11 @@ export default function EraImportClient() {
         ),
       },
       {
-        id: "patients",
-        header: "Patients",
+        id: "clients",
+        header: "Clients",
         cell: (b) => {
-          const { text, highlighted } = renderNameList(b.patients, filterValues.client ?? "");
-          const title = b.patients.length ? b.patients.join(", ") : undefined;
+          const { text, highlighted } = renderNameList(b.clients, filterValues.client ?? "");
+          const title = b.clients.length ? b.clients.join(", ") : undefined;
           return (
             <span
               title={title}
@@ -783,7 +783,7 @@ export default function EraImportClient() {
                 whiteSpace: "nowrap",
                 verticalAlign: "middle",
                 background: highlighted ? "#FEF3C7" : undefined,
-                color: highlighted ? "#92400E" : b.patients.length ? "#0F172A" : "#94A3B8",
+                color: highlighted ? "#92400E" : b.clients.length ? "#0F172A" : "#94A3B8",
                 fontWeight: highlighted ? 600 : 400,
                 padding: highlighted ? "1px 6px" : undefined,
                 borderRadius: highlighted ? 4 : undefined,
@@ -1206,7 +1206,7 @@ export default function EraImportClient() {
                 {money(b.unallocated)}
               </span>,
             )}
-            {card("Patient responsibility", money(b.totalPatientResponsibility))}
+            {card("Client responsibility", money(b.totalPatientResponsibility))}
             {card("Payment date", formatDate(b.paymentDate))}
             {card("Check / EFT", b.eftOrCheckNumber ?? "—")}
             {card("Payment method", b.paymentMethodCode ?? "—")}
@@ -1225,7 +1225,7 @@ export default function EraImportClient() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
               <thead>
                 <tr style={{ background: "#F1F5F9" }}>
-                  <th style={{ padding: 4, textAlign: "left" }}>Patient / CLP</th>
+                  <th style={{ padding: 4, textAlign: "left" }}>Client / CLP</th>
                   <th style={{ padding: 4, textAlign: "right" }}>Charge</th>
                   <th style={{ padding: 4, textAlign: "right" }}>Paid</th>
                   <th style={{ padding: 4, textAlign: "right" }}>Pt resp</th>

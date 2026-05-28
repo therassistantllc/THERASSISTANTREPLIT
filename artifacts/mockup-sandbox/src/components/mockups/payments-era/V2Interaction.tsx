@@ -3,18 +3,18 @@ import { useState, useMemo } from "react";
 
 /* ── Data ── */
 type PS = "ready" | "partial" | "exception" | "review" | "posted";
-type Method = "ERA" | "Patient" | "Check" | "Card" | "ACH";
-interface Pmt { id:string; source:string; eraId?:string; payer?:string; patient?:string; amount:number; method:Method; status:PS; date:string; exception?:string; }
+type Method = "ERA" | "Client" | "Check" | "Card" | "ACH";
+interface Pmt { id:string; source:string; eraId?:string; payer?:string; client?:string; amount:number; method:Method; status:PS; date:string; exception?:string; }
 
 const PAYMENTS: Pmt[] = [
   { id:"p1", source:"ERA #ERA-2026-0234", eraId:"ERA-2026-0234", payer:"BCBS Colorado",           amount:1248.22, method:"ERA",     status:"partial",   date:"05/19/2026", exception:"Payment amount exceeds remaining balance by $42.18" },
   { id:"p2", source:"ERA #ERA-2026-0235", eraId:"ERA-2026-0235", payer:"Aetna",                   amount:892.50,  method:"ERA",     status:"ready",     date:"05/19/2026" },
-  { id:"p3", source:"Patient – Dana Patel",                       patient:"Dana Patel",            amount:40.00,   method:"Card",    status:"posted",    date:"05/19/2026" },
-  { id:"p4", source:"Patient – James Rivera",                     patient:"James Rivera",          amount:0.00,    method:"Patient", status:"review",    date:"05/18/2026", exception:"Copay collected: $0 — verify Medicare advantage plan" },
+  { id:"p3", source:"Client – Dana Patel",                       client:"Dana Patel",            amount:40.00,   method:"Card",    status:"posted",    date:"05/19/2026" },
+  { id:"p4", source:"Client – James Rivera",                     client:"James Rivera",          amount:0.00,    method:"Client", status:"review",    date:"05/18/2026", exception:"Copay collected: $0 — verify Medicare advantage plan" },
   { id:"p5", source:"ERA #ERA-2026-0231", eraId:"ERA-2026-0231", payer:"Colorado Medicaid",       amount:2104.80, method:"ERA",     status:"posted",    date:"05/16/2026" },
   { id:"p6", source:"Check #44821",                                                                amount:618.00,  method:"Check",   status:"ready",     date:"05/15/2026" },
   { id:"p7", source:"ERA #ERA-2026-0229", eraId:"ERA-2026-0229", payer:"United Behavioral Health", amount:330.00, method:"ERA",     status:"exception", date:"05/14/2026", exception:"Unmatched claim — no matching claim found in system" },
-  { id:"p8", source:"Patient – Sofia Martinez",                   patient:"Sofia Martinez",        amount:0.00,    method:"ACH",     status:"review",    date:"05/13/2026", exception:"ACH returned — insufficient funds" },
+  { id:"p8", source:"Client – Sofia Martinez",                   client:"Sofia Martinez",        amount:0.00,    method:"ACH",     status:"review",    date:"05/13/2026", exception:"ACH returned — insufficient funds" },
 ];
 
 const LEDGER = [
@@ -29,15 +29,15 @@ const TIMELINE = [
   { label:"Claim Submitted",           date:"04/25/2026", color:"#3B82F6" },
   { label:"ERA Received from BCBS",    date:"05/12/2026", color:"#059669" },
   { label:"Payment Partially Applied", date:"05/19/2026", color:"#D97706" },
-  { label:"Patient Balance – $20",     date:"05/19/2026", color:"#3B82F6" },
+  { label:"Client Balance – $20",     date:"05/19/2026", color:"#3B82F6" },
   { label:"Statement Pending",         date:"—",          color:"#94A3B8" },
 ];
 
-type QueueTab = "all"|"era"|"patient"|"checks"|"unapplied"|"exceptions";
+type QueueTab = "all"|"era"|"client"|"checks"|"unapplied"|"exceptions";
 const TAB_INFO: { id:QueueTab; label:string }[] = [
   { id:"all",        label:"All"        },
   { id:"era",        label:"ERA"        },
-  { id:"patient",    label:"Patient"    },
+  { id:"client",    label:"Client"    },
   { id:"checks",     label:"Checks"     },
   { id:"unapplied",  label:"Unapplied"  },
   { id:"exceptions", label:"Exceptions" },
@@ -54,7 +54,7 @@ const STATUS_META: Record<PS,{label:string;bg:string;color:string}> = {
 function methodIcon(m: Method) {
   if (m==="ERA")    return { bg:"#EDE9FE", color:"#7C3AED", text:"ERA" };
   if (m==="Check")  return { bg:"#DBEAFE", color:"#1D4ED8", text:"CHK" };
-  if (m==="Patient"||m==="Card"||m==="ACH") return { bg:"#D1FAE5", color:"#065F46", text:"$" };
+  if (m==="Client"||m==="Card"||m==="ACH") return { bg:"#D1FAE5", color:"#065F46", text:"$" };
   return { bg:"#FEE2E2", color:"#991B1B", text:"!" };
 }
 
@@ -86,7 +86,7 @@ function QueueRow({ pmt, isSelected, onSelect }: { pmt:Pmt; isSelected:boolean; 
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
             <span style={{ background:sm.bg, color:sm.color, padding:"1px 7px", borderRadius:20, fontSize:10.5, fontWeight:700 }}>{sm.label}</span>
-            <span style={{ fontSize:11, color:"#94A3B8" }}>{pmt.payer ?? pmt.patient ?? pmt.method} · {pmt.date}</span>
+            <span style={{ fontSize:11, color:"#94A3B8" }}>{pmt.payer ?? pmt.client ?? pmt.method} · {pmt.date}</span>
           </div>
         </div>
       </div>
@@ -121,7 +121,7 @@ export function V2Interaction() {
   const counts: Record<QueueTab, number> = useMemo(() => ({
     all:        PAYMENTS.length,
     era:        PAYMENTS.filter(p => p.method === "ERA").length,
-    patient:    PAYMENTS.filter(p => ["Patient","Card","ACH"].includes(p.method)).length,
+    client:    PAYMENTS.filter(p => ["Client","Card","ACH"].includes(p.method)).length,
     checks:     PAYMENTS.filter(p => p.method === "Check").length,
     unapplied:  PAYMENTS.filter(p => p.status === "ready" || p.status === "partial").length,
     exceptions: PAYMENTS.filter(p => p.status === "exception" || p.status === "review").length,
@@ -129,7 +129,7 @@ export function V2Interaction() {
 
   const filtered = useMemo(() => {
     if (tab==="era")        return PAYMENTS.filter(p => p.method==="ERA");
-    if (tab==="patient")    return PAYMENTS.filter(p => ["Patient","Card","ACH"].includes(p.method));
+    if (tab==="client")    return PAYMENTS.filter(p => ["Client","Card","ACH"].includes(p.method));
     if (tab==="checks")     return PAYMENTS.filter(p => p.method==="Check");
     if (tab==="unapplied")  return PAYMENTS.filter(p => p.status==="ready"||p.status==="partial");
     if (tab==="exceptions") return PAYMENTS.filter(p => p.status==="exception"||p.status==="review");
@@ -142,7 +142,7 @@ export function V2Interaction() {
     unapplied: $(PAYMENTS.filter(p => p.status==="ready"||p.status==="partial").reduce((s,p) => s+p.amount, 0)),
     exceptions: PAYMENTS.filter(p => p.status==="exception"||p.status==="review").length,
     refunds: 3,
-    patient: $(PAYMENTS.filter(p => ["Patient","Card","ACH"].includes(p.method)).reduce((s,p)=>s+p.amount,0)),
+    client: $(PAYMENTS.filter(p => ["Client","Card","ACH"].includes(p.method)).reduce((s,p)=>s+p.amount,0)),
   };
 
   return (
@@ -157,7 +157,7 @@ export function V2Interaction() {
           <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#94A3B8", pointerEvents:"none", display:"flex" }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </span>
-          <input style={{ height:32, padding:"0 10px 0 32px", border:"1px solid #E2E8F0", borderRadius:7, fontSize:13, color:"#1E293B", background:"#F8FAFC", outline:"none", width:220 }} placeholder="Search ERA #, patient, payer…" />
+          <input style={{ height:32, padding:"0 10px 0 32px", border:"1px solid #E2E8F0", borderRadius:7, fontSize:13, color:"#1E293B", background:"#F8FAFC", outline:"none", width:220 }} placeholder="Search ERA #, client, payer…" />
         </div>
         <input type="date" style={{ height:32, padding:"0 10px", border:"1px solid #E2E8F0", borderRadius:7, fontSize:12.5, color:"#1E293B", background:"#F8FAFC", outline:"none" }} defaultValue="2026-05-19" />
         {/* Secondary actions clearly labeled */}
@@ -181,7 +181,7 @@ export function V2Interaction() {
           { label:"Posted Today",    value:kpi.posted,          sub:"↑ 12% vs last week",  color:"#059669", action:null },
           { label:"Pending ERAs",    value:String(kpi.pendingEra),sub:"Click to review",   color:"#3B82F6", action:()=>setTab("era") },
           { label:"Unapplied Cash",  value:kpi.unapplied,       sub:"Click to post",       color:"#D97706", action:()=>setTab("unapplied") },
-          { label:"Patient Payments",value:kpi.patient,          sub:"Click to review",    color:"#0F172A", action:()=>setTab("patient") },
+          { label:"Client Payments",value:kpi.client,          sub:"Click to review",    color:"#0F172A", action:()=>setTab("client") },
           { label:"Refund Requests", value:"3",                  sub:"Pending approval",   color:"#0F172A", action:null },
           { label:"Exceptions",      value:String(kpi.exceptions),sub:"Click to resolve",  color:"#DC2626", action:()=>setTab("exceptions") },
         ].map(k => (
@@ -260,7 +260,7 @@ export function V2Interaction() {
                   { label:"Amount", value:$(selected.amount), large:true },
                   { label:"Method", value:selected.method },
                   { label:"Received", value:selected.date },
-                  { label:"Payer / Patient", value:selected.payer ?? selected.patient ?? "—" },
+                  { label:"Payer / Client", value:selected.payer ?? selected.client ?? "—" },
                   { label:"ERA #", value:selected.eraId ?? "—" },
                 ].map(f => (
                   <div key={f.label}>
@@ -280,7 +280,7 @@ export function V2Interaction() {
                   {[
                     { label:"Apply as Credit", desc:"Keep in account", bg:"#D1FAE5", color:"#065F46", border:"#6EE7B7" },
                     { label:"Refund",           desc:"Return to payer", bg:"#FEE2E2", color:"#991B1B", border:"#FCA5A5" },
-                    { label:"Transfer",         desc:"Move to patient", bg:"#DBEAFE", color:"#1D4ED8", border:"#93C5FD" },
+                    { label:"Transfer",         desc:"Move to client", bg:"#DBEAFE", color:"#1D4ED8", border:"#93C5FD" },
                     { label:"Dismiss",          desc:"Mark resolved",   bg:"#F1F5F9", color:"#475569", border:"#E2E8F0" },
                   ].map(a => (
                     <button key={a.label} style={{ padding:"10px 12px", border:`1px solid ${a.border}`, borderRadius:8, fontSize:12, fontWeight:700, color:a.color, background:a.bg, cursor:"pointer", textAlign:"center", display:"flex", flexDirection:"column", gap:2, alignItems:"center" }}>
@@ -324,7 +324,7 @@ export function V2Interaction() {
                 <button style={{ height:34, padding:"0 14px", border:"1px solid #E2E8F0", borderRadius:8, fontSize:13, fontWeight:500, color:"#475569", background:"#fff", cursor:"pointer" }}>⇄ Split</button>
                 <button style={{ height:34, padding:"0 14px", border:"1px solid #E2E8F0", borderRadius:8, fontSize:13, fontWeight:500, color:"#475569", background:"#fff", cursor:"pointer" }}>→ Transfer Balance</button>
                 <button style={{ height:34, padding:"0 14px", border:"1px solid #E2E8F0", borderRadius:8, fontSize:13, fontWeight:500, color:"#475569", background:"#fff", cursor:"pointer" }}>✕ Write Off</button>
-                <button style={{ height:34, padding:"0 14px", border:"1px solid #E2E8F0", borderRadius:8, fontSize:13, fontWeight:500, color:"#475569", background:"#fff", cursor:"pointer" }}>✉ Patient Billing</button>
+                <button style={{ height:34, padding:"0 14px", border:"1px solid #E2E8F0", borderRadius:8, fontSize:13, fontWeight:500, color:"#475569", background:"#fff", cursor:"pointer" }}>✉ Client Billing</button>
                 <button style={{ height:34, padding:"0 14px", border:"1px solid #FCA5A5", borderRadius:8, fontSize:13, fontWeight:500, color:"#DC2626", background:"#fff", cursor:"pointer" }}>↩ Refund</button>
               </div>
             </div>

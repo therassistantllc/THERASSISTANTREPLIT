@@ -327,7 +327,7 @@ export async function GET(request: Request) {
           ? {
               id: client.id,
               displayName:
-                [client.first_name, client.last_name].filter(Boolean).join(" ").trim() || "Unknown patient",
+                [client.first_name, client.last_name].filter(Boolean).join(" ").trim() || "Unknown client",
             }
           : null,
         payer: { id: null, name: parsedPayerName ?? "Unknown payer" },

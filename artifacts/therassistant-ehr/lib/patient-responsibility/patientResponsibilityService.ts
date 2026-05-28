@@ -200,7 +200,7 @@ export async function loadPatientResponsibility({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sb = supabase as unknown as { from: (t: string) => any };
 
-  // 1) Pull ERA claim payments with a patient responsibility component.
+  // 1) Pull ERA claim payments with a client responsibility component.
   const { data: eraRows } = await sb
     .from("era_claim_payments")
     .select(
@@ -342,8 +342,8 @@ export async function loadPatientResponsibility({
     const clientId = text(era.client_id) || (claim ? text(claim.patient_id) : "") || null;
     const cli = clientId ? clientById.get(clientId) : undefined;
     const clientName = cli
-      ? `${text(cli.last_name)}, ${text(cli.first_name)}`.replace(/^,\s*$/, "") || "Unknown patient"
-      : "Unknown patient";
+      ? `${text(cli.last_name)}, ${text(cli.first_name)}`.replace(/^,\s*$/, "") || "Unknown client"
+      : "Unknown client";
 
     const patientAmount = money(era.pr_amount) || money(era.clp05_patient_responsibility);
     const cas = parseCasAdjustments(era.cas_adjustments);
@@ -567,8 +567,8 @@ export async function loadPatientResponsibilityContext(
     : null;
 
   const clientName = clientRow
-    ? `${text(clientRow.first_name)} ${text(clientRow.last_name)}`.trim() || "patient"
-    : "patient";
+    ? `${text(clientRow.first_name)} ${text(clientRow.last_name)}`.trim() || "client"
+    : "client";
 
   return {
     eraBreakdown: {
@@ -625,7 +625,7 @@ export async function loadPatientResponsibilityContext(
       invoiceNumberPreview: `INV-${(claimRow ? text(claimRow.claim_number) || text(claimRow.id).slice(0, 8) : eraClaimPaymentId.slice(0, 8))}-${Date.now().toString().slice(-6)}`,
       amount: patientAmount,
       proposedSource: "era_remit",
-      lineDescription: `Patient responsibility from ERA remittance (${reason === "mixed" ? "mixed" : REASON_LABEL[reason]})`,
+      lineDescription: `Client responsibility from ERA remittance (${reason === "mixed" ? "mixed" : REASON_LABEL[reason]})`,
       clientName,
       clientEmail: clientRow ? text(clientRow.email) || null : null,
     },

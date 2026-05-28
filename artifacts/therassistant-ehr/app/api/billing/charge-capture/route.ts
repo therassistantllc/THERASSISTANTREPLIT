@@ -9,7 +9,7 @@
  * Query params:
  *   organizationId — tenant id (verified against the session)
  *   tab            — one of the spec tab ids (filters by status/blocker)
- *   client         — free-text match on patient or CPT
+ *   client         — free-text match on client or CPT
  *   clinician      — provider display name (exact)
  *   payer          — payer name (exact)
  *   dosFrom/dosTo  — service-date bounds (YYYY-MM-DD)
@@ -260,8 +260,8 @@ export async function GET(request: Request) {
         client: {
           id: text(c.client_id),
           name: client
-            ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ") || "Unknown patient"
-            : "Unknown patient",
+            ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ") || "Unknown client"
+            : "Unknown client",
           dob: client?.date_of_birth ?? null,
         },
         clinician: provider

@@ -110,7 +110,7 @@ export default async function PatientPortalInvitePage({
   if (error || !invite) {
     return (
       <NoticeShell
-        practice="Patient portal"
+        practice="Client portal"
         title="Portal link not found"
         body="This portal invite link is invalid. Please contact your care team to request a new invitation."
       />
@@ -210,7 +210,7 @@ export default async function PatientPortalInvitePage({
       </div>
       <section className="panel">
         <p style={{ marginTop: 0, color: "var(--text)" }}>
-          {practice} has invited you to access your patient portal. Continue to view your upcoming
+          {practice} has invited you to access your client portal. Continue to view your upcoming
           appointments, balance, and shared documents.
         </p>
         <form action={acceptInvite}>

@@ -1,11 +1,11 @@
 /**
- * Patient-portal invoice checkout (Task #206).
+ * Client-portal invoice checkout (Task #206).
  *
- * Given an authenticated portal session and an invoice the patient owns,
+ * Given an authenticated portal session and an invoice the client owns,
  * pick the practice's connected Stripe Express account, mint a Stripe
- * Checkout Session against that account, and hand the patient the hosted
+ * Checkout Session against that account, and hand the client the hosted
  * checkout URL. The webhook at /api/billing/payments/stripe-webhook then
- * auto-posts the payment back onto the patient ledger using
+ * auto-posts the payment back onto the client ledger using
  * metadata.patient_invoice_id (so the balance reflects on next portal
  * load).
  *
@@ -58,7 +58,7 @@ export async function startInvoiceCheckout(input: {
   /**
    * Task #674: "Fix payment" recovery flow. When true, the Checkout
    * Session is bound to the client's Stripe Customer and uses
-   * `setup_future_usage='off_session'` so the card the patient pays
+   * `setup_future_usage='off_session'` so the card the client pays
    * with becomes the new saved card on file. The webhook then refreshes
    * `clients.stripe_payment_method_*` from the resulting PaymentIntent
    * (see metadata.is_recovery). Without this, fixing a 3DS / declined
@@ -175,7 +175,7 @@ export async function startInvoiceCheckout(input: {
   };
   const customerEmail = (client.email ?? "").trim() || null;
   const patientLabel =
-    [client.first_name, client.last_name].filter(Boolean).join(" ").trim() || "patient";
+    [client.first_name, client.last_name].filter(Boolean).join(" ").trim() || "client";
 
   // In recovery mode we need a Stripe Customer pinned to this connected
   // account so the resulting PaymentMethod attaches there and can be
@@ -211,7 +211,7 @@ export async function startInvoiceCheckout(input: {
             .eq("organization_id", organizationId)
             .eq("id", clientId);
         } catch (err) {
-          // Not fatal — fall back to non-saving Checkout (the patient
+          // Not fatal — fall back to non-saving Checkout (the client
           // still pays this invoice, the WQ row will surface the stale
           // card for the biller to follow up on).
           console.warn(
@@ -245,7 +245,7 @@ export async function startInvoiceCheckout(input: {
   try {
     // Tie idempotency to the invoice + balance + chosen amount so
     // retries within the same state collapse to one Stripe session;
-    // once the balance changes (partial payment) or the patient picks
+    // once the balance changes (partial payment) or the client picks
     // a different amount the key changes and they get a fresh session.
     // Recovery sessions get their own key so they don't collide with
     // a prior non-saving session for the same invoice.
@@ -259,7 +259,7 @@ export async function startInvoiceCheckout(input: {
       successUrl,
       cancelUrl,
       productName: `Invoice #${invoice.invoice_number}`,
-      productDescription: `Patient balance for ${patientLabel}`,
+      productDescription: `Client balance for ${patientLabel}`,
       metadata,
       customerEmail,
       customerId: recoveryCustomerId,

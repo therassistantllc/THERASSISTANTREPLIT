@@ -174,7 +174,7 @@ export async function GET(request: Request) {
     ];
 
     const [
-      { data: patients },
+      { data: clients },
       { data: payerProfiles },
       { data: serviceLines },
       { data: statusEvents },
@@ -244,7 +244,7 @@ export async function GET(request: Request) {
     ]);
 
     const patientById = new Map<string, DbRow>(
-      ((patients as DbRow[]) ?? []).map((p) => [text(p.id), p]),
+      ((clients as DbRow[]) ?? []).map((p) => [text(p.id), p]),
     );
     const payerById = new Map<string, DbRow>(
       ((payerProfiles as DbRow[]) ?? []).map((p) => [text(p.id), p]),
@@ -356,7 +356,7 @@ export async function GET(request: Request) {
     // Build per-claim rows, then group by RARC.
     const allClaims: RarcClaimRow[] = claimRows.map((c) => {
       const cid = text(c.id);
-      const patient = patientById.get(text(c.patient_id));
+      const client = patientById.get(text(c.patient_id));
       const payer = payerById.get(text(c.payer_profile_id));
       const lines = serviceLinesByClaim.get(cid) ?? [];
       const dosFrom = lines.length ? text(lines[0].service_date_from) || null : null;
@@ -380,10 +380,10 @@ export async function GET(request: Request) {
         claimId: cid,
         claimNumber: text(c.claim_number) || cid.slice(0, 8),
         patientId: text(c.patient_id),
-        patientName: patient
-          ? [patient.first_name, patient.last_name].map(text).filter(Boolean).join(" ") ||
-            "Unknown patient"
-          : "Unknown patient",
+        patientName: client
+          ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ") ||
+            "Unknown client"
+          : "Unknown client",
         payerProfileId: text(c.payer_profile_id) || null,
         payerName: text(payer?.payer_name) || "Unknown payer",
         serviceDateFrom: dosFrom,

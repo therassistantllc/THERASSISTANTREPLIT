@@ -98,7 +98,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ itemI
         .eq("id", targetId!)
         .maybeSingle();
       if (error) return NextResponse.json({ success: false, error: error.message }, { status: 422 });
-      if (!data) return NextResponse.json({ success: false, error: "Patient not found" }, { status: 404 });
+      if (!data) return NextResponse.json({ success: false, error: "Client not found" }, { status: 404 });
     } else if (destination === "encounter") {
       const { data, error } = await supabase
         .from("encounters")

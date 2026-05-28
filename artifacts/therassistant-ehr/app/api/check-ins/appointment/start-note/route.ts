@@ -151,7 +151,7 @@ export async function POST(request: Request) {
     );
 
     // Pull the latest submitted check-in for this appointment so we can
-    // pre-populate Subjective with the patient's stated focus + reflection.
+    // pre-populate Subjective with the client's stated focus + reflection.
     // Only "submitted" check-ins count — drafts shouldn't bleed into the note.
     const { data: checkInRow } = await supabase
       .from("patient_check_ins")

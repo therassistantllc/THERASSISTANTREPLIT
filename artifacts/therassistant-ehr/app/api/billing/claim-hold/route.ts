@@ -189,7 +189,7 @@ export async function GET(request: Request) {
     ];
 
     const [
-      { data: patients },
+      { data: clients },
       { data: payerProfiles },
       { data: serviceLines },
       { data: parties },
@@ -244,7 +244,7 @@ export async function GET(request: Request) {
     ]);
 
     const patientById = new Map<string, DbRow>(
-      ((patients as DbRow[]) ?? []).map((p) => [text(p.id), p]),
+      ((clients as DbRow[]) ?? []).map((p) => [text(p.id), p]),
     );
     const payerById = new Map<string, DbRow>(
       ((payerProfiles as DbRow[]) ?? []).map((p) => [text(p.id), p]),
@@ -331,7 +331,7 @@ export async function GET(request: Request) {
     const now = Date.now();
     let rows = claimRows.map((claim) => {
       const claimId = text(claim.id);
-      const patient = patientById.get(text(claim.patient_id));
+      const client = patientById.get(text(claim.patient_id));
       const payer = payerById.get(text(claim.payer_profile_id));
       const party = partiesByClaim.get(claimId);
       const lines = linesByClaim.get(claimId) ?? [];
@@ -343,14 +343,14 @@ export async function GET(request: Request) {
             null
           : null;
 
-      const patientName = patient
-        ? [patient.first_name, patient.last_name].map(text).filter(Boolean).join(" ")
+      const patientName = client
+        ? [client.first_name, client.last_name].map(text).filter(Boolean).join(" ")
         : party
           ? [party.patient_first_name, party.patient_last_name]
               .map(text)
               .filter(Boolean)
               .join(" ")
-          : "Unknown patient";
+          : "Unknown client";
 
       const holdStartedAt = claim.hold_started_at as string | null;
       const daysOnHold = holdStartedAt
@@ -366,7 +366,7 @@ export async function GET(request: Request) {
         id: claimId,
         claimNumber: text(claim.claim_number) || claimId.slice(0, 8),
         patientId: text(claim.patient_id),
-        patientName: patientName || "Unknown patient",
+        patientName: patientName || "Unknown client",
         memberId: text(party?.subscriber_member_id) || null,
         payerProfileId: text(claim.payer_profile_id),
         payerName: text(payer?.payer_name) || "—",

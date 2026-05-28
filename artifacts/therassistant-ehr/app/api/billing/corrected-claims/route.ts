@@ -354,17 +354,17 @@ export async function GET(request: Request) {
     // ── Row construction ─────────────────────────────────────────────────
     function rowFromOriginal(orig: DbRow): CorrectedRow | null {
       const id = text(orig.id);
-      const patient = clientById.get(text(orig.patient_id)) ?? null;
+      const client = clientById.get(text(orig.patient_id)) ?? null;
       const payer = payerById.get(text(orig.payer_profile_id)) ?? null;
       const appt = apptById.get(text(orig.appointment_id)) ?? null;
       const clinician =
         (appt ? providerById.get(text(appt.provider_id)) : null) || "—";
 
-      if (filters.practice && text(patient?.location_id) !== filters.practice) return null;
+      if (filters.practice && text(client?.location_id) !== filters.practice) return null;
       if (filters.clinician && clinician !== filters.clinician) return null;
       if (filters.client) {
-        const name = patient
-          ? `${text(patient.first_name)} ${text(patient.last_name)}`.toLowerCase()
+        const name = client
+          ? `${text(client.first_name)} ${text(client.last_name)}`.toLowerCase()
           : "";
         if (!name.includes(filters.client.toLowerCase())) return null;
       }
@@ -382,8 +382,8 @@ export async function GET(request: Request) {
       });
       if (filters.priority && filters.priority !== priority) return null;
 
-      const clientName = patient
-        ? [text(patient.first_name), text(patient.last_name)].filter(Boolean).join(" ") ||
+      const clientName = client
+        ? [text(client.first_name), text(client.last_name)].filter(Boolean).join(" ") ||
           "Unknown client"
         : "Unknown client";
 
@@ -419,17 +419,17 @@ export async function GET(request: Request) {
       const origId = text(child.original_claim_id);
       const orig = origId ? byId.get(origId) : null;
 
-      const patient = clientById.get(text(child.patient_id)) ?? null;
+      const client = clientById.get(text(child.patient_id)) ?? null;
       const payer = payerById.get(text(child.payer_profile_id)) ?? null;
       const appt = apptById.get(text(child.appointment_id)) ?? null;
       const clinician =
         (appt ? providerById.get(text(appt.provider_id)) : null) || "—";
 
-      if (filters.practice && text(patient?.location_id) !== filters.practice) return null;
+      if (filters.practice && text(client?.location_id) !== filters.practice) return null;
       if (filters.clinician && clinician !== filters.clinician) return null;
       if (filters.client) {
-        const name = patient
-          ? `${text(patient.first_name)} ${text(patient.last_name)}`.toLowerCase()
+        const name = client
+          ? `${text(client.first_name)} ${text(client.last_name)}`.toLowerCase()
           : "";
         if (!name.includes(filters.client.toLowerCase())) return null;
       }
@@ -468,8 +468,8 @@ export async function GET(request: Request) {
       });
       if (filters.priority && filters.priority !== priority) return null;
 
-      const clientName = patient
-        ? [text(patient.first_name), text(patient.last_name)].filter(Boolean).join(" ") ||
+      const clientName = client
+        ? [text(client.first_name), text(client.last_name)].filter(Boolean).join(" ") ||
           "Unknown client"
         : "Unknown client";
 

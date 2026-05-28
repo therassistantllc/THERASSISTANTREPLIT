@@ -321,7 +321,7 @@ export async function POST(request: Request) {
           if (transmissionStatus !== "failed") {
             const firstName = client ? String((client as { first_name?: unknown }).first_name ?? "").trim() : "";
             const lastName = client ? String((client as { last_name?: unknown }).last_name ?? "").trim() : "";
-            const patientName = `${firstName} ${lastName}`.trim() || "Unknown patient";
+            const patientName = `${firstName} ${lastName}`.trim() || "Unknown client";
             const result = await sendPayerDocumentationEmail({
               to: recipient,
               payerName,
@@ -589,7 +589,7 @@ export async function POST(request: Request) {
         const clientFirst = client ? String(client.first_name ?? "").trim() : "";
         const clientLast = client ? String(client.last_name ?? "").trim() : "";
         const clientFullName =
-          `${clientFirst} ${clientLast}`.trim() || "Unknown patient";
+          `${clientFirst} ${clientLast}`.trim() || "Unknown client";
         const clientDob = client ? (client.date_of_birth as string | null) : null;
         const orgName = letterheadName;
         const payerName = (payer?.payer_name as string | null) || "Insurance Payer";
@@ -820,7 +820,7 @@ export async function POST(request: Request) {
         const clientFirst = client ? String(client.first_name ?? "").trim() : "";
         const clientLast = client ? String(client.last_name ?? "").trim() : "";
         const clientFullName =
-          `${clientFirst} ${clientLast}`.trim() || "Unknown patient";
+          `${clientFirst} ${clientLast}`.trim() || "Unknown client";
         const clientDob = client ? (client.date_of_birth as string | null) : null;
         const orgName = (org?.name as string | null) || "Billing Office";
         const payerName = (payer?.payer_name as string | null) || "Insurance Payer";

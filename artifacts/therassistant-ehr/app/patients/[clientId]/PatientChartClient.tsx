@@ -174,7 +174,7 @@ type WorkqueueSummary = {
 type PatientSummary = {
   success: boolean;
   error?: string;
-  patient?: {
+  client?: {
     id: string;
     name: string;
     firstName?: string | null;
@@ -442,8 +442,8 @@ export default function PatientChartClient({
   );
 
   function startDemoEdit() {
-    if (!summary?.patient) return;
-    const p = summary.patient;
+    if (!summary?.client) return;
+    const p = summary.client;
     const rawSex = (p.sexAtBirth ?? "").trim();
     const rawGender = (p.genderIdentity ?? "").trim();
     const rawLang = (p.preferredLanguage ?? "").trim();
@@ -686,7 +686,7 @@ export default function PatientChartClient({
     }
   }
 
-  // Refresh the patient summary (insurance policies, demographics, etc.)
+  // Refresh the client summary (insurance policies, demographics, etc.)
   // and the cases list. Called after CasesPanel mutates so the upper
   // "Insurance information" panel reflects newly saved policies.
   async function reloadSummaryAndCases() {
@@ -729,7 +729,7 @@ export default function PatientChartClient({
   }
 
   async function saveDemoEdit() {
-    if (!summary?.patient) return;
+    if (!summary?.client) return;
     setDemoSaving(true);
     setDemoError(null);
     setDemoMessage(null);
@@ -938,7 +938,7 @@ export default function PatientChartClient({
   useEffect(() => {
     let cancelled = false;
 
-    async function loadPatient() {
+    async function loadClient() {
       if (!organizationId) {
         // Should not happen in practice — the server now resolves the org from
         // the authenticated session and falls back to ORGANIZATION_ID. Leave a
@@ -953,7 +953,7 @@ export default function PatientChartClient({
           cache: "no-store",
         });
         const summaryJson = (await summaryResponse.json()) as PatientSummary;
-        if (!summaryResponse.ok || !summaryJson.success) throw new Error(summaryJson.error ?? "Failed to load patient chart");
+        if (!summaryResponse.ok || !summaryJson.success) throw new Error(summaryJson.error ?? "Failed to load client chart");
 
         const [appointments, conditions, claims, notes, documents, mailroomItems, casesList] = await Promise.all([
           fetchList<AppointmentSummary>(`/api/patients/${clientId}/appointments?organizationId=${encodeURIComponent(organizationId)}`, "appointments"),
@@ -978,7 +978,7 @@ export default function PatientChartClient({
           mailroomItems,
         });
       } catch (loadError) {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Failed to load patient chart");
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Failed to load client chart");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1019,7 +1019,7 @@ export default function PatientChartClient({
       }
     }
 
-    void loadPatient();
+    void loadClient();
     void loadJournalHighlights();
     void reloadDemoAudit();
     void reloadCredits();
@@ -1029,7 +1029,7 @@ export default function PatientChartClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, organizationId]);
 
-  const patient = summary?.patient;
+  const client = summary?.client;
   const latestEligibility = summary?.insurance?.latestEligibility ?? null;
   const policies = summary?.insurance?.policies ?? [];
   const workqueueItems = summary?.workqueueItems ?? [];
@@ -1044,7 +1044,7 @@ export default function PatientChartClient({
   if (latestEligibility && String(latestEligibility.eligibility_status ?? "").toLowerCase().includes("inactive")) {
     alerts.push("Coverage is marked inactive. Verify eligibility before next visit.");
   }
-  if ((summary?.balance?.total ?? 0) > 0) alerts.push("Outstanding patient balance requires follow-up.");
+  if ((summary?.balance?.total ?? 0) > 0) alerts.push("Outstanding client balance requires follow-up.");
   if (deniedOrRejectedCount > 0) alerts.push(`${deniedOrRejectedCount} denied/rejected claim(s) need billing action.`);
   if (workqueueItems.length > 0) alerts.push(`${workqueueItems.length} open workqueue item(s) linked to this client.`);
 
@@ -1052,7 +1052,7 @@ export default function PatientChartClient({
 
   if (loading) return <div className="empty-state">Loading client chart…</div>;
   if (error) return <div className="alert-panel">{error}</div>;
-  if (!patient) return <div className="alert-panel">Client record not found.</div>;
+  if (!client) return <div className="alert-panel">Client record not found.</div>;
 
   const dash = "—";
   const dashIfNullish = (value: unknown): string => {
@@ -1082,19 +1082,19 @@ export default function PatientChartClient({
   const hasAnyTotalInput =
     copay !== null || deductibleRemaining !== null || previousBalance !== null;
   const cityStateZip = [
-    [patient.city, formatStateForDisplay(patient.state)].filter(Boolean).join(", "),
-    patient.postalCode ?? "",
+    [client.city, formatStateForDisplay(client.state)].filter(Boolean).join(", "),
+    client.postalCode ?? "",
   ]
     .filter(Boolean)
     .join(" ");
-  const addressLine2 = patient.addressLine2 ?? "";
-  const formattedAddress = [patient.addressLine1, addressLine2, cityStateZip]
+  const addressLine2 = client.addressLine2 ?? "";
+  const formattedAddress = [client.addressLine1, addressLine2, cityStateZip]
     .filter((s) => s && s.length > 0)
     .join(" · ");
 
   const railActions: Array<{ key: string; label: string; href: string }> = [
-    { key: "notes", label: "Notes", href: `/clients/${patient.id}/notes${orgQ}` },
-    { key: "portal", label: "Portal access", href: `/clients/${patient.id}/portal${orgQ}` },
+    { key: "notes", label: "Notes", href: `/clients/${client.id}/notes${orgQ}` },
+    { key: "portal", label: "Portal access", href: `/clients/${client.id}/portal${orgQ}` },
   ];
   const railDisabled: Record<string, boolean> = {};
 
@@ -1120,10 +1120,10 @@ export default function PatientChartClient({
             ),
           )}
           <Link
-            href={`/clients/${patient.id}/intake${orgQ}`}
+            href={`/clients/${client.id}/intake${orgQ}`}
             className="summary-rail-action"
           >
-            Patient intake
+            Client intake
           </Link>
         </aside>
 
@@ -1415,42 +1415,42 @@ export default function PatientChartClient({
                 </div>
                 <div className="summary-field">
                   <label>Client ID</label>
-                  <span>{patient.id}</span>
+                  <span>{client.id}</span>
                 </div>
               </div>
             ) : (
               <div className="summary-form-grid">
                 <div className="summary-field">
                   <label>Initial</label>
-                  <span>{dashIfNullish(patient.preferredName ?? patient.firstName)}</span>
+                  <span>{dashIfNullish(client.preferredName ?? client.firstName)}</span>
                 </div>
                 <div className="summary-field">
                   <label>MRN</label>
-                  <span>{dashIfNullish(patient.mrn)}</span>
+                  <span>{dashIfNullish(client.mrn)}</span>
                 </div>
                 <div className="summary-field">
                   <label>First</label>
-                  <span>{dashIfNullish(patient.firstName)}</span>
+                  <span>{dashIfNullish(client.firstName)}</span>
                 </div>
                 <div className="summary-field">
                   <label>Last</label>
-                  <span>{dashIfNullish(patient.lastName)}</span>
+                  <span>{dashIfNullish(client.lastName)}</span>
                 </div>
                 <div className="summary-field">
                   <label>Middle</label>
-                  <span>{dashIfNullish(patient.middleName)}</span>
+                  <span>{dashIfNullish(client.middleName)}</span>
                 </div>
                 <div className="summary-field">
                   <label>DOB</label>
-                  <span>{patient.dateOfBirth ? formatDate(patient.dateOfBirth) : dash}</span>
+                  <span>{client.dateOfBirth ? formatDate(client.dateOfBirth) : dash}</span>
                 </div>
                 <div className="summary-field">
                   <label>Sex at birth</label>
-                  <span>{dashIfNullish(formatSexAtBirth(patient.sexAtBirth))}</span>
+                  <span>{dashIfNullish(formatSexAtBirth(client.sexAtBirth))}</span>
                 </div>
                 <div className="summary-field">
                   <label>Gender</label>
-                  <span>{dashIfNullish(formatGenderIdentity(patient.genderIdentity) ?? patient.pronouns)}</span>
+                  <span>{dashIfNullish(formatGenderIdentity(client.genderIdentity) ?? client.pronouns)}</span>
                 </div>
                 <div className="summary-field summary-field-wide">
                   <label>Address</label>
@@ -1458,31 +1458,31 @@ export default function PatientChartClient({
                 </div>
                 <div className="summary-field">
                   <label>Home phone</label>
-                  <span>{dashIfNullish(patient.phone)}</span>
+                  <span>{dashIfNullish(client.phone)}</span>
                 </div>
                 <div className="summary-field">
                   <label>Email</label>
-                  <span>{dashIfNullish(patient.email)}</span>
+                  <span>{dashIfNullish(client.email)}</span>
                 </div>
                 <div className="summary-field">
                   <label>Language</label>
-                  <span>{dashIfNullish(formatPreferredLanguage(patient.preferredLanguage))}</span>
+                  <span>{dashIfNullish(formatPreferredLanguage(client.preferredLanguage))}</span>
                 </div>
                 <div className="summary-field">
                   <label>Source client ID</label>
-                  <span>{dashIfNullish(patient.sourceClientId)}</span>
+                  <span>{dashIfNullish(client.sourceClientId)}</span>
                 </div>
                 <div className="summary-field">
                   <label>Emergency contact</label>
-                  <span>{dashIfNullish(patient.emergencyContactName)}</span>
+                  <span>{dashIfNullish(client.emergencyContactName)}</span>
                 </div>
                 <div className="summary-field">
                   <label>Emergency phone</label>
-                  <span>{dashIfNullish(patient.emergencyContactPhone)}</span>
+                  <span>{dashIfNullish(client.emergencyContactPhone)}</span>
                 </div>
                 <div className="summary-field">
                   <label>Client ID</label>
-                  <span>{patient.id}</span>
+                  <span>{client.id}</span>
                 </div>
               </div>
             )}
@@ -1949,7 +1949,7 @@ export default function PatientChartClient({
                                       aria-label="Apply to"
                                     >
                                       <option value="invoice">Invoice</option>
-                                      <option value="claim">Claim (patient resp.)</option>
+                                      <option value="claim">Claim (client resp.)</option>
                                     </select>
                                   </div>
                                   {draft.target === "claim" ? (
@@ -1963,7 +1963,7 @@ export default function PatientChartClient({
                                     >
                                       <option value="">
                                         {openClaims.length === 0
-                                          ? "No claims with patient responsibility"
+                                          ? "No claims with client responsibility"
                                           : "Select claim…"}
                                       </option>
                                       {openClaims.map((cl) => (
@@ -2033,7 +2033,7 @@ export default function PatientChartClient({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <h3 style={{ margin: 0 }}>Between-session journal</h3>
               <Link
-                href={`/clients/${patient.id}/journal${orgQ}`}
+                href={`/clients/${client.id}/journal${orgQ}`}
                 className="button button-secondary"
                 style={{ fontSize: 12, padding: "4px 10px" }}
               >
@@ -2071,12 +2071,12 @@ export default function PatientChartClient({
           </section>
         </div>
 
-        <aside className="summary-financial" aria-label="Patient financial summary">
+        <aside className="summary-financial" aria-label="Client financial summary">
           <section className="summary-financial-section">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <h3 style={{ margin: 0 }}>Eligibility</h3>
               <Link
-                href={`/clients/${patient.id}/eligibility${orgQ}`}
+                href={`/clients/${client.id}/eligibility${orgQ}`}
                 className="button button-secondary"
                 style={{ fontSize: 12, padding: "4px 10px" }}
               >
@@ -2155,7 +2155,7 @@ export default function PatientChartClient({
           </section>
 
           <section className="summary-financial-section">
-            <h3>Collect from patient today</h3>
+            <h3>Collect from client today</h3>
             <div className="summary-financial-row">
               <span>Co-pay for today</span>
               <strong>{formatMoneyOrDash(copay)}</strong>
@@ -2204,7 +2204,7 @@ export default function PatientChartClient({
         </aside>
       </section>
 
-      {/* Patient Intake section moved to its own tab at /clients/[id]/intake */}
+      {/* Client Intake section moved to its own tab at /clients/[id]/intake */}
 
       <section className="panel" style={{ marginBottom: "16px" }}>
         <h2>Mailroom Documents</h2>
@@ -2213,7 +2213,7 @@ export default function PatientChartClient({
           if (mailroomDocs.length === 0) {
             return (
               <p className="muted" style={{ margin: 0 }}>
-                No mailroom documents have been filed to this patient yet.
+                No mailroom documents have been filed to this client yet.
               </p>
             );
           }
@@ -2301,7 +2301,7 @@ export default function PatientChartClient({
               </button>
             </div>
             <CasesPanel
-              clientId={patient.id}
+              clientId={client.id}
               organizationId={organizationId}
               availablePolicies={policies.map((p) => ({
                 id: p.id,

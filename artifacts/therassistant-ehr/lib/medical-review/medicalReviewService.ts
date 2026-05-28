@@ -289,7 +289,7 @@ export async function loadMedicalReview({
     ((claims as DbRow[]) ?? []).map((c) => [text(c.id), c]),
   );
 
-  // Collect appt / patient / payer ids for fan-out.
+  // Collect appt / client / payer ids for fan-out.
   const apptIds = new Set<string>();
   const patientIds = new Set<string>();
   const payerProfileIds = new Set<string>();

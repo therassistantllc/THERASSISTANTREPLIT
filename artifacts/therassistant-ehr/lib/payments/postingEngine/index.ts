@@ -7,7 +7,7 @@
  *   3. Ledger writes (era_posting_ledger_entries)
  *   4. Parent updates (era_claim_payments.posting_status,
  *      professional_claims.claim_status)
- *   5. Patient invoice creation (when PR > 0 and client linked)
+ *   5. Client invoice creation (when PR > 0 and client linked)
  *   6. Workqueue closeout (era_mismatch / era_835_exception items)
  *   7. Audit log emission for every meaningful step
  *
@@ -127,8 +127,8 @@ export async function commitPosting(
     const { recordInsuranceRefund, recordPatientRefund } = await import("./reversal");
     const refundType =
       input.source.refundType ??
-      (input.source.target.kind === "client_payment" ? "patient" : "insurance");
-    const fn = refundType === "patient" ? recordPatientRefund : recordInsuranceRefund;
+      (input.source.target.kind === "client_payment" ? "client" : "insurance");
+    const fn = refundType === "client" ? recordPatientRefund : recordInsuranceRefund;
     const r = await fn(
       {
         organizationId: input.organizationId,
@@ -219,7 +219,7 @@ function refundResultToCommitResult(
   }
   // Dry-run: surface compensating-ledger preview as `effects` so existing
   // UI that already iterates result.effects "just works" for the confirm
-  // modal (insurance refunds only — patient refunds reduce invoice paid
+  // modal (insurance refunds only — client refunds reduce invoice paid
   // amount instead of writing a ledger row).
   if (r.preview?.compensatingLedgerEntry) {
     const e = r.preview.compensatingLedgerEntry;
@@ -403,13 +403,13 @@ async function commitEra835Posting(
         entryType: "patient_responsibility",
         amount: patientResponsibility,
         groupCode: "PR",
-        description: "Patient responsibility transferred from ERA 835 CLP05",
+        description: "Client responsibility transferred from ERA 835 CLP05",
       });
       result.effects.push({
         entryType: "patient_responsibility",
         amount: patientResponsibility,
         groupCode: "PR",
-        description: "Patient responsibility transferred from ERA 835 CLP05",
+        description: "Client responsibility transferred from ERA 835 CLP05",
       });
 
       patientInvoiceCreated = await createPatientInvoiceIfNeeded(
@@ -671,11 +671,11 @@ async function createPatientInvoiceIfNeeded(
       invoice_number: invoiceNumber(payment.id),
       source: "era_pr",
     },
-    summary: `Patient invoice ${invoiceNumber(payment.id)} created from ERA PR balance ${responsibility.toFixed(2)}`,
+    summary: `Client invoice ${invoiceNumber(payment.id)} created from ERA PR balance ${responsibility.toFixed(2)}`,
   });
   if (audit) auditSink.push(audit.id);
 
-  // Best-effort autopay: if the patient has autopay on with a saved
+  // Best-effort autopay: if the client has autopay on with a saved
   // card, charge the freshly-created invoice's PR balance immediately.
   try {
     const { attemptAutopayForInvoice } = await import("@/lib/payments/autopayService");

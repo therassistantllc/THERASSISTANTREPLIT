@@ -26,23 +26,23 @@ type Props = {
 const COMMON_CPT_CODES = [
   { code: "90834", description: "Psychotherapy, 45 minutes" },
   { code: "90837", description: "Psychotherapy, 60 minutes" },
-  { code: "90847", description: "Family psychotherapy (conjoint with patient), 50 minutes" },
+  { code: "90847", description: "Family psychotherapy (conjoint with client), 50 minutes" },
   { code: "90899", description: "Unlisted psychiatric service or procedure" },
-  { code: "99213", description: "Office visit, established patient, 20-29 min" },
-  { code: "99214", description: "Office visit, established patient, 30-39 min" },
+  { code: "99213", description: "Office visit, established client, 20-29 min" },
+  { code: "99214", description: "Office visit, established client, 30-39 min" },
   { code: "90833", description: "Psychotherapy, 30 minutes" },
-  { code: "99203", description: "Office visit, new patient, 30-39 min" },
-  { code: "99204", description: "Office visit, new patient, 40-54 min" },
+  { code: "99203", description: "Office visit, new client, 30-39 min" },
+  { code: "99204", description: "Office visit, new client, 40-54 min" },
   { code: "96160", description: "Psychological testing evaluation service" },
 ];
 
 const PLACE_OF_SERVICE_OPTIONS = [
   { code: "10", name: "Office" },
   { code: "02", name: "Telehealth" },
-  { code: "21", name: "Inpatient Hospital" },
-  { code: "22", name: "Outpatient Hospital" },
+  { code: "21", name: "Inclient Hospital" },
+  { code: "22", name: "Outclient Hospital" },
   { code: "23", name: "Emergency Dept" },
-  { code: "11", name: "Patient Home" },
+  { code: "11", name: "Client Home" },
   { code: "31", name: "Skilled Nursing Facility" },
 ];
 

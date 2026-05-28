@@ -193,7 +193,7 @@ function emitClaimSegments(ctx: BuildClaimContext): string[] {
     ]),
   );
 
-  // Loop 2000C — Patient HL (optional)
+  // Loop 2000C — Client HL (optional)
   if (hasPatientLoop) {
     const patientHl = hlCounter.value;
     hlCounter.value += 1;

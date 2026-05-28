@@ -156,7 +156,7 @@ export default function ProviderEnrollmentIssuesClient() {
     () => [
       { id: "practice", label: "Practice", kind: "select", options: practiceOptions },
       { id: "clinician", label: "Clinician", kind: "select", options: clinicianOptions },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "payer", label: "Payer", kind: "select", options: payerOptions },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },

@@ -6,7 +6,7 @@ import Link from "next/link";
 const TABS = [
   { label: "ERA Import", href: "/billing/payments/era", match: "/billing/payments/era" },
   { label: "Manual Insurance", href: "/billing/payments/manual-insurance", match: "/billing/payments/manual-insurance" },
-  { label: "Patient Payments", href: "/billing/payments/patient", match: "/billing/payments/patient" },
+  { label: "Client Payments", href: "/billing/payments/patient", match: "/billing/payments/patient" },
   { label: "Posted", href: "/billing/payments/posted", match: "/billing/payments/posted" },
   { label: "Audit", href: "/billing/payments/audit", match: "/billing/payments/audit" },
   { label: "ERA Queue", href: "/billing/payments", match: "exact:/billing/payments" },

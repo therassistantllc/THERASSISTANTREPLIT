@@ -2,7 +2,7 @@
  * POST /api/billing/patient-billing/cron/autopay-retry
  *
  * Daily retry sweep (Task #669). Re-runs `attemptAutopayForInvoice` for
- * patient invoices whose most recent autopay attempt is a failure and
+ * client invoices whose most recent autopay attempt is a failure and
  * whose backoff window (default 1d / 3d / 7d, max 3 retries) has
  * elapsed.
  *

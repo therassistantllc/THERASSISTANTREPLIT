@@ -269,19 +269,19 @@ export async function sendPayerDocumentationEmail(
 
   const safePayer = input.payerName.trim() || "Insurance Payer";
   const safePractice = input.practiceName.trim() || "the billing office";
-  const safePatient = input.patientName.trim() || "the patient";
+  const safeClient = input.patientName.trim() || "the client";
   const dosText = input.dateOfService
     ? new Date(input.dateOfService).toLocaleDateString()
     : "the date of service on file";
 
-  const subject = `Medical records — claim ${input.claimNumber} (${safePatient})`;
+  const subject = `Medical records — claim ${input.claimNumber} (${safeClient})`;
   const noteLine = input.note ? `\n\nNotes from the biller:\n${input.note}` : "";
   const fileList = input.attachments.map((a) => `  • ${a.filename}`).join("\n");
   const textBody =
     `${safePayer} records team,\n\n` +
     `Please find attached the documentation requested for the claim below.\n\n` +
     `Claim number: ${input.claimNumber}\n` +
-    `Patient: ${safePatient}\n` +
+    `Client: ${safeClient}\n` +
     `Date of service: ${dosText}\n` +
     `Attachments (${input.attachments.length}):\n${fileList}` +
     `${noteLine}\n\n` +
@@ -294,7 +294,7 @@ export async function sendPayerDocumentationEmail(
       <table style="font-size:14px;border-collapse:collapse;margin:12px 0;">
         <tbody>
           <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Claim number</td><td style="padding:4px 0;"><strong>${escapeHtml(input.claimNumber)}</strong></td></tr>
-          <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Patient</td><td style="padding:4px 0;">${escapeHtml(safePatient)}</td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Client</td><td style="padding:4px 0;">${escapeHtml(safeClient)}</td></tr>
           <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Date of service</td><td style="padding:4px 0;">${escapeHtml(dosText)}</td></tr>
         </tbody>
       </table>
@@ -371,13 +371,13 @@ export async function sendEligibilityRoutedEmail(
   const safeAssignee = input.assigneeName.trim() || "there";
   const kindLabel =
     input.kind === "clinician"
-      ? "verify a patient's insurance before their next visit"
+      ? "verify a client's insurance before their next visit"
       : "follow up on an eligibility issue";
   const routedBy = input.routedByName?.trim()
     ? `${input.routedByName.trim()} routed`
     : "A biller routed";
   const patientLine = input.patientName?.trim()
-    ? `Patient: ${input.patientName.trim()}`
+    ? `Client: ${input.patientName.trim()}`
     : null;
   const apptLine = input.appointmentAt
     ? `Appointment: ${formatExpiration(input.appointmentAt)}`
@@ -386,7 +386,7 @@ export async function sendEligibilityRoutedEmail(
 
   const baseSubject =
     input.kind === "clinician"
-      ? "Action needed: verify patient insurance"
+      ? "Action needed: verify client insurance"
       : "Action needed: resolve eligibility issue";
   const subject = input.isReminder
     ? `Reminder${input.reminderNumber && input.reminderNumber > 1 ? ` (#${input.reminderNumber})` : ""}: ${baseSubject}`
@@ -469,7 +469,7 @@ function formatRetryDate(iso: string | null): string {
 
 /**
  * Heads-up email sent just before the FINAL autopay retry attempt
- * (Task #732). Gives the patient a chance to update their saved card
+ * (Task #732). Gives the client a chance to update their saved card
  * before the card gets re-charged one last time.
  */
 export async function sendAutopayRetryNoticeEmail(
@@ -502,7 +502,7 @@ export async function sendAutopayRetryNoticeEmail(
   const textBody =
     `Hello ${safeName},\n\n` +
     `${safePractice} tried to automatically charge ${cardText} ${amountText} for your recent visit, but the card was declined.\n\n` +
-    `We will try one more time on ${dateText}. To avoid a manual collections call, please update your card on file before ${dateText} from your patient portal:\n\n` +
+    `We will try one more time on ${dateText}. To avoid a manual collections call, please update your card on file before ${dateText} from your client portal:\n\n` +
     `${input.portalUrl}\n\n` +
     `If you have already updated your card, no further action is needed.\n\n` +
     `Thank you,\n${safePractice}`;
@@ -576,10 +576,10 @@ export async function sendPortalInviteEmail(
   const safeName = input.patientName.trim() || "there";
   const safePractice = input.practiceName.trim() || "your care team";
 
-  const subject = `${safePractice}: your patient portal access`;
+  const subject = `${safePractice}: your client portal access`;
   const textBody =
     `Hello ${safeName},\n\n` +
-    `${safePractice} has invited you to access your patient portal.\n\n` +
+    `${safePractice} has invited you to access your client portal.\n\n` +
     `Open your portal: ${input.portalUrl}\n\n` +
     `This link expires on ${expirationText}. If the link has expired, contact the practice and we'll send a new one.\n\n` +
     `Thank you,\n${safePractice}`;
@@ -587,9 +587,9 @@ export async function sendPortalInviteEmail(
   const htmlBody = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #1f2937; max-width: 560px; margin: 0 auto;">
       <p>Hello ${escapeHtml(safeName)},</p>
-      <p><strong>${escapeHtml(safePractice)}</strong> has invited you to access your patient portal.</p>
+      <p><strong>${escapeHtml(safePractice)}</strong> has invited you to access your client portal.</p>
       <p style="margin: 24px 0;">
-        <a href="${escapeHtml(input.portalUrl)}" style="background:#2563eb;color:#ffffff;padding:12px 18px;border-radius:6px;text-decoration:none;display:inline-block;">Open your patient portal</a>
+        <a href="${escapeHtml(input.portalUrl)}" style="background:#2563eb;color:#ffffff;padding:12px 18px;border-radius:6px;text-decoration:none;display:inline-block;">Open your client portal</a>
       </p>
       <p style="font-size: 13px; color: #4b5563;">Or paste this link into your browser:<br/>
         <a href="${escapeHtml(input.portalUrl)}">${escapeHtml(input.portalUrl)}</a>
@@ -646,7 +646,7 @@ function formatMoneyForEmail(n: number): string {
 }
 
 /**
- * Notify a patient that an autopay charge against their saved card
+ * Notify a client that an autopay charge against their saved card
  * failed (Task #736). Copy branches on `failureKind`:
  *   - `authentication_required` → 3DS confirmation copy (their bank
  *     wants them to verify the charge from the portal; we re-bill
@@ -689,9 +689,9 @@ export async function sendAutopayFailureEmail(
 
   const introLine = is3ds
     ? `Your bank asked us to verify the ${amountText} autopay charge we tried to run on your ${cardSuffix}. ` +
-      `Tap the button below to confirm it from your patient portal — once you do, we'll re-run the charge automatically.`
+      `Tap the button below to confirm it from your client portal — once you do, we'll re-run the charge automatically.`
     : `We tried to run an autopay charge of ${amountText} on your ${cardSuffix} and it was declined. ` +
-      `Open your patient portal to update the card on file (or use a different card), and we'll charge the new card right away.`;
+      `Open your client portal to update the card on file (or use a different card), and we'll charge the new card right away.`;
 
   const textBody =
     `Hello ${safeName},\n\n` +

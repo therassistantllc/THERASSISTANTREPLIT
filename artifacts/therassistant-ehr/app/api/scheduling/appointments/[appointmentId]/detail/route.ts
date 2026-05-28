@@ -156,7 +156,7 @@ export async function GET(
       if (isStale && displayStatus !== "not_checked") displayStatus = "stale";
     }
 
-    // Open patient balance
+    // Open client balance
     let openBalance = 0;
     if (appt.client_id) {
       const { data: invoices } = await supabase

@@ -49,7 +49,7 @@ function statusLabel(status: string): string {
 }
 
 export default function PortalAccessClient({ clientId }: { clientId: string }) {
-  const [patient, setPatient] = useState<PatientLite | null>(null);
+  const [client, setClient] = useState<PatientLite | null>(null);
   const [portalStatus, setPortalStatus] = useState<string>("not_invited");
   const [invites, setInvites] = useState<PortalInvite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,9 +65,9 @@ export default function PortalAccessClient({ clientId }: { clientId: string }) {
         fetch(`/api/portal/invites?clientId=${encodeURIComponent(clientId)}`, { cache: "no-store" }),
       ]);
       const summaryJson = await summaryRes.json().catch(() => null);
-      const p = summaryJson?.patient ?? summaryJson?.data?.patient ?? null;
+      const p = summaryJson?.client ?? summaryJson?.data?.client ?? null;
       if (summaryRes.ok && p) {
-        setPatient({
+        setClient({
           id: p.id ?? clientId,
           firstName: p.firstName ?? p.first_name ?? null,
           lastName: p.lastName ?? p.last_name ?? null,
@@ -95,7 +95,7 @@ export default function PortalAccessClient({ clientId }: { clientId: string }) {
   async function revokeInvite(inviteId: string) {
     if (typeof window !== "undefined") {
       const ok = window.confirm(
-        "Revoke this pending portal invite? The patient will not be able to use the existing link.",
+        "Revoke this pending portal invite? The client will not be able to use the existing link.",
       );
       if (!ok) return;
     }
@@ -138,7 +138,7 @@ export default function PortalAccessClient({ clientId }: { clientId: string }) {
       const url =
         typeof window !== "undefined" ? `${window.location.origin}${json.invite.url}` : json.invite.url;
       if (delivery === "email") {
-        const to = json.email?.to ?? "the patient";
+        const to = json.email?.to ?? "the client";
         setMessage(`Portal invite emailed to ${to}.`);
       } else {
         try {
@@ -160,17 +160,17 @@ export default function PortalAccessClient({ clientId }: { clientId: string }) {
     }
   }
 
-  const patientName = patient
-    ? [patient.firstName, patient.lastName].filter(Boolean).join(" ") || "this patient"
-    : "this patient";
-  const hasEmail = Boolean(patient?.email);
+  const patientName = client
+    ? [client.firstName, client.lastName].filter(Boolean).join(" ") || "this client"
+    : "this client";
+  const hasEmail = Boolean(client?.email);
   const activeInvite = invites.find((inv) => inv.status === "pending") ?? null;
 
   return (
     <section className="summary-block" aria-label="Portal access" style={{ maxWidth: 720 }}>
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div>
-          <h2 style={{ margin: 0 }}>Patient portal access</h2>
+          <h2 style={{ margin: 0 }}>Client portal access</h2>
           <p className="muted" style={{ margin: "4px 0 0" }}>
             Manage portal invites for {patientName}.
           </p>
@@ -211,7 +211,7 @@ export default function PortalAccessClient({ clientId }: { clientId: string }) {
               </div>
             ) : (
               <div style={{ marginTop: 8, fontSize: 13, color: "#4b5563" }}>
-                No active invite. Send one below to give the patient portal access.
+                No active invite. Send one below to give the client portal access.
               </div>
             )}
           </div>
@@ -224,7 +224,7 @@ export default function PortalAccessClient({ clientId }: { clientId: string }) {
               disabled={busy || !hasEmail}
               title={
                 hasEmail
-                  ? `Email portal invite to ${patient?.email}`
+                  ? `Email portal invite to ${client?.email}`
                   : "No email on file — add one to the chart to email an invite"
               }
             >

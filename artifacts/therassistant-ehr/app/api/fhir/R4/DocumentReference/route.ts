@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     const baseUrl = baseUrlOf(request);
     const { searchParams } = new URL(request.url);
 
-    const patient = safeTerm(stripRefPrefix(searchParams.get("patient"), "Patient"));
+    const client = safeTerm(stripRefPrefix(searchParams.get("client"), "Client"));
     const type = safeTerm(searchParams.get("type") || "");
     const count = toFiniteInt(searchParams.get("_count"), 20, 1, 200);
     const offset = toFiniteInt(searchParams.get("_offset"), 0, 0, 100000);
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false })
       .range(offset, offset + count - 1);
 
-    if (patient) query = query.eq("client_id", patient);
+    if (client) query = query.eq("client_id", client);
     if (type) query = query.eq("document_type", type);
 
     const { data, error, count: total } = await query;

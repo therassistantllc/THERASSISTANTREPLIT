@@ -76,7 +76,7 @@
     "message": "Claim is missing the subscriber / member ID.",
     "fixRoute": "/patients",
     "whyItMatters": "The subscriber's payer member ID is required for the payer to identify the policy. Without it, the claim cannot be matched to coverage.",
-    "resolution": "Open the patient chart, edit the insurance policy, and enter the subscriber's member ID.",
+    "resolution": "Open the client chart, edit the insurance policy, and enter the subscriber's member ID.",
     "conditions": {
       "all": [
         { "fact": "parties", "path": "$.hasSubscriberMemberId", "operator": "equal", "value": false }
@@ -132,7 +132,7 @@
     "severity": "blocking",
     "message": "One or more telehealth service lines (POS 02 / 10) are missing a telehealth modifier (95, GT, GQ, or FQ).",
     "fixRoute": "/encounters",
-    "whyItMatters": "Most payers require an explicit telehealth modifier when POS is 02 (telehealth other than home) or 10 (telehealth in patient's home). Claims without the modifier are denied as missing required information.",
+    "whyItMatters": "Most payers require an explicit telehealth modifier when POS is 02 (telehealth other than home) or 10 (telehealth in client's home). Claims without the modifier are denied as missing required information.",
     "resolution": "Add the appropriate telehealth modifier (typically 95 for synchronous audio/video) to every service line on this claim.",
     "conditions": {
       "all": [
@@ -214,10 +214,10 @@
     "id": "claim.payer_subscriber_relationship_missing",
     "category": "claimPayerRules",
     "severity": "blocking",
-    "message": "Payer requires subscriber-relationship details, but patient identity on the claim is incomplete.",
+    "message": "Payer requires subscriber-relationship details, but client identity on the claim is incomplete.",
     "fixRoute": "/patients",
-    "whyItMatters": "When the patient is not the subscriber (e.g. a dependent), the payer needs the patient's name and DOB to adjudicate against the right policy. Missing fields cause denials for incorrect patient identification.",
-    "resolution": "On the patient chart, confirm whether the patient is the subscriber. If not, enter the patient's last name and DOB, then regenerate the claim party snapshot.",
+    "whyItMatters": "When the client is not the subscriber (e.g. a dependent), the payer needs the client's name and DOB to adjudicate against the right policy. Missing fields cause denials for incorrect client identification.",
+    "resolution": "On the client chart, confirm whether the client is the subscriber. If not, enter the client's last name and DOB, then regenerate the claim party snapshot.",
     "conditions": {
       "all": [
         { "fact": "payerRules", "path": "$.subscriberRelationshipMissing", "operator": "equal", "value": true }

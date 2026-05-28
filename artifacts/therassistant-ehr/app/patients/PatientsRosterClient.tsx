@@ -292,7 +292,7 @@ export default function PatientsRosterClient({
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") loadClients(query); }}
           placeholder="Search name, email, phone, insurance, DOB…"
-          aria-label="Search patients"
+          aria-label="Search clients"
         />
         <span className={styles.searchHint} aria-hidden>Enter</span>
         <button
@@ -329,7 +329,7 @@ export default function PatientsRosterClient({
         })}
       </div>
 
-      {/* ── 4. Patient roster ── */}
+      {/* ── 4. Client roster ── */}
       <div className={styles.rosterHeader}>
         <h2 className={styles.rosterTitle}>Roster</h2>
         {!loading ? (
@@ -339,9 +339,9 @@ export default function PatientsRosterClient({
         ) : null}
       </div>
 
-      {loading ? <div className={styles.loading}>Loading patients…</div> : null}
+      {loading ? <div className={styles.loading}>Loading clients…</div> : null}
       {!loading && filteredClients.length === 0 ? (
-        <div className={styles.empty}>No patients match this filter.</div>
+        <div className={styles.empty}>No clients match this filter.</div>
       ) : null}
 
       {filteredClients.length > 0 ? (

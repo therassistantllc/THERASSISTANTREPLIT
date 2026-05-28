@@ -24,7 +24,7 @@ export default function BadDebtReviewPage() {
         { id: "written_off", label: "Written Off" },
       ]}
       columns={[
-        { id: "patient", header: "Patient", cell: (r) => String(r.patient ?? "—") },
+        { id: "client", header: "Client", cell: (r) => String(r.client ?? "—") },
         { id: "guarantor", header: "Guarantor", cell: (r) => String(r.guarantor ?? "—") },
         {
           id: "balance",
@@ -50,7 +50,7 @@ export default function BadDebtReviewPage() {
         { id: "reopen", label: "Reopen" },
       ]}
       detailFields={[
-        { label: "Patient", value: (r) => String(r.patient ?? "—") },
+        { label: "Client", value: (r) => String(r.client ?? "—") },
         { label: "Balance", value: (r) => formatMoney(r.balance) },
         { label: "Oldest DOS", value: (r) => formatDate(r.oldest_dos) },
         { label: "Last payment", value: (r) => formatDate(r.last_payment) },

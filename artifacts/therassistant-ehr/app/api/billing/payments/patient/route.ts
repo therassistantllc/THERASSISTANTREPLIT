@@ -1,7 +1,7 @@
 /**
  * POST /api/billing/payments/patient
  *
- * Records a patient payment (Stripe / cash / check / external_card /
+ * Records a client payment (Stripe / cash / check / external_card /
  * refund / unapplied_credit / transferred_balance) and applies it to an
  * invoice, encounter, claim, or the client's account-balance bucket.
  * Reuses any existing Stripe webhook/charge id supplied — does NOT create
@@ -142,7 +142,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: err.message }, { status: 404 });
     }
     return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : "Patient payment posting failed" },
+      { ok: false, error: err instanceof Error ? err.message : "Client payment posting failed" },
       { status: 500 },
     );
   }

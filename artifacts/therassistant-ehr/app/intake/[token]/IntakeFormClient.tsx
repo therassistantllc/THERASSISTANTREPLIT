@@ -48,7 +48,7 @@ function buildSurveyJson(data: IntakeData) {
     pageNextText: "Continue",
     pagePrevText: "Back",
     completeText: "Submit intake",
-    title: "Patient Intake",
+    title: "Client Intake",
     description: `For ${data.organization.name}. Please complete each section before your first visit.`,
     pages: [
       {

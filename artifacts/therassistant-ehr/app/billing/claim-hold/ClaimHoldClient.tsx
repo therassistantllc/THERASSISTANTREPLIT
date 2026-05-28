@@ -781,7 +781,7 @@ export default function ClaimHoldClient() {
         options: clinicians.map((c) => ({ value: c.id, label: c.displayName })),
       },
       { id: "payer", label: "Payer", kind: "select", options: payerOptions },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },
       {
@@ -1001,7 +1001,7 @@ export default function ClaimHoldClient() {
         render: () =>
           selectedRow ? (
             <div>
-              <DetailKV label="Patient" value={selectedRow.patientName} />
+              <DetailKV label="Client" value={selectedRow.patientName} />
               <DetailKV label="Member ID" value={selectedRow.memberId ?? "—"} />
               <DetailKV label="Payer" value={selectedRow.payerName} />
               <DetailKV label="Claim #" value={selectedRow.claimNumber} />

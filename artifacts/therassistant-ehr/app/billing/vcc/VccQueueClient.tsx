@@ -664,7 +664,7 @@ export default function VccQueueClient() {
         kind: "select",
         options: payers.map((p) => ({ value: p, label: p })),
       },
-      { id: "client", label: "Client", kind: "text", placeholder: "Patient name…" },
+      { id: "client", label: "Client", kind: "text", placeholder: "Client name…" },
       { id: "dosFrom", label: "DOS from", kind: "date" },
       { id: "dosTo", label: "DOS to", kind: "date" },
       {
@@ -966,7 +966,7 @@ export default function VccQueueClient() {
           selectedRow ? (
             selectedRow.claimId ? (
               <div>
-                <DetailKV label="Patient" value={selectedRow.clientName ?? "—"} />
+                <DetailKV label="Client" value={selectedRow.clientName ?? "—"} />
                 <DetailKV label="Claim #" value={selectedRow.claimNumber ?? selectedRow.claimId} />
                 <DetailKV
                   label="Claim status"

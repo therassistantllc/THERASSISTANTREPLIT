@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import SoapNoteEditor, { SoapNoteData } from "@/components/encounter/SoapNoteEditor";
 import DiagnosisPicker, { Diagnosis } from "@/components/encounter/DiagnosisPicker";
 import CptCodePanel, { ServiceLine } from "@/components/encounter/CptCodePanel";
@@ -111,6 +111,7 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
     auditSummary: string;
     formSummary: string;
   } | null>(null);
+  const codingHelperFrameRef = useRef<HTMLIFrameElement | null>(null);
 
   const personalTemplates = useMemo(
     () => templates.filter((t) => t.provider_id !== null),
@@ -207,38 +208,34 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
     };
   }, [medicaidSuggestions]);
 
-  function buildCodingHelperReport() {
-    const recommendationLines =
-      medicaidSuggestions?.recommendations
-        .filter((rec) => rec.action !== "do_not_suggest")
-        .map((rec) => `${rec.code}: ${rec.explanation}`) ?? [];
+  function readGeneratedReportFromHelper(): {
+    id: string;
+    date: string;
+    codes: string;
+    auditSummary: string;
+    formSummary: string;
+  } | null {
+    const helperWindow = codingHelperFrameRef.current?.contentWindow as (Window & {
+      latestCodingReport?: {
+        id?: string;
+        date?: string;
+        codes?: string;
+        auditSummary?: string;
+        formSummary?: string;
+      };
+    }) | null;
 
+    if (!helperWindow?.latestCodingReport) return null;
+
+    const report = helperWindow.latestCodingReport;
     return {
-      id: `encounter-${encounterId}-${Date.now()}`,
-      date: new Date().toISOString().slice(0, 10),
-      codes: codingHelperSummary.codes.join(", "),
-      auditSummary: codingHelperSummary.auditSummary,
-      formSummary: [
-        `Service date: ${summary?.encounter?.service_date ?? "not documented"}`,
-        `Primary diagnosis count: ${diagnoses.filter((d) => d.is_primary).length}`,
-        `Service lines coded: ${serviceLines.filter((s) => !!s.cpt_hcpcs_code).length}`,
-        recommendationLines.length > 0 ? `Recommendations:\n${recommendationLines.join("\n")}` : "",
-        soapNote.subjective ? `Subjective: ${soapNote.subjective}` : "",
-        soapNote.objective ? `Objective: ${soapNote.objective}` : "",
-        soapNote.assessment ? `Assessment: ${soapNote.assessment}` : "",
-        soapNote.plan ? `Plan: ${soapNote.plan}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
+      id: String(report.id ?? `encounter-${encounterId}-${Date.now()}`),
+      date: String(report.date ?? new Date().toISOString().slice(0, 10)),
+      codes: String(report.codes ?? ""),
+      auditSummary: String(report.auditSummary ?? ""),
+      formSummary: String(report.formSummary ?? ""),
     };
   }
-
-  useEffect(() => {
-    if (!showCodingHelper) return;
-    setGeneratedCodingReport(buildCodingHelperReport());
-    // Keep modal responsive to live note edits while open.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showCodingHelper, soapNote, diagnoses, serviceLines, medicaidSuggestions]);
 
   const claimReadinessChecks = useMemo((): ClaimReadinessCheck[] => {
     return [
@@ -533,8 +530,13 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
     setMessage(null);
 
     try {
-      const reportToSave = generatedCodingReport ?? buildCodingHelperReport();
-      if (!generatedCodingReport) setGeneratedCodingReport(reportToSave);
+      let reportToSave = generatedCodingReport;
+      if (!reportToSave) {
+        reportToSave = await generateCodingHelperReport();
+      }
+      if (!reportToSave) {
+        throw new Error("Generate the coding report first.");
+      }
 
       const response = await fetch(`/api/encounters/${encounterId}/coding-report`, {
         method: "POST",
@@ -568,12 +570,32 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
     }
   }
 
-  function generateCodingHelperReport() {
-    const report = buildCodingHelperReport();
+  async function generateCodingHelperReport() {
+    const helperWindow = codingHelperFrameRef.current?.contentWindow as (Window & {
+      generateAll?: () => void;
+    }) | null;
+
+    if (!helperWindow) {
+      setError("Coding helper is still loading. Please try again in a moment.");
+      return null;
+    }
+
+    try {
+      helperWindow.generateAll?.();
+    } catch {
+      // Best effort: report may already be present.
+    }
+
+    const report = readGeneratedReportFromHelper();
+    if (!report) {
+      setError("The coding helper did not return a report. Complete the questions and click Generate Report again.");
+      return null;
+    }
 
     setGeneratedCodingReport(report);
     setMessage("Coding helper report generated. Review and save when ready.");
     setError(null);
+    return report;
   }
 
   async function signNote() {
@@ -1002,6 +1024,15 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
                   <strong>Documentation warnings:</strong> {medicaidSuggestions.globalWarnings.join(" | ")}
                 </p>
               ) : null}
+            </div>
+
+            <div style={{ marginTop: 12, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+              <iframe
+                ref={codingHelperFrameRef}
+                title="Clinical Coding Helper"
+                src="/clinical-coding-tool.html"
+                style={{ width: "100%", minHeight: "70vh", border: "none" }}
+              />
             </div>
 
             {generatedCodingReport ? (

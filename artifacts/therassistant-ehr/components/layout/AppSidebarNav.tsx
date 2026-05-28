@@ -172,7 +172,7 @@ function active(pathname: string, prefixes: string[], exact = false): boolean {
 
 const PAYMENTS_PREFIXES = [
   "/billing/era-import", "/billing/patient-balances", "/billing/denials",
-  "/billing/charge-capture", "/billing/payments", "/billing/unmatched-era",
+  "/billing/payments", "/billing/unmatched-era",
   "/billing/paper-checks", "/billing/partial-payments", "/billing/unposted-payments",
   "/billing/recoupments", "/billing/refunds", "/billing/credit-balances",
   "/billing/vcc", "/billing/reconciliation-exceptions",
@@ -194,7 +194,7 @@ export default function AppSidebarNav() {
 
   const billingExpanded = billingOpen || billingRouteActive;
   const adminExpanded = adminOpen || adminActive;
-  const paymentsExpanded = paymentsOpen || paymentsActive;
+  const paymentsExpanded = billingExpanded || paymentsOpen || paymentsActive;
 
   return (
     <nav className={styles.nav} aria-label="Primary navigation">
@@ -226,7 +226,8 @@ export default function AppSidebarNav() {
       {billingExpanded ? (
         <div className={styles.subnav}>
           <SubNavLinkIcon href="/billing/my-inbox" icon={<TasksIcon />} label="Dashboard" prefixes={["/billing/my-inbox", "/billing/executive-priority"]} pathname={pathname} badge={<MyInboxBadge />} />
-          <SubNavLinkIcon href="/billing/claims" icon={<ClipboardIcon />} label="Claims" prefixes={["/billing/claims", "/billing/documentation-pending", "/billing/no-response", "/billing/claim-readiness", "/billing/denials-by-carc", "/billing/claim-submission", "/billing/underpayments", "/billing/timely-filing", "/billing/837p-batches", "/billing/batches", "/billing/claim-edit-dashboard", "/billing/duplicate-claim-review", "/billing/aging", "/billing/rejections-999", "/billing/rejections-277ca", "/billing/payer-rejections", "/billing/resubmissions", "/billing/corrected-claims", "/billing/submitted-claims", "/billing/payer-received", "/billing/medical-review", "/billing/medical-necessity", "/billing/appeals", "/billing/cob-issues", "/billing/secondary-billing", "/billing/transmission-failures", "/billing/claim-build-errors", "/billing/claim-hold", "/billing/ready-to-generate", "/billing/eligibility-issues", "/billing/authorization-required", "/billing/provider-enrollment-issues", "/billing/partial-denials", "/billing/adjustments-review"]} pathname={pathname} />
+          <SubNavLinkIcon href="/billing/charge-capture" icon={<ClipboardIcon />} label="Charges" prefixes={["/billing/charge-capture", "/billing/charges"]} pathname={pathname} />
+          <SubNavLinkIcon href="/billing/claims" icon={<ClipboardIcon />} label="Claims" prefixes={["/billing/claims", "/billing/documentation-pending", "/billing/no-response", "/billing/claim-readiness", "/billing/denials-by-carc", "/billing/denials-by-rarc", "/billing/claim-submission", "/billing/underpayments", "/billing/timely-filing", "/billing/837p-batches", "/billing/batches", "/billing/claim-edit-dashboard", "/billing/duplicate-claim-review", "/billing/aging", "/billing/rejections-999", "/billing/rejections-277ca", "/billing/payer-rejections", "/billing/resubmissions", "/billing/corrected-claims", "/billing/submitted-claims", "/billing/payer-received", "/billing/medical-review", "/billing/medical-necessity", "/billing/appeals", "/billing/cob-issues", "/billing/secondary-billing", "/billing/transmission-failures", "/billing/claim-build-errors", "/billing/claim-hold", "/billing/ready-to-generate", "/billing/eligibility-issues", "/billing/authorization-required", "/billing/provider-enrollment-issues", "/billing/partial-denials", "/billing/adjustments-review", "/billing/audit-queue", "/billing/compliance-audit", "/billing/compliance-holds", "/billing/orphaned-batches", "/billing/blocked-claims"]} pathname={pathname} />
 
           {/* ── Payments submenu ───────────────────────────────────── */}
           <button
@@ -243,10 +244,9 @@ export default function AppSidebarNav() {
 
           {paymentsExpanded ? (
             <div style={{ paddingLeft: 12 }}>
-              <SubNavLinkIcon href="/billing/era-import" icon={<CreditCardIcon />} label="ERA" prefixes={["/billing/era-import", "/billing/payments", "/billing/unmatched-era", "/billing/paper-checks", "/billing/partial-payments", "/billing/unposted-payments", "/billing/recoupments", "/billing/refunds", "/billing/credit-balances", "/billing/vcc", "/billing/reconciliation-exceptions"]} pathname={pathname} />
+              <SubNavLinkIcon href="/billing/era-import" icon={<CreditCardIcon />} label="ERA" prefixes={["/billing/era-import", "/billing/payments", "/billing/unmatched-era", "/billing/paper-checks", "/billing/partial-payments", "/billing/unposted-payments", "/billing/recoupments", "/billing/refunds", "/billing/credit-balances", "/billing/vcc", "/billing/reconciliation-exceptions", "/billing/fax-queue", "/billing/orphaned-batches"]} pathname={pathname} />
               <SubNavLinkIcon href="/billing/patient-balances" icon={<UsersIcon />} label="Patient Balances" prefixes={["/billing/patient-balances", "/billing/patient-responsibility", "/billing/patient-billing", "/billing/bad-debt-review", "/billing/write-offs"]} pathname={pathname} />
               <SubNavLinkIcon href="/billing/denials" icon={<XCircleIcon />} label="Denials" prefixes={["/billing/denials"]} pathname={pathname} />
-              <SubNavLinkIcon href="/billing/charge-capture" icon={<ClipboardIcon />} label="Charges / Charge Capture" prefixes={["/billing/charge-capture"]} pathname={pathname} />
             </div>
           ) : null}
 

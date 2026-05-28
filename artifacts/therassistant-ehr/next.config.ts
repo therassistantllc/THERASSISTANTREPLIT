@@ -18,7 +18,6 @@ import type { NextConfig } from "next";
  * The detail route /billing/claims/[claimId] is excluded.
  */
 const claimRedirects: Array<{ from: string; tab: string; filter?: string }> = [
-  { from: "/billing/charge-capture", tab: "needs_attention" },
   { from: "/billing/documentation-pending", tab: "needs_attention" },
   { from: "/billing/eligibility-issues", tab: "needs_attention" },
   { from: "/billing/authorization-required", tab: "needs_attention" },

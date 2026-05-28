@@ -1,119 +1,92 @@
 "use client";
 
 /**
- * Charge Capture workqueue (Task #353).
+ * Charges / Charge Capture
  *
- * Composed on the universal `WorkqueueShell` with the spec's six tabs,
- * fourteen columns, universal filter rail, seven detail-panel
- * sections, and the row/panel actions (Approve, Hold, Route back,
- * Change code, Add modifier, Release).
+ * Operational charge queue. When a clinician signs a note the charge is
+ * created and routed here. Charges are auto-batched by Payer ID + TIN.
  *
- * Data comes from:
- *   - GET  /api/billing/charge-capture           (list + tab counts)
- *   - GET  /api/billing/charge-capture/:id       (per-row detail)
- *   - PATCH /api/billing/charge-capture/:id      (edit + status actions)
- *   - POST /api/billing/charge-capture/release   (release to claims)
+ * Top section  — Batch panel: one card per batch, grouped by payer/TIN.
+ *               Actions: Download 837, Submit Batch (stub), Mark as Submitted.
+ *
+ * Bottom section — Dense charge queue.
+ *               Columns: Patient, DOS, CPT, Provider, Status, Actions.
+ *               Statuses: Missing DX | Unsigned | Ready | Hold
+ *               Row actions: Edit charge, Attach diagnosis,
+ *                            Review authorization, Release to billing.
+ *
+ * Data sources:
+ *   GET  /api/billing/charges/batches         — batches grouped by payer/TIN
+ *   GET  /api/billing/charge-capture          — per-charge queue rows
+ *   POST /api/billing/charges/batches/:id/download    — 837 file
+ *   POST /api/billing/charges/batches/:id/submit      — electronic (stub)
+ *   POST /api/billing/charges/batches/:id/mark-submitted
+ *   PATCH /api/billing/charge-capture/:id             — edit/status change
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_ORG_ID } from "@/lib/config";
-import styles from "./charge-capture.module.css";
-import CodeCombobox, { describeCodeForSaveError, fetchChildCodes, validateCode } from "./CodeCombobox";
-import type { CodeOption, CodeValidation } from "./CodeCombobox";
-import WorkqueueShell, {
-  type ColumnDef,
-  type SummaryMetric,
-  type FilterDef,
-  type DetailTab,
-  type PrimaryAction,
-  type RowAction,
-} from "@/components/billing/WorkqueueShell";
-import PlaceClaimOnHoldModal from "@/components/billing/PlaceClaimOnHoldModal";
-import { getWorkqueue } from "@/lib/billing/workqueues";
 
-// ── Types matching the new list API ────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-type TabId =
-  | "ready_for_review"
-  | "documentation_missing"
-  | "coding_mismatch"
-  | "eligibility_auth_issue"
-  | "held_charges"
-  | "released_to_claims";
+function getOrgId() {
+  if (typeof window === "undefined") return DEFAULT_ORG_ID;
+  return (
+    new URLSearchParams(window.location.search).get("organizationId") ||
+    process.env.NEXT_PUBLIC_ORGANIZATION_ID ||
+    DEFAULT_ORG_ID
+  );
+}
 
-const TABS: Array<{ id: TabId; label: string }> = [
-  { id: "ready_for_review", label: "Ready for Review" },
-  { id: "documentation_missing", label: "Documentation Missing" },
-  { id: "coding_mismatch", label: "Coding Mismatch" },
-  { id: "eligibility_auth_issue", label: "Eligibility/Auth Issue" },
-  { id: "held_charges", label: "Held Charges" },
-  { id: "released_to_claims", label: "Released to Claims" },
-];
+function fmtDate(v: string | null) {
+  if (!v) return "—";
+  const d = new Date(v + (v.includes("T") ? "" : "T00:00:00"));
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
-interface ListRow {
+function fmtMoney(n: number) {
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type ChargeStatus = "Missing DX" | "Unsigned" | "Ready" | "Hold";
+
+interface ChargeRow {
   id: string;
   chargeStatus: string;
-  tab: TabId;
+  tab: string;
   dateOfService: string | null;
   client: { id: string; name: string; dob: string | null };
   clinician: string;
-  appointment: {
-    id: string | null;
-    type: string;
-    status: string;
-    startAt: string | null;
-    endAt: string | null;
-    durationMin: number | null;
-  };
-  encounter: {
-    id: string | null;
-    noteStatus: string;
-    noteSigned: boolean;
-    billingFieldsComplete: boolean;
-    summary: string | null;
-  };
-  payer: { id: string; name: string; category: string | null } | null;
-  policy: { id: string; planName: string | null; memberId: string | null } | null;
   providerSelectedCode: string | null;
   systemSuggestedCode: string | null;
+  encounter: {
+    id: string | null;
+    noteSigned: boolean;
+    billingFieldsComplete: boolean;
+    noteStatus: string;
+  };
   codingAlerts: string[];
-  eligibility: {
-    status: string | null;
-    checkedAt: string | null;
-    authorizationRequired: boolean;
-    rawStatusText: string | null;
-  } | null;
-  authorization: { status: string; number: string | null };
-  chargeAmount: number;
-  agingDays: number | null;
   blockers: string[];
-  actionNeeded: string;
-  claimId: string | null;
-}
-
-interface ListResponse {
-  success: boolean;
-  error?: string;
-  items?: ListRow[];
-  totalItems?: number;
-  tabCounts?: Record<TabId, number>;
-}
-
-// ── Detail types (per-row GET) ─────────────────────────────────────────
-
-type ServiceLine = {
-  lineNumber: number;
-  procedureCode: string;
-  serviceDateFrom: string | null;
-  serviceDateTo: string | null;
-  modifiers: string[];
-  diagnosisPointers: string[];
-  units: number;
-  unitOfMeasure: string;
   chargeAmount: number;
-  placeOfService: string | null;
-  renderingProviderNpi: string | null;
-  authorizationNumber: string | null;
-};
+  claimId: string | null;
+  payer: { id: string; name: string } | null;
+  authorization: { status: string; number: string | null };
+}
+
+interface Batch {
+  id: string;
+  batchNumber: string;
+  status: string;
+  claimCount: number;
+  totalChargeAmount: number;
+  payerName: string;
+  billingProviderTaxId: string | null;
+  submittedAt: string | null;
+  generatedFileName: string | null;
+}
 
 interface ChargeDetail {
   id: string;
@@ -121,1009 +94,946 @@ interface ChargeDetail {
   serviceDate: string | null;
   placeOfService: string | null;
   totalCharge: number;
-  blockerReasons: unknown[];
-  client: { id: string; firstName: string; lastName: string; dateOfBirth: string | null; accountNumber: string | null } | null;
-  provider: { id: string; displayName: string; credential: string | null; npi: string | null } | null;
+  claimId: string | null;
+  client: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    displayName: string;
+    dateOfBirth: string | null;
+    accountNumber: string | null;
+  } | null;
+  provider: {
+    id: string;
+    displayName: string;
+    credential: string | null;
+    npi: string | null;
+  } | null;
   payer: { id: string; name: string; payerType: string | null } | null;
-  policy: { id: string; planName: string | null; policyNumber: string | null; subscriberId: string | null; copay: number; deductible: number; coinsurancePercent: number; priority: string | null } | null;
+  policy: {
+    planName: string | null;
+    policyNumber: string | null;
+    subscriberId: string | null;
+  } | null;
   diagnoses: string[];
-  appointment: { id: string; type: string | null; status: string | null; startAt: string | null; endAt: string | null; cptCode: string | null; memo: string | null } | null;
-  encounter: { id: string; status: string | null; billingFieldsComplete: boolean; sessionSummary: string | null; startedAt: string | null; endedAt: string | null; caseId: string | null } | null;
-  eligibility: { status: string | null; checkedAt: string | null; authorizationRequired: boolean; rawStatusText: string | null; copay: number; deductibleRemaining: number } | null;
-  serviceLines: ServiceLine[];
+  serviceLines: Array<{
+    lineNumber: number;
+    procedureCode: string;
+    serviceDateFrom: string | null;
+    serviceDateTo: string | null;
+    modifiers: string[];
+    diagnosisPointers: string[];
+    units: number;
+    chargeAmount: number;
+    placeOfService: string | null;
+    renderingProviderNpi: string | null;
+    authorizationNumber: string | null;
+  }>;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────
-
-function getOrganizationId(): string {
-  if (typeof window === "undefined") return DEFAULT_ORG_ID;
-  const params = new URLSearchParams(window.location.search);
-  return params.get("organizationId") || process.env.NEXT_PUBLIC_ORGANIZATION_ID || DEFAULT_ORG_ID;
+interface EditSL {
+  procedureCode: string;
+  serviceDateFrom: string;
+  serviceDateTo: string;
+  modifiers: string;
+  diagnosisPointers: string;
+  units: string;
+  chargeAmount: string;
+  placeOfService: string;
+  renderingProviderNpi: string;
+  authorizationNumber: string;
 }
 
-function money(v: number): string {
-  return v.toLocaleString(undefined, { style: "currency", currency: "USD" });
+function slInputStyle(w: number): React.CSSProperties {
+  return { width: w, padding: "4px 6px", border: "1px solid #CBD5E1", borderRadius: 4, fontSize: 12, boxSizing: "border-box" };
 }
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString();
+// ── Status derivation ─────────────────────────────────────────────────────────
+
+function deriveStatus(r: ChargeRow): ChargeStatus {
+  if (r.tab === "held_charges" || r.chargeStatus === "blocked") return "Hold";
+  if (!r.encounter.noteSigned) return "Unsigned";
+  if (
+    r.codingAlerts.length > 0 ||
+    r.blockers.some((b) => /diag|dx|cpt|code/i.test(b)) ||
+    !r.encounter.billingFieldsComplete
+  ) return "Missing DX";
+  return "Ready";
 }
 
-function fmtMinutes(min: number | null): string {
-  if (min == null) return "—";
-  return `${min} min`;
-}
-
-const POS_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "11", label: "11 - Office" },
-  { value: "02", label: "02 - Telehealth (other)" },
-  { value: "10", label: "10 - Telehealth in home" },
-  { value: "12", label: "12 - Home" },
-  { value: "53", label: "53 - Community Mental Health" },
-  { value: "99", label: "99 - Other" },
-];
-
-const EMPTY_LINE: ServiceLine = {
-  lineNumber: 0,
-  procedureCode: "",
-  serviceDateFrom: null,
-  serviceDateTo: null,
-  modifiers: [],
-  diagnosisPointers: ["1"],
-  units: 1,
-  unitOfMeasure: "UN",
-  chargeAmount: 0,
-  placeOfService: null,
-  renderingProviderNpi: null,
-  authorizationNumber: null,
+const STATUS_STYLE: Record<ChargeStatus, { bg: string; color: string }> = {
+  "Missing DX": { bg: "#FEF2F2", color: "#991B1B" },
+  "Unsigned":   { bg: "#FFFBEB", color: "#92400E" },
+  "Ready":      { bg: "#F0FDF4", color: "#166534" },
+  "Hold":       { bg: "#FFF7ED", color: "#C2410C" },
 };
 
-const queueDef = getWorkqueue("charge_capture");
+// ── Batch status style ────────────────────────────────────────────────────────
 
-// ── Component ──────────────────────────────────────────────────────────
-
-function HeaderChildSuggestions({ parent, onPick }: { parent: string; onPick: (code: string) => void }) {
-  const [children, setChildren] = useState<CodeOption[]>([]);
-  const [loading, setLoading] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setChildren([]);
-    void fetchChildCodes("diagnosis", parent, 8).then((items) => {
-      if (cancelled) return;
-      setChildren(items);
-      setLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [parent]);
-  if (loading) return <div style={{ marginTop: 4, fontSize: 10.5, color: "#94A3B8" }}>Loading billable codes under {parent}…</div>;
-  if (children.length === 0) return null;
-  return (
-    <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
-      <span style={{ fontSize: 10.5, color: "#64748B" }}>Try:</span>
-      {children.map((c) => (
-        <button key={c.code} type="button" onMouseDown={(e) => { e.preventDefault(); onPick(c.code.toUpperCase()); }}
-          title={c.description}
-          style={{ fontFamily: "ui-monospace, monospace", fontSize: 10.5, padding: "1px 6px", borderRadius: 10,
-            border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#0F172A", cursor: "pointer", lineHeight: 1.5 }}>
-          {c.code}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function chargeStatusBadge(r: ListRow): { label: string; bg: string; color: string } {
-  if (r.tab === "held_charges") return { label: "Hold", bg: "#FFF7ED", color: "#C2410C" };
-  if (!r.encounter.noteSigned) return { label: "Unsigned", bg: "#FFFBEB", color: "#92400E" };
-  if (r.blockers.some((b) => /diag/i.test(String(b))) || r.codingAlerts.some((a) => /diag/i.test(a)) || !r.encounter.billingFieldsComplete) {
-    return { label: "Missing DX", bg: "#FEF2F2", color: "#991B1B" };
+function batchStatusStyle(s: string): { bg: string; color: string } {
+  switch (s.toLowerCase()) {
+    case "submitted": case "accepted": return { bg: "#F0FDF4", color: "#166534" };
+    case "generated": case "ready_to_generate": return { bg: "#EFF6FF", color: "#1D4ED8" };
+    case "failed": case "rejected": return { bg: "#FEF2F2", color: "#991B1B" };
+    default: return { bg: "#F8FAFC", color: "#475569" };
   }
-  return { label: "Ready", bg: "#F0FDF4", color: "#166534" };
 }
+
+function batchStatusLabel(s: string): string {
+  switch (s.toLowerCase()) {
+    case "ready_to_generate": return "Ready";
+    case "generated": return "Generated";
+    case "submitted": return "Submitted";
+    case "accepted": return "Accepted";
+    case "failed": return "Failed";
+    case "rejected": return "Rejected";
+    default: return s.replace(/_/g, " ");
+  }
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export default function ChargeCaptureClient() {
-  const organizationId = useMemo(() => getOrganizationId(), []);
+  const orgId = useMemo(() => getOrgId(), []);
 
-  const [items, setItems] = useState<ListRow[]>([]);
-  const [tabCounts, setTabCounts] = useState<Record<TabId, number>>({} as Record<TabId, number>);
-  const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<ChargeDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [acting, setActing] = useState(false);
-  const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  const [invalidDx, setInvalidDx] = useState<Map<string, CodeValidation>>(new Map());
-  const [invalidProc, setInvalidProc] = useState<Map<string, CodeValidation>>(new Map());
+  // Batches
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [batchLoading, setBatchLoading] = useState(true);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchTotals, setBatchTotals] = useState({ totalUnbilledCharges: 0, pendingBatches: 0, readyToSubmit: 0 });
+  const [busyBatch, setBusyBatch] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<TabId>("ready_for_review");
-  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
-  const [holdTarget, setHoldTarget] = useState<{
-    claimId: string;
-    subtitle: string;
-    sourceRowId: string;
-  } | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [bulkHoldOpen, setBulkHoldOpen] = useState(false);
+  // Generate batches
+  const [generating, setGenerating] = useState(false);
+  const [generateResult, setGenerateResult] = useState<{ batchesCreated: number; claimsQueued: number; message?: string } | null>(null);
 
-  // ── List fetch ─────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!organizationId) { setLoading(false); return; }
-    setLoading(true);
-    const params = new URLSearchParams({ organizationId, tab: activeTab });
-    for (const [k, v] of Object.entries(filterValues)) {
-      if (v && v.length > 0) params.set(k, v);
-    }
-    fetch(`/api/billing/charge-capture?${params.toString()}`, { cache: "no-store" })
-      .then((r) => r.json() as Promise<ListResponse>)
-      .then((json) => {
-        if (json.success && json.items) {
-          setItems(json.items);
-          setTabCounts((prev) => ({ ...prev, ...(json.tabCounts ?? {}) }));
-          if (json.items.length > 0 && (!selectedId || !json.items.some((i) => i.id === selectedId))) {
-            setSelectedId(json.items[0].id);
-          }
-        } else {
-          setItems([]);
-        }
-      })
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organizationId, reloadKey, activeTab, JSON.stringify(filterValues)]);
+  // Charge queue
+  const [charges, setCharges] = useState<ChargeRow[]>([]);
+  const [queueLoading, setQueueLoading] = useState(true);
+  const [queueError, setQueueError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<ChargeStatus | "all">("all");
+  const [search, setSearch] = useState("");
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
 
-  // ── Detail fetch ───────────────────────────────────────────────────
-  useEffect(() => {
-    if (!selectedId) { setDetail(null); return; }
-    setDetailLoading(true);
-    fetch(`/api/billing/charge-capture/${encodeURIComponent(selectedId)}?organizationId=${encodeURIComponent(organizationId)}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((json) => { if (json.success) setDetail(json.detail); else setDetail(null); })
-      .catch(() => setDetail(null))
-      .finally(() => setDetailLoading(false));
-  }, [selectedId, organizationId, reloadKey]);
+  // CMS-1500 Edit modal
+  const [editRow, setEditRow] = useState<ChargeRow | null>(null);
+  const [editDetail, setEditDetail] = useState<ChargeDetail | null>(null);
+  const [editDetailLoading, setEditDetailLoading] = useState(false);
+  const [editDiagnoses, setEditDiagnoses] = useState<string[]>([]);
+  const [editPlaceOfService, setEditPlaceOfService] = useState("");
+  const [editPriorAuth, setEditPriorAuth] = useState("");
+  const [editServiceLines, setEditServiceLines] = useState<EditSL[]>([]);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
-  // ── Filter rail (universal set) ────────────────────────────────────
-  const clinicianOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of items) if (r.clinician && r.clinician !== "—") set.add(r.clinician);
-    return [...set].map((v) => ({ value: v, label: v }));
-  }, [items]);
-  const payerOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of items) if (r.payer?.name) set.add(r.payer.name);
-    return [...set].map((v) => ({ value: v, label: v }));
-  }, [items]);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const filters: FilterDef[] = useMemo(
-    () => [
-      { id: "practice", label: "Practice", kind: "text", placeholder: "Practice" },
-      { id: "clinician", label: "Clinician", kind: "select", options: clinicianOptions },
-      { id: "payer", label: "Payer", kind: "select", options: payerOptions },
-      { id: "client", label: "Client", kind: "text", placeholder: "Name or CPT…" },
-      { id: "dosFrom", label: "DOS from", kind: "date" },
-      { id: "dosTo", label: "DOS to", kind: "date" },
-      {
-        id: "status",
-        label: "Status",
-        kind: "select",
-        options: [
-          { value: "captured", label: "Captured" },
-          { value: "ready_for_claim", label: "Ready for claim" },
-          { value: "claim_created", label: "Claim created" },
-          { value: "blocked", label: "Blocked" },
-          { value: "voided", label: "Voided" },
-        ],
-      },
-      { id: "assignedBiller", label: "Assigned biller", kind: "text", placeholder: "Biller" },
-      { id: "minAmount", label: "Min $", kind: "number", placeholder: "0" },
-      { id: "maxAmount", label: "Max $", kind: "number", placeholder: "" },
-      {
-        id: "agingBucket",
-        label: "Aging",
-        kind: "select",
-        options: [
-          { value: "0-7", label: "0-7 days" },
-          { value: "8-14", label: "8-14 days" },
-          { value: "15-30", label: "15-30 days" },
-          { value: "30+", label: "30+ days" },
-        ],
-      },
-      { id: "carcRarc", label: "CARC/RARC", kind: "text", placeholder: "Code" },
-      {
-        id: "priority",
-        label: "Priority",
-        kind: "select",
-        options: [{ value: "urgent", label: "Urgent only" }],
-      },
-      { id: "followUpDue", label: "Follow-up due", kind: "date" },
-    ],
-    [clinicianOptions, payerOptions],
-  );
+  function showToast(msg: string) {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  }
 
-  // ── Client-side filters the backend doesn't apply (aging bucket / max $) ──
-  const visibleItems = useMemo(() => {
-    let list = items;
-    const v = filterValues;
-    if (v.maxAmount) {
-      const max = Number(v.maxAmount);
-      if (Number.isFinite(max)) list = list.filter((r) => r.chargeAmount <= max);
-    }
-    if (v.agingBucket) {
-      list = list.filter((r) => {
-        const a = r.agingDays ?? 0;
-        switch (v.agingBucket) {
-          case "0-7": return a <= 7;
-          case "8-14": return a >= 8 && a <= 14;
-          case "15-30": return a >= 15 && a <= 30;
-          case "30+": return a > 30;
-          default: return true;
-        }
-      });
-    }
-    return list;
-  }, [items, filterValues]);
+  // ── Loaders ──────────────────────────────────────────────────────────────
 
-  // ── Summary metrics ────────────────────────────────────────────────
-  const summary: SummaryMetric[] = useMemo(() => {
-    const dollars = visibleItems.reduce((s, r) => s + (r.chargeAmount || 0), 0);
-    const ages = visibleItems.map((r) => r.agingDays ?? 0);
-    const oldest = ages.length > 0 ? Math.max(...ages) : 0;
-    const urgent = visibleItems.filter(
-      (r) => r.tab === "documentation_missing" || r.tab === "coding_mismatch" || r.tab === "eligibility_auth_issue" || r.tab === "held_charges",
-    ).length;
-    return [
-      { id: "count", label: "Open charges", value: visibleItems.length.toLocaleString() },
-      { id: "dollars", label: "Total charges", value: money(dollars) },
-      { id: "oldest", label: "Oldest (days)", value: oldest, tone: oldest > 14 ? "red" : oldest > 7 ? "amber" : "default" },
-      { id: "urgent", label: "Urgent", value: urgent, tone: urgent > 0 ? "amber" : "default" },
-    ];
-  }, [visibleItems]);
-
-  // ── Spec columns (14 total) ────────────────────────────────────────
-  const columns: ColumnDef<ListRow>[] = useMemo(
-    () => [
-      { id: "dos", header: "Date of service", cell: (r) => fmtDate(r.dateOfService) },
-      {
-        id: "client",
-        header: "Client",
-        cell: (r) => (
-          <>
-            <span style={{ fontWeight: 600, color: "#0F172A", display: "block" }}>{r.client.name}</span>
-            <span style={{ fontSize: 11, color: "#94A3B8" }}>{r.client.dob ? `DOB ${fmtDate(r.client.dob)}` : ""}</span>
-          </>
-        ),
-      },
-      { id: "clinician", header: "Clinician", cell: (r) => r.clinician },
-      { id: "apptType", header: "Appointment type", cell: (r) => r.appointment.type },
-      { id: "apptStatus", header: "Appointment status", cell: (r) => r.appointment.status },
-      {
-        id: "noteStatus",
-        header: "Note status",
-        cell: (r) => (
-          <span style={{ color: r.encounter.noteSigned ? "#059669" : "#D97706", fontWeight: 600, fontSize: 12 }}>
-            {r.encounter.noteStatus}
-          </span>
-        ),
-      },
-      { id: "duration", header: "Duration", cell: (r) => fmtMinutes(r.appointment.durationMin) },
-      {
-        id: "providerCode",
-        header: "Provider-selected code",
-        cell: (r) => <span style={{ fontFamily: "ui-monospace, monospace" }}>{r.providerSelectedCode ?? "—"}</span>,
-      },
-      {
-        id: "suggestedCode",
-        header: "System-suggested code",
-        cell: (r) => <span style={{ fontFamily: "ui-monospace, monospace", color: "#475569" }}>{r.systemSuggestedCode ?? "—"}</span>,
-      },
-      {
-        id: "codingAlert",
-        header: "Coding alert",
-        cell: (r) =>
-          r.codingAlerts.length > 0 ? (
-            <span style={{ fontSize: 11, color: "#991B1B", background: "#FEE2E2", padding: "1px 6px", borderRadius: 4 }}>
-              {r.codingAlerts[0]}
-            </span>
-          ) : (
-            <span style={{ color: "#94A3B8" }}>—</span>
-          ),
-      },
-      {
-        id: "eligibility",
-        header: "Eligibility status",
-        cell: (r) => (r.eligibility?.status ? r.eligibility.status : <span style={{ color: "#94A3B8" }}>—</span>),
-      },
-      {
-        id: "auth",
-        header: "Auth status",
-        cell: (r) => (r.authorization?.status ? r.authorization.status : <span style={{ color: "#94A3B8" }}>—</span>),
-      },
-      {
-        id: "charge",
-        header: "Charge amount",
-        align: "right",
-        cell: (r) => <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{money(r.chargeAmount)}</span>,
-      },
-      {
-        id: "chargeBadge",
-        header: "Status",
-        cell: (r) => {
-          const s = chargeStatusBadge(r);
-          return (
-            <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: s.bg, color: s.color, whiteSpace: "nowrap" }}>
-              {s.label}
-            </span>
-          );
-        },
-      },
-      {
-        id: "actionNeeded",
-        header: "Action needed",
-        cell: (r) => <span style={{ fontSize: 12, color: "#475569" }}>{r.actionNeeded}</span>,
-      },
-    ],
-    [],
-  );
-
-  // ── Detail editor helpers ──────────────────────────────────────────
-  const updateLine = useCallback((idx: number, patch: Partial<ServiceLine>) => {
-    setDetail((prev) => {
-      if (!prev) return prev;
-      const lines = prev.serviceLines.map((l, i) => (i === idx ? { ...l, ...patch } : l));
-      const total = lines.reduce((s, l) => s + (l.chargeAmount || 0) * (l.units || 0), 0);
-      return { ...prev, serviceLines: lines, totalCharge: Math.round(total * 100) / 100 };
-    });
-  }, []);
-
-  const addLine = useCallback(() => {
-    setDetail((prev) => prev ? {
-      ...prev,
-      serviceLines: [...prev.serviceLines, {
-        ...EMPTY_LINE,
-        lineNumber: prev.serviceLines.length + 1,
-        serviceDateFrom: prev.serviceDate,
-        serviceDateTo: prev.serviceDate,
-        placeOfService: prev.placeOfService,
-        renderingProviderNpi: prev.provider?.npi ?? null,
-      }],
-    } : prev);
-  }, []);
-
-  const removeLine = useCallback((idx: number) => {
-    setDetail((prev) => {
-      if (!prev) return prev;
-      const lines = prev.serviceLines.filter((_, i) => i !== idx);
-      const total = lines.reduce((s, l) => s + (l.chargeAmount || 0) * (l.units || 0), 0);
-      return { ...prev, serviceLines: lines, totalCharge: Math.round(total * 100) / 100 };
-    });
-  }, []);
-
-  const updateDiagnosis = useCallback((idx: number, value: string) => {
-    setDetail((prev) => {
-      if (!prev) return prev;
-      const dx = [...prev.diagnoses];
-      while (dx.length <= idx) dx.push("");
-      dx[idx] = value.toUpperCase();
-      while (dx.length > 0 && !dx[dx.length - 1]) dx.pop();
-      return { ...prev, diagnoses: dx };
-    });
-  }, []);
-
-  const validateAllCodes = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
-    if (!detail) return { ok: true };
-    const dxCodes = detail.diagnoses.map((d) => d.trim().toUpperCase()).filter(Boolean);
-    const procCodes = detail.serviceLines.map((l) => l.procedureCode.trim().toUpperCase()).filter(Boolean);
-    const dxBad = new Map<string, CodeValidation>();
-    const procBad = new Map<string, CodeValidation>();
-    await Promise.all([
-      ...dxCodes.map(async (c) => { const v = await validateCode("diagnosis", c); if (v.status !== "active") dxBad.set(c, v); }),
-      ...procCodes.map(async (c) => { const v = await validateCode("procedure", c); if (v.status !== "active") procBad.set(c, v); }),
-    ]);
-    setInvalidDx(dxBad);
-    setInvalidProc(procBad);
-    if (dxBad.size === 0 && procBad.size === 0) return { ok: true };
-    const parts: string[] = [];
-    if (dxBad.size) parts.push(`ICD-10: ${[...dxBad.entries()].map(([c, v]) => describeCodeForSaveError(c, v)).join(", ")}`);
-    if (procBad.size) parts.push(`CPT/HCPCS: ${[...procBad.entries()].map(([c, v]) => describeCodeForSaveError(c, v)).join(", ")}`);
-    return { ok: false, reason: parts.join(" · ") };
-  }, [detail]);
-
-  const saveCharge = useCallback(async () => {
-    if (!detail || saving) return;
-    setSaving(true);
-    setMessage(null);
+  const loadBatches = useCallback(async () => {
+    setBatchLoading(true);
+    setBatchError(null);
     try {
-      const codeCheck = await validateAllCodes();
-      if (!codeCheck.ok) {
-        setMessage({ tone: "error", text: codeCheck.reason ?? "Invalid codes" });
-        setSaving(false);
-        return;
+      const res = await fetch(`/api/billing/charges/batches?organizationId=${encodeURIComponent(orgId)}`, { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error ?? "Failed to load batches");
+      setBatches(json.batches ?? []);
+      setBatchTotals(json.totals ?? { totalUnbilledCharges: 0, pendingBatches: 0, readyToSubmit: 0 });
+    } catch (e) {
+      setBatchError(e instanceof Error ? e.message : "Failed to load batches");
+    } finally {
+      setBatchLoading(false);
+    }
+  }, [orgId]);
+
+  const loadCharges = useCallback(async () => {
+    setQueueLoading(true);
+    setQueueError(null);
+    try {
+      const res = await fetch(`/api/billing/charge-capture?organizationId=${encodeURIComponent(orgId)}`, { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error ?? "Failed to load charges");
+      setCharges(json.items ?? []);
+    } catch (e) {
+      setQueueError(e instanceof Error ? e.message : "Failed to load charges");
+    } finally {
+      setQueueLoading(false);
+    }
+  }, [orgId]);
+
+  useEffect(() => { void loadBatches(); void loadCharges(); }, [loadBatches, loadCharges]);
+
+  // ── Generate 837P batches from ready charges ─────────────────────────────
+
+  async function generateBatches() {
+    setGenerating(true);
+    setGenerateResult(null);
+    try {
+      const res = await fetch("/api/billing/charges/batches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId: orgId }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error ?? "Failed to generate batches");
+      setGenerateResult({ batchesCreated: json.batchesCreated ?? 0, claimsQueued: json.claimsQueued ?? 0, message: json.message });
+      if ((json.batchesCreated ?? 0) > 0) {
+        showToast(`Generated ${json.batchesCreated} batch${json.batchesCreated === 1 ? "" : "es"} covering ${json.claimsQueued} claim${json.claimsQueued === 1 ? "" : "s"}. Download the 837P files below and upload to Availity.`);
+      } else {
+        showToast(json.message ?? "No new batches were created.");
       }
+      await loadBatches();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to generate batches");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  // ── Batch actions ─────────────────────────────────────────────────────────
+
+  async function batchAction(batchId: string, action: "submit" | "mark-submitted") {    setBusyBatch(batchId);
+    try {
+      const res = await fetch(`/api/billing/charges/batches/${encodeURIComponent(batchId)}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId: orgId }),
+      });
+      const json = await res.json();
+      if (action === "submit" && !json.success) {
+        // Submit not yet wired — show informational message, not error
+        showToast("Electronic submission not yet active. Download 837 and upload to Availity, then click Mark Submitted.");
+      } else if (!res.ok || !json.success) {
+        throw new Error(json.error ?? `Failed to ${action}`);
+      } else {
+        showToast(action === "mark-submitted" ? "Batch marked as submitted." : "Batch submitted.");
+      }
+      await loadBatches();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : `Failed to ${action}`);
+    } finally {
+      setBusyBatch(null);
+    }
+  }
+
+  // ── Charge row actions ────────────────────────────────────────────────────
+
+  async function chargeAction(chargeId: string, action: "hold" | "release" | "approve") {
+    setActionBusy(chargeId + action);
+    try {
+      const statusMap: Record<string, string> = {
+        hold: "blocked",
+        release: "released_to_claims",
+        approve: "ready_for_review",
+      };
+      const res = await fetch(`/api/billing/charge-capture/${encodeURIComponent(chargeId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId: orgId, chargeStatus: statusMap[action] }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to ${action}`);
+      showToast(
+        action === "hold" ? "Charge placed on hold." :
+        action === "release" ? "Charge released to billing." :
+        "Charge approved."
+      );
+      await loadCharges();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  // ── Open edit modal (fetch full detail) ─────────────────────────────────
+
+  async function openEditModal(r: ChargeRow) {
+    setEditRow(r);
+    setEditDetail(null);
+    setEditDetailLoading(true);
+    setEditError(null);
+    try {
       const res = await fetch(
-        `/api/billing/charge-capture/${encodeURIComponent(detail.id)}?organizationId=${encodeURIComponent(organizationId)}`,
-        {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            diagnoses: detail.diagnoses,
-            placeOfService: detail.placeOfService,
-            serviceDate: detail.serviceDate,
-            serviceLines: detail.serviceLines.map((l) => ({
-              procedureCode: l.procedureCode,
-              serviceDateFrom: l.serviceDateFrom,
-              serviceDateTo: l.serviceDateTo,
-              modifiers: l.modifiers,
-              diagnosisPointers: l.diagnosisPointers,
-              units: l.units,
-              chargeAmount: l.chargeAmount,
-              placeOfService: l.placeOfService,
-              renderingProviderNpi: l.renderingProviderNpi,
-              authorizationNumber: l.authorizationNumber,
-            })),
-          }),
-        },
+        `/api/billing/charge-capture/${encodeURIComponent(r.id)}?organizationId=${encodeURIComponent(orgId)}`,
+        { cache: "no-store" },
       );
       const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.error || "Save failed");
-      setMessage({ tone: "success", text: "Charge saved." });
-      setReloadKey((k) => k + 1);
-    } catch (e) {
-      setMessage({ tone: "error", text: e instanceof Error ? e.message : "Save failed" });
-    } finally {
-      setSaving(false);
-    }
-  }, [detail, saving, validateAllCodes, organizationId]);
-
-  // ── Status-changing actions ────────────────────────────────────────
-  const runAction = useCallback(
-    async (chargeId: string, action: "approve" | "hold" | "route_back", reason?: string) => {
-      if (acting) return;
-      setActing(true);
-      setMessage(null);
-
-      // Optimistic update — flip the row's status / tab locally so the
-      // table reflects the action without a full reload.
-      setItems((prev) =>
-        prev.map((r) => {
-          if (r.id !== chargeId) return r;
-          if (action === "approve") return { ...r, chargeStatus: "ready_for_claim", tab: "ready_for_review", actionNeeded: "Release to claims" };
-          return { ...r, chargeStatus: "blocked", tab: "held_charges", actionNeeded: action === "hold" ? "Resolve hold" : "Awaiting clinician" };
-        }),
+      if (!res.ok || !json.detail) throw new Error(json.error ?? "Failed to load charge detail");
+      const d: ChargeDetail = json.detail;
+      setEditDetail(d);
+      setEditDiagnoses(d.diagnoses.length > 0 ? d.diagnoses : [""]);
+      setEditPlaceOfService(d.placeOfService ?? "");
+      setEditPriorAuth(d.serviceLines[0]?.authorizationNumber ?? "");
+      const MAX_DX = 12;
+      const padded = [...d.diagnoses, ...Array(Math.max(0, MAX_DX - d.diagnoses.length)).fill("")].slice(0, MAX_DX);
+      setEditDiagnoses(padded);
+      setEditServiceLines(
+        d.serviceLines.length > 0
+          ? d.serviceLines.map((sl) => ({
+              procedureCode: sl.procedureCode,
+              serviceDateFrom: sl.serviceDateFrom ?? d.serviceDate ?? "",
+              serviceDateTo: sl.serviceDateTo ?? d.serviceDate ?? "",
+              modifiers: sl.modifiers.join(", "),
+              diagnosisPointers: sl.diagnosisPointers.join(", "),
+              units: String(sl.units),
+              chargeAmount: String(sl.chargeAmount),
+              placeOfService: sl.placeOfService ?? d.placeOfService ?? "",
+              renderingProviderNpi: sl.renderingProviderNpi ?? d.provider?.npi ?? "",
+              authorizationNumber: sl.authorizationNumber ?? "",
+            }))
+          : [{
+              procedureCode: r.providerSelectedCode ?? r.systemSuggestedCode ?? "",
+              serviceDateFrom: d.serviceDate ?? "",
+              serviceDateTo: d.serviceDate ?? "",
+              modifiers: "",
+              diagnosisPointers: "A",
+              units: "1",
+              chargeAmount: String(d.totalCharge),
+              placeOfService: d.placeOfService ?? "",
+              renderingProviderNpi: d.provider?.npi ?? "",
+              authorizationNumber: "",
+            }],
       );
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : "Failed to load charge");
+    } finally {
+      setEditDetailLoading(false);
+    }
+  }
 
-      try {
-        const res = await fetch(
-          `/api/billing/charge-capture/${encodeURIComponent(chargeId)}?organizationId=${encodeURIComponent(organizationId)}`,
-          {
-            method: "PATCH",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ action, actionReason: reason ?? "" }),
-          },
-        );
-        const json = await res.json();
-        if (!res.ok || !json.success) throw new Error(json.error || "Action failed");
-        const label = action === "approve" ? "Approved" : action === "hold" ? "Placed on hold" : "Routed back to clinician";
-        setMessage({ tone: "success", text: label });
-        setReloadKey((k) => k + 1);
-      } catch (e) {
-        setMessage({ tone: "error", text: e instanceof Error ? e.message : "Action failed" });
-        setReloadKey((k) => k + 1); // revert via refetch
-      } finally {
-        setActing(false);
+  // ── Edit save ─────────────────────────────────────────────────────────────
+
+  async function saveEdit() {
+    if (!editRow) return;
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const diagnoses = editDiagnoses.map((s) => s.trim().toUpperCase()).filter(Boolean);
+      const serviceLines = editServiceLines.map((sl) => ({
+        procedureCode: sl.procedureCode.trim(),
+        serviceDateFrom: sl.serviceDateFrom.trim() || undefined,
+        serviceDateTo: sl.serviceDateTo.trim() || undefined,
+        modifiers: sl.modifiers.split(",").map((s) => s.trim()).filter(Boolean),
+        diagnosisPointers: sl.diagnosisPointers.split(",").map((s) => s.trim()).filter(Boolean),
+        units: Number(sl.units) || 1,
+        chargeAmount: parseFloat(sl.chargeAmount) || 0,
+        placeOfService: sl.placeOfService.trim() || null,
+        renderingProviderNpi: sl.renderingProviderNpi.trim() || null,
+        authorizationNumber: sl.authorizationNumber.trim() || null,
+      }));
+      const body: Record<string, unknown> = {
+        organizationId: orgId,
+        diagnoses,
+        serviceLines,
+        placeOfService: editPlaceOfService.trim() || null,
+      };
+      const res = await fetch(`/api/billing/charge-capture/${encodeURIComponent(editRow.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error ?? "Save failed");
+      showToast("Charge updated.");
+      setEditRow(null);
+      await loadCharges();
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  // ── Filtered charge queue ─────────────────────────────────────────────────
+
+  const visibleCharges = useMemo(() => {
+    return charges.filter((r) => {
+      const status = deriveStatus(r);
+      if (statusFilter !== "all" && status !== statusFilter) return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        if (
+          !r.client.name.toLowerCase().includes(q) &&
+          !r.clinician.toLowerCase().includes(q) &&
+          !(r.providerSelectedCode ?? "").toLowerCase().includes(q)
+        ) return false;
       }
-    },
-    [acting, organizationId],
-  );
+      return true;
+    });
+  }, [charges, statusFilter, search]);
 
-  const releaseCharge = useCallback(
-    async (chargeId: string) => {
-      if (acting) return;
-      setActing(true);
-      setMessage(null);
-      try {
-        const res = await fetch(`/api/billing/charge-capture/release`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ organizationId, chargeCaptureIds: [chargeId] }),
-        });
-        const json = await res.json();
-        if (!res.ok || !json.success) throw new Error(json.error || "Release failed");
-        const first = json.results?.[0];
-        if (first && first.ok === false) {
-          setMessage({ tone: "error", text: first.errors?.[0]?.message ?? "Release failed" });
-        } else {
-          setMessage({ tone: "success", text: "Released to claims." });
-        }
-        setReloadKey((k) => k + 1);
-      } catch (e) {
-        setMessage({ tone: "error", text: e instanceof Error ? e.message : "Release failed" });
-      } finally {
-        setActing(false);
-      }
-    },
-    [acting, organizationId],
-  );
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { "Missing DX": 0, "Unsigned": 0, "Ready": 0, "Hold": 0 };
+    for (const r of charges) counts[deriveStatus(r)]++;
+    return counts;
+  }, [charges]);
 
-  // ── Detail panel sections (spec) ───────────────────────────────────
-  const renderApptDetails = useCallback(() => {
-    if (!detail) return <div style={{ padding: 16, color: "#94A3B8" }}>Select a row to see details.</div>;
-    const a = detail.appointment;
-    return (
-      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
-        <Row label="Client" value={detail.client ? `${detail.client.lastName}, ${detail.client.firstName}` : "—"} />
-        <Row label="DOB" value={fmtDate(detail.client?.dateOfBirth ?? null)} />
-        <Row label="Account #" value={detail.client?.accountNumber ?? "—"} />
-        <Row label="Appointment type" value={a?.type ?? "—"} />
-        <Row label="Appointment status" value={a?.status ?? "—"} />
-        <Row label="Scheduled" value={a?.startAt ? `${new Date(a.startAt).toLocaleString()} → ${a.endAt ? new Date(a.endAt).toLocaleTimeString() : "?"}` : "—"} />
-        <Row label="Service date" value={fmtDate(detail.serviceDate)} />
-        <Row label="Place of service" value={detail.placeOfService ?? "—"} />
-        <Row label="Provider" value={detail.provider?.displayName ?? "—"} />
-        <Row label="NPI" value={detail.provider?.npi ?? "—"} />
-        {a?.memo ? <Row label="Memo" value={a.memo} /> : null}
-      </div>
-    );
-  }, [detail]);
+  // ── Render ────────────────────────────────────────────────────────────────
 
-  const renderNotePreview = useCallback(() => {
-    if (!detail) return <div style={{ padding: 16, color: "#94A3B8" }}>Select a row to see details.</div>;
-    const e = detail.encounter;
-    if (!e) return <div style={{ padding: 16, color: "#94A3B8" }}>No encounter linked.</div>;
-    return (
-      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
-        <Row label="Note status" value={e.status ?? "—"} />
-        <Row label="Billing fields complete" value={e.billingFieldsComplete ? "Yes" : "No"} />
-        <Row label="Started" value={e.startedAt ? new Date(e.startedAt).toLocaleString() : "—"} />
-        <Row label="Ended" value={e.endedAt ? new Date(e.endedAt).toLocaleString() : "—"} />
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: "16px 20px", maxWidth: 1400, margin: "0 auto" }}>
+
+      {/* ── Page header ── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: "#64748B", textTransform: "uppercase", marginBottom: 4 }}>Signed note preview</div>
-          <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 6, padding: 10, fontSize: 12.5, color: "#1E293B", whiteSpace: "pre-wrap", maxHeight: 320, overflow: "auto" }}>
-            {e.sessionSummary?.trim() || "No session summary recorded."}
-          </div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0F172A" }}>Charges</h1>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748B" }}>
+            Release charges, then generate 837P batches by payer / TIN, download, and upload to Availity.
+          </p>
         </div>
-        {e.id ? (
-          <a href={`/encounters/${e.id}`} style={{ fontSize: 12.5, color: "#3B82F6" }}>Open full encounter →</a>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => { void loadBatches(); void loadCharges(); }}
+          style={{ padding: "7px 14px", borderRadius: 6, border: "1px solid #CBD5E1", background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+        >
+          ↺ Refresh
+        </button>
       </div>
-    );
-  }, [detail]);
 
-  const renderTreatmentPlan = useCallback(() => {
-    if (!detail) return <div style={{ padding: 16, color: "#94A3B8" }}>Select a row to see details.</div>;
-    const caseId = detail.encounter?.caseId ?? null;
-    return (
-      <div style={{ padding: 12, fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
-        {caseId ? (
-          <>
-            <Row label="Case" value={caseId} />
-            <a href={`/clients/${detail.client?.id ?? ""}/cases/${caseId}/treatment-plan`} style={{ color: "#3B82F6", fontSize: 12.5 }}>
-              Open treatment plan →
+      {toast ? (
+        <div style={{ padding: "10px 14px", borderRadius: 6, background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", fontSize: 13 }}>
+          {toast}
+        </div>
+      ) : null}
+
+      {/* ── Summary metrics ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        {[
+          { label: "Total Unbilled", value: fmtMoney(batchTotals.totalUnbilledCharges), tone: "#0F172A" },
+          { label: "Pending Batches", value: batchTotals.pendingBatches, tone: batchTotals.pendingBatches > 0 ? "#B45309" : "#0F172A" },
+          { label: "Ready to Submit", value: batchTotals.readyToSubmit, tone: batchTotals.readyToSubmit > 0 ? "#166534" : "#0F172A" },
+        ].map((m) => (
+          <div key={m.label} style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 8, padding: "12px 16px" }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>{m.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: String(m.tone) }}>{m.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          BATCH PANEL — Manual 837P generation by Payer + TIN
+      ══════════════════════════════════════════════════════════════════════ */}
+      <section style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10 }}>
+        {/* Panel header with Generate button */}
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid #F1F5F9" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0F172A" }}>837P Batches</h2>
+              {statusCounts["Ready"] > 0 && (
+                <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#DCFCE7", color: "#166534" }}>
+                  {statusCounts["Ready"]} ready
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={generating || statusCounts["Ready"] === 0}
+              onClick={() => void generateBatches()}
+              style={{
+                padding: "8px 16px", borderRadius: 7, border: "none", cursor: generating || statusCounts["Ready"] === 0 ? "not-allowed" : "pointer",
+                background: generating || statusCounts["Ready"] === 0 ? "#CBD5E1" : "#1D4ED8",
+                color: generating || statusCounts["Ready"] === 0 ? "#94A3B8" : "#fff",
+                fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              {generating ? "Generating…" : "⬡ Generate 837P Batches"}
+            </button>
+          </div>
+
+          {/* Availity upload workflow steps */}
+          <div style={{ marginTop: 12, padding: "10px 14px", background: "#F8FAFC", borderRadius: 8, border: "1px solid #E2E8F0" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Availity Upload Workflow</div>
+            <ol style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+              {[
+                { n: 1, text: "Click \"Generate 837P Batches\" to group all ready charges by payer / TIN into downloadable batches." },
+                { n: 2, text: "Click \"↓ Download 837\" on each batch to save the X12 EDI file." },
+                { n: 3, text: "Log into Availity → Claims → EDI Upload and submit the file. Availity will validate and forward to the payer." },
+                { n: 4, text: "Once you confirm the submission in Availity, click \"✓ Mark Submitted\" to update the batch status here." },
+              ].map((s) => (
+                <li key={s.n} style={{ fontSize: 12, color: "#475569" }}>{s.text}</li>
+              ))}
+            </ol>
+            <a
+              href="https://apps.availity.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ marginTop: 8, display: "inline-block", fontSize: 12, color: "#1D4ED8", fontWeight: 600 }}
+            >
+              Open Availity Portal →
             </a>
-          </>
+          </div>
+        </div>
+
+        {batchError ? (
+          <div style={{ padding: 16, color: "#991B1B", fontSize: 13 }}>{batchError}</div>
+        ) : batchLoading ? (
+          <div style={{ padding: 24, textAlign: "center", color: "#94A3B8", fontSize: 13 }}>Loading batches…</div>
+        ) : batches.length === 0 ? (
+          <div style={{ padding: 24, textAlign: "center", color: "#94A3B8", fontSize: 13 }}>
+            {statusCounts["Ready"] > 0
+              ? `${statusCounts["Ready"]} charge${statusCounts["Ready"] === 1 ? "" : "s"} ready to batch — click "Generate 837P Batches" above.`
+              : "No batches yet. Release charges first, then click \"Generate 837P Batches\" to create downloadable 837P files."}
+          </div>
         ) : (
-          <span style={{ color: "#94A3B8" }}>No treatment plan linked to this encounter.</span>
-        )}
-      </div>
-    );
-  }, [detail]);
-
-  const renderCodingIntegrity = useCallback(() => {
-    if (!detail) return <div style={{ padding: 16, color: "#94A3B8" }}>Select a row to see details.</div>;
-    const selectedRow = items.find((i) => i.id === detail.id);
-    const alerts = selectedRow?.codingAlerts ?? [];
-    const dxSlots = (() => { const a = [...detail.diagnoses]; while (a.length < 12) a.push(""); return a.slice(0, 12); })();
-    return (
-      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12, fontSize: 13 }}>
-        <div className={styles.sectionCard}>
-          <div className={styles.sectionTitle}>Coding alerts</div>
-          {alerts.length === 0 ? (
-            <div style={{ color: "#059669", fontSize: 12 }}>No coding issues detected.</div>
-          ) : (
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: "#991B1B" }}>
-              {alerts.map((a, i) => <li key={i}>{a}</li>)}
-            </ul>
-          )}
-          <Row label="Provider-selected" value={selectedRow?.providerSelectedCode ?? "—"} />
-          <Row label="System-suggested" value={selectedRow?.systemSuggestedCode ?? "—"} />
-        </div>
-        <div className={styles.sectionCard}>
-          <div className={styles.sectionTitle}>Diagnosis (ICD-10)</div>
-          <div className={styles.dxGrid}>
-            {dxSlots.map((code, idx) => {
-              const upper = code.trim().toUpperCase();
-              const badEntry = upper.length > 0 ? invalidDx.get(upper) : undefined;
-              return (
-                <div className={styles.dxCell} key={idx}>
-                  <label>{`D${idx + 1}${idx === 0 ? "*" : ""}`}</label>
-                  <CodeCombobox
-                    kind="diagnosis"
-                    value={code}
-                    onChange={(next) => {
-                      updateDiagnosis(idx, next);
-                      if (invalidDx.size) {
-                        setInvalidDx((prev) => { const n = new Map(prev); n.delete(upper); return n; });
-                      }
-                    }}
-                    placeholder={idx === 0 ? "F41.1" : ""}
-                    ariaLabel={`Diagnosis ${idx + 1}`}
-                    invalid={Boolean(badEntry)}
-                    invalidTitle={badEntry && badEntry.status !== "active" ? badEntry.reason : undefined}
-                  />
-                  {badEntry && badEntry.status === "header" ? (
-                    <HeaderChildSuggestions parent={upper} onPick={(c) => updateDiagnosis(idx, c)} />
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  }, [detail, items, invalidDx, updateDiagnosis]);
-
-  const renderEligibility = useCallback(() => {
-    if (!detail) return <div style={{ padding: 16, color: "#94A3B8" }}>Select a row to see details.</div>;
-    const e = detail.eligibility;
-    if (!e) return <div style={{ padding: 16, color: "#94A3B8" }}>No eligibility check on file.</div>;
-    return (
-      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
-        <Row label="Status" value={e.status ?? "—"} />
-        <Row label="Checked at" value={e.checkedAt ? new Date(e.checkedAt).toLocaleString() : "—"} />
-        <Row label="Authorization required" value={e.authorizationRequired ? "Yes" : "No"} />
-        <Row label="Copay" value={money(e.copay)} />
-        <Row label="Deductible remaining" value={money(e.deductibleRemaining)} />
-        {e.rawStatusText ? <Row label="Raw status" value={e.rawStatusText} /> : null}
-      </div>
-    );
-  }, [detail]);
-
-  const renderAuthorization = useCallback(() => {
-    if (!detail) return <div style={{ padding: 16, color: "#94A3B8" }}>Select a row to see details.</div>;
-    const required = detail.eligibility?.authorizationRequired;
-    return (
-      <div style={{ padding: 12, fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
-        <Row label="Authorization required" value={required ? "Yes" : "No"} />
-        <span style={{ color: "#94A3B8", fontSize: 12 }}>Authorization records will appear here once captured.</span>
-      </div>
-    );
-  }, [detail]);
-
-  const renderClaimLines = useCallback(() => {
-    if (detailLoading && !detail) return <div style={{ padding: 16, color: "#94A3B8" }}>Loading…</div>;
-    if (!detail) return <div style={{ padding: 16, color: "#94A3B8" }}>Select a row to see details.</div>;
-    return (
-      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-        <div className={styles.sectionCard}>
-          <div className={styles.sectionTitleRow}>
-            <span className={styles.sectionTitle}>Suggested claim lines</span>
-            <button type="button" className={styles.smallBtn} onClick={addLine}>+ Add line</button>
-          </div>
-          <div className={styles.linesTableWrap}>
-            <table className={styles.linesTable}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr>
-                  <th>Proc</th><th>DOS From</th><th>DOS To</th><th>DX Ptr</th>
-                  <th>M1</th><th>M2</th><th>M3</th><th>M4</th>
-                  <th>Units</th><th>Charge</th><th>Total</th><th>POS</th><th>Auth #</th><th></th>
+                <tr style={{ borderBottom: "2px solid #F1F5F9" }}>
+                  {["Batch #", "Payer", "TIN", "Claims", "Total Charge", "Status", "Submitted", "Actions"].map((h) => (
+                    <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#475569", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {detail.serviceLines.length === 0 ? (
-                  <tr><td colSpan={14} style={{ textAlign: "center", color: "#94A3B8", padding: 16 }}>No procedure lines yet.</td></tr>
-                ) : null}
-                {detail.serviceLines.map((line, idx) => {
-                  const lineTotal = (line.chargeAmount || 0) * (line.units || 0);
-                  const mods = [0, 1, 2, 3].map((i) => line.modifiers[i] ?? "");
-                  const procUpper = line.procedureCode.trim().toUpperCase();
-                  const procBad = procUpper ? invalidProc.get(procUpper) : undefined;
+                {batches.map((b) => {
+                  const ss = batchStatusStyle(b.status);
+                  const isBusy = busyBatch === b.id;
+                  const downloadUrl = `/api/billing/charges/batches/${encodeURIComponent(b.id)}/download?organizationId=${encodeURIComponent(orgId)}`;
+                  const isSubmitted = ["submitted", "accepted"].includes(b.status.toLowerCase());
                   return (
-                    <tr key={idx}>
-                      <td style={{ minWidth: 90 }}>
-                        <CodeCombobox
-                          kind="procedure"
-                          value={line.procedureCode}
-                          onChange={(next) => updateLine(idx, { procedureCode: next })}
-                          className={styles.cellInput}
-                          placeholder="90837"
-                          ariaLabel={`Procedure code line ${idx + 1}`}
-                          invalid={Boolean(procBad)}
-                          invalidTitle={procBad && procBad.status !== "active" ? procBad.reason : undefined}
-                        />
+                    <tr key={b.id} style={{ borderBottom: "1px solid #F8FAFC" }}>
+                      <td style={{ padding: "10px 12px", fontWeight: 700, color: "#0F172A", whiteSpace: "nowrap" }}>{b.batchNumber}</td>
+                      <td style={{ padding: "10px 12px", color: "#334155" }}>{b.payerName}</td>
+                      <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "#475569" }}>{b.billingProviderTaxId || "—"}</td>
+                      <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 600 }}>{b.claimCount}</td>
+                      <td style={{ padding: "10px 12px", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{fmtMoney(b.totalChargeAmount)}</td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: ss.bg, color: ss.color }}>
+                          {batchStatusLabel(b.status)}
+                        </span>
                       </td>
-                      <td><input className={styles.cellInput} type="date" value={line.serviceDateFrom ?? ""} onChange={(e) => updateLine(idx, { serviceDateFrom: e.target.value || null })} /></td>
-                      <td><input className={styles.cellInput} type="date" value={line.serviceDateTo ?? ""} onChange={(e) => updateLine(idx, { serviceDateTo: e.target.value || null })} /></td>
-                      <td>
-                        <input className={styles.cellInput} style={{ width: 50 }} value={line.diagnosisPointers.join(",")}
-                          onChange={(e) => updateLine(idx, { diagnosisPointers: e.target.value.split(/[ ,]+/).map((s) => s.trim()).filter(Boolean) })} placeholder="1" />
+                      <td style={{ padding: "10px 12px", color: "#64748B", whiteSpace: "nowrap" }}>{b.submittedAt ? fmtDate(b.submittedAt) : "—"}</td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {/* Download 837 */}
+                          <a
+                            href={downloadUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#334155", fontSize: 12, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}
+                          >
+                            ↓ Download 837
+                          </a>
+
+                          {/* Submit Batch */}
+                          {!isSubmitted ? (
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => void batchAction(b.id, "submit")}
+                              style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid #BFDBFE", background: "#EFF6FF", color: "#1D4ED8", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+                            >
+                              {isBusy ? "…" : "Submit Batch"}
+                            </button>
+                          ) : null}
+
+                          {/* Mark as Submitted */}
+                          {!isSubmitted ? (
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => void batchAction(b.id, "mark-submitted")}
+                              style={{ padding: "4px 10px", borderRadius: 5, border: "none", background: "#0F2D63", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+                            >
+                              {isBusy ? "…" : "✓ Mark Submitted"}
+                            </button>
+                          ) : null}
+                        </div>
                       </td>
-                      {mods.map((m, mi) => (
-                        <td key={mi}>
-                          <input className={styles.cellInput} style={{ width: 50 }} value={m} maxLength={2}
-                            onChange={(e) => {
-                              const next = [...line.modifiers];
-                              while (next.length <= mi) next.push("");
-                              next[mi] = e.target.value.toUpperCase();
-                              while (next.length > 0 && !next[next.length - 1]) next.pop();
-                              updateLine(idx, { modifiers: next });
-                            }} />
-                        </td>
-                      ))}
-                      <td><input className={styles.cellInput} style={{ width: 50 }} type="number" min={1} value={line.units} onChange={(e) => updateLine(idx, { units: Number(e.target.value) || 1 })} /></td>
-                      <td><input className={styles.cellInput} style={{ width: 78, textAlign: "right" }} type="number" step="0.01" min={0} value={line.chargeAmount} onChange={(e) => updateLine(idx, { chargeAmount: Number(e.target.value) || 0 })} /></td>
-                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{money(lineTotal)}</td>
-                      <td>
-                        <select className={styles.cellInput} style={{ width: 70 }} value={line.placeOfService ?? ""} onChange={(e) => updateLine(idx, { placeOfService: e.target.value || null })}>
-                          <option value="">—</option>
-                          {POS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
-                        </select>
-                      </td>
-                      <td><input className={styles.cellInput} style={{ width: 110 }} value={line.authorizationNumber ?? ""} onChange={(e) => updateLine(idx, { authorizationNumber: e.target.value || null })} /></td>
-                      <td><button type="button" className={styles.iconBtn} onClick={() => removeLine(idx)} title="Remove line">×</button></td>
                     </tr>
                   );
                 })}
               </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={10} style={{ textAlign: "right", fontWeight: 600, padding: "8px 12px" }}>Total</td>
-                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700, padding: "8px 12px" }}>{money(detail.totalCharge)}</td>
-                  <td colSpan={3}></td>
-                </tr>
-              </tfoot>
             </table>
           </div>
-        </div>
-      </div>
-    );
-  }, [detail, detailLoading, invalidProc, updateLine, addLine, removeLine]);
+        )}
+      </section>
 
-  const detailTabs: DetailTab[] = useMemo(
-    () => [
-      { id: "appt", label: "Appointment", render: renderApptDetails },
-      { id: "note", label: "Signed note", render: renderNotePreview },
-      { id: "plan", label: "Treatment plan", render: renderTreatmentPlan },
-      { id: "coding", label: "Coding integrity", render: renderCodingIntegrity },
-      { id: "elig", label: "Eligibility", render: renderEligibility },
-      { id: "auth", label: "Authorization", render: renderAuthorization },
-      { id: "lines", label: "Claim lines", render: renderClaimLines },
-    ],
-    [renderApptDetails, renderNotePreview, renderTreatmentPlan, renderCodingIntegrity, renderEligibility, renderAuthorization, renderClaimLines],
-  );
-
-  // ── Row actions (Approve, Hold, Route back) ────────────────────────
-  const rowActions: RowAction<ListRow>[] = useMemo(
-    () => [
-      {
-        id: "approve",
-        label: "Approve",
-        variant: "success",
-        onClick: (r) => void runAction(r.id, "approve"),
-        disabled: (r) => acting || r.chargeStatus === "claim_created" || r.chargeStatus === "ready_for_claim",
-      },
-      {
-        id: "hold",
-        label: "Hold",
-        onClick: (r) => {
-          const reason = typeof window !== "undefined" ? (window.prompt("Hold reason?") ?? "") : "";
-          void runAction(r.id, "hold", reason);
-        },
-        disabled: (r) => acting || r.chargeStatus === "claim_created",
-      },
-      {
-        id: "route_back",
-        label: "Route back",
-        onClick: (r) => {
-          const reason = typeof window !== "undefined" ? (window.prompt("What does the clinician need to fix?") ?? "") : "";
-          void runAction(r.id, "route_back", reason);
-        },
-        disabled: (r) => acting || r.chargeStatus === "claim_created",
-      },
-      {
-        id: "place_on_hold",
-        label: "Place on hold",
-        onClick: (r) => {
-          if (!r.claimId) return;
-          setHoldTarget({
-            claimId: r.claimId,
-            subtitle: `${r.client?.name ?? "Client"} · ${r.payer?.name ?? "—"}`,
-            sourceRowId: r.id,
-          });
-        },
-        disabled: (r) => acting || !r.claimId,
-      },
-    ],
-    [runAction, acting],
-  );
-
-  // ── Detail action buttons (full set, spec) ─────────────────────────
-  const detailActions: PrimaryAction[] = useMemo(() => {
-    if (!detail) return [];
-    return [
-      { id: "approve", label: "Approve charge", variant: "success", onClick: () => void runAction(detail.id, "approve"), disabled: acting || detail.status === "claim_created" },
-      { id: "hold", label: "Hold charge", onClick: () => { const reason = window.prompt("Hold reason?") ?? ""; void runAction(detail.id, "hold", reason); }, disabled: acting || detail.status === "claim_created" },
-      { id: "route_back", label: "Route back to clinician", onClick: () => { const reason = window.prompt("What does the clinician need to fix?") ?? ""; void runAction(detail.id, "route_back", reason); }, disabled: acting || detail.status === "claim_created" },
-      { id: "change_code", label: "Change code", onClick: () => setMessage({ tone: "success", text: "Edit codes in the Coding integrity tab, then Save." }) },
-      { id: "add_modifier", label: "Add modifier", onClick: () => setMessage({ tone: "success", text: "Add modifiers on a procedure line in the Claim lines tab, then Save." }) },
-      { id: "save", label: saving ? "Saving…" : "Save edits", onClick: () => void saveCharge(), disabled: saving },
-      { id: "release", label: "Release to claim creation", variant: "primary", onClick: () => void releaseCharge(detail.id), disabled: acting || detail.status !== "ready_for_claim" },
-      {
-        id: "place_on_hold",
-        label: "Place on hold",
-        onClick: () => {
-          const row = items.find((r) => r.id === detail.id);
-          const claimId = row?.claimId ?? null;
-          if (!claimId) return;
-          setHoldTarget({
-            claimId,
-            subtitle: `${row?.client?.name ?? "Client"} · ${row?.payer?.name ?? "—"}`,
-            sourceRowId: detail.id,
-          });
-        },
-        disabled: acting || !(items.find((r) => r.id === detail.id)?.claimId),
-      },
-    ];
-  }, [detail, acting, saving, runAction, releaseCharge, saveCharge, items]);
-
-  // ── Render ─────────────────────────────────────────────────────────
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      {/* Spec tabs strip — sits above the universal shell because the
-          shell only supports detail-pane tabs. */}
-      <div role="tablist" aria-label="Charge capture tabs"
-        style={{ display: "flex", gap: 4, padding: "8px 16px 0", background: "#fff", borderBottom: "1px solid #E2E8F0", overflowX: "auto" }}>
-        {TABS.map((t) => {
-          const count = tabCounts[t.id];
-          const active = t.id === activeTab;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setActiveTab(t.id)}
-              style={{
-                padding: "8px 14px",
-                border: 0,
-                borderBottom: `2px solid ${active ? "#3B82F6" : "transparent"}`,
-                background: "transparent",
-                color: active ? "#0F172A" : "#64748B",
-                fontWeight: active ? 700 : 500,
-                fontSize: 13,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {t.label}
-              {typeof count === "number" ? (
-                <span style={{ marginLeft: 6, padding: "1px 7px", background: active ? "#DBEAFE" : "#F1F5F9", color: active ? "#1D4ED8" : "#64748B", borderRadius: 10, fontSize: 11.5 }}>
-                  {count}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <WorkqueueShell<ListRow>
-          title={queueDef?.title ?? "Charge Capture"}
-          description={queueDef?.description}
-          headerActions={[
-            ...(selectedIds.length > 0
-              ? [
-                  {
-                    id: "bulk-hold",
-                    label: `Place ${selectedIds.length} on hold`,
-                    variant: "primary" as const,
-                    onClick: () => setBulkHoldOpen(true),
-                    disabled: acting,
-                  },
-                  {
-                    id: "clear-selection",
-                    label: "Clear selection",
-                    onClick: () => setSelectedIds([]),
-                  },
-                ]
-              : []),
-            { id: "refresh", label: loading ? "Loading…" : "Refresh", onClick: () => setReloadKey((k) => k + 1), disabled: loading },
-          ]}
-          summary={summary}
-          filters={filters}
-          filterValues={filterValues}
-          onFilterChange={setFilterValues}
-          filterUrlNamespace="cc"
-          rows={visibleItems}
-          columns={columns}
-          rowId={(r) => r.id}
-          loading={loading}
-          emptyMessage="No charges match the current filters."
-          selectedRowId={selectedId}
-          onSelectRow={setSelectedId}
-          selectedRowIds={selectedIds}
-          onSelectionChange={setSelectedIds}
-          rowActions={rowActions}
-          detailTabs={detailTabs}
-          detailActions={detailActions}
-          tablePaneWidth="auto"
-          detailPaneWidth="520px"
-          message={message}
-        />
-      </div>
-      {holdTarget ? (
-        <PlaceClaimOnHoldModal
-          claimId={holdTarget.claimId}
-          organizationId={organizationId}
-          subtitle={holdTarget.subtitle}
-          onClose={() => setHoldTarget(null)}
-          onPlaced={() => {
-            setMessage({ tone: "success", text: "Claim placed on hold." });
-            setReloadKey((k) => k + 1);
-          }}
-        />
-      ) : null}
-      {bulkHoldOpen ? (
-        (() => {
-          const selectedRows = items.filter((r) => selectedIds.includes(r.id));
-          const claimIds = selectedRows
-            .map((r) => r.claimId)
-            .filter((id): id is string => !!id);
-          const skipped = selectedIds.length - claimIds.length;
-          const subtitle =
-            (claimIds.length > 0
-              ? `${claimIds.length} claim${claimIds.length === 1 ? "" : "s"} selected`
-              : "No selected rows have a claim yet") +
-            (skipped > 0
-              ? ` · ${skipped} skipped (no claim created yet)`
-              : "");
-          if (claimIds.length === 0) {
-            return (
-              <PlaceClaimOnHoldModal
-                claimIds={[]}
-                claimId={undefined}
-                organizationId={organizationId}
-                subtitle={subtitle}
-                onClose={() => setBulkHoldOpen(false)}
+      {/* ══════════════════════════════════════════════════════════════════════
+          CHARGE QUEUE — Dense operational view
+      ══════════════════════════════════════════════════════════════════════ */}
+      <section style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10 }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid #F1F5F9" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0F172A" }}>
+              Charge Queue
+              {!queueLoading && <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 400, color: "#94A3B8" }}>{visibleCharges.length} of {charges.length}</span>}
+            </h2>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              {/* Status filter chips */}
+              {(["all", "Missing DX", "Unsigned", "Ready", "Hold"] as const).map((s) => {
+                const isActive = statusFilter === s;
+                const count = s === "all" ? charges.length : statusCounts[s] ?? 0;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setStatusFilter(s)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      border: "1px solid",
+                      borderColor: isActive ? "#0F2D63" : "#E2E8F0",
+                      background: isActive ? "#0F2D63" : "#fff",
+                      color: isActive ? "#fff" : "#475569",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {s === "all" ? "All" : s} <span style={{ opacity: .7 }}>{count}</span>
+                  </button>
+                );
+              })}
+              {/* Search */}
+              <input
+                type="search"
+                placeholder="Patient, clinician, CPT…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #CBD5E1", fontSize: 13, width: 200 }}
               />
-            );
-          }
-          return (
-            <PlaceClaimOnHoldModal
-              claimIds={claimIds}
-              organizationId={organizationId}
-              subtitle={subtitle}
-              onClose={() => setBulkHoldOpen(false)}
-              onPlacedBulk={(summary) => {
-                const parts = [
-                  `${summary.succeeded} placed on hold`,
-                  summary.failed > 0 ? `${summary.failed} failed` : null,
-                  skipped > 0 ? `${skipped} skipped` : null,
-                ].filter(Boolean);
-                setMessage({
-                  tone: summary.failed > 0 ? "error" : "success",
-                  text: parts.join(" · "),
-                });
-                setSelectedIds([]);
-                setReloadKey((k) => k + 1);
-              }}
-            />
-          );
-        })()
+            </div>
+          </div>
+        </div>
+
+        {queueError ? (
+          <div style={{ padding: 16, color: "#991B1B", fontSize: 13 }}>{queueError}</div>
+        ) : queueLoading ? (
+          <div style={{ padding: 24, textAlign: "center", color: "#94A3B8", fontSize: 13 }}>Loading charges…</div>
+        ) : visibleCharges.length === 0 ? (
+          <div style={{ padding: 40, textAlign: "center", color: "#94A3B8", fontSize: 14 }}>
+            {charges.length === 0 ? "No charges pending. Charges appear here when clinicians sign notes." : "No charges match this filter."}
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid #F1F5F9" }}>
+                  {["Patient", "DOS", "CPT", "Provider", "Status", "Actions"].map((h) => (
+                    <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#475569", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visibleCharges.map((r) => {
+                  const status = deriveStatus(r);
+                  const ss = STATUS_STYLE[status];
+                  const cpt = r.providerSelectedCode ?? r.systemSuggestedCode ?? "—";
+                  const encounterId = r.encounter.id;
+                  const isReleased = r.tab === "released_to_claims";
+                  return (
+                    <tr key={r.id} style={{ borderBottom: "1px solid #F8FAFC" }}>
+                      {/* Patient */}
+                      <td style={{ padding: "9px 12px" }}>
+                        <span style={{ fontWeight: 600, color: "#0F172A" }}>{r.client.name}</span>
+                        {r.client.dob ? (
+                          <span style={{ display: "block", fontSize: 11, color: "#94A3B8" }}>DOB {fmtDate(r.client.dob)}</span>
+                        ) : null}
+                      </td>
+
+                      {/* DOS */}
+                      <td style={{ padding: "9px 12px", color: "#334155", whiteSpace: "nowrap" }}>{fmtDate(r.dateOfService)}</td>
+
+                      {/* CPT */}
+                      <td style={{ padding: "9px 12px", fontFamily: "ui-monospace, monospace", fontWeight: 600, color: "#0F172A" }}>{cpt}</td>
+
+                      {/* Provider */}
+                      <td style={{ padding: "9px 12px", color: "#334155" }}>{r.clinician}</td>
+
+                      {/* Status */}
+                      <td style={{ padding: "9px 12px" }}>
+                        <span style={{ display: "inline-block", padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: ss.bg, color: ss.color, whiteSpace: "nowrap" }}>
+                          {status}
+                        </span>
+                      </td>
+
+                      {/* Actions */}
+                      <td style={{ padding: "9px 12px" }}>
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+
+                          {/* Edit charge */}
+                          {!isReleased ? (
+                            <button
+                              type="button"
+                              onClick={() => void openEditModal(r)}
+                              style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #E2E8F0", background: "#fff", color: "#334155", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+
+                          {/* Attach diagnosis */}
+                          {(status === "Missing DX" || status === "Unsigned") ? (
+                            <button
+                              type="button"
+                              onClick={() => void openEditModal(r)}
+                              style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #FCA5A5", background: "#FEF2F2", color: "#991B1B", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}
+                            >
+                              Attach DX
+                            </button>
+                          ) : null}
+
+                          {/* Review authorization */}
+                          {r.authorization?.status === "required" || r.tab === "eligibility_auth_issue" ? (
+                            <a
+                              href={encounterId ? `/encounters/${encounterId}` : `/clients/${r.client.id}`}
+                              style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #BFDBFE", background: "#EFF6FF", color: "#1D4ED8", fontSize: 11, textDecoration: "none", whiteSpace: "nowrap" }}
+                            >
+                              Auth
+                            </a>
+                          ) : null}
+
+                          {/* Release to billing */}
+                          {status === "Ready" && !isReleased ? (
+                            <button
+                              type="button"
+                              disabled={actionBusy === r.id + "release"}
+                              onClick={() => void chargeAction(r.id, "release")}
+                              style={{ padding: "3px 8px", borderRadius: 4, border: "none", background: "#0F2D63", color: "#fff", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}
+                            >
+                              {actionBusy === r.id + "release" ? "…" : "Release"}
+                            </button>
+                          ) : null}
+
+                          {/* Hold */}
+                          {status !== "Hold" && !isReleased ? (
+                            <button
+                              type="button"
+                              disabled={actionBusy === r.id + "hold"}
+                              onClick={() => void chargeAction(r.id, "hold")}
+                              style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #FED7AA", background: "#FFF7ED", color: "#C2410C", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}
+                            >
+                              {actionBusy === r.id + "hold" ? "…" : "Hold"}
+                            </button>
+                          ) : null}
+
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ── CMS-1500 Edit Modal ── */}
+      {editRow ? (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.52)", zIndex: 9000, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "24px 16px" }}
+          onClick={() => setEditRow(null)}
+        >
+          <div
+            style={{ background: "#fff", borderRadius: 10, width: "100%", maxWidth: 900, boxShadow: "0 12px 60px rgba(0,0,0,.22)", marginBottom: 24 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div style={{ background: "#0F2D63", color: "#fff", padding: "12px 20px", borderRadius: "10px 10px 0 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase" }}>CMS-1500 Health Insurance Claim Form</div>
+                <div style={{ fontSize: 11, opacity: .7, marginTop: 2 }}>{editRow.client.name} · {editRow.payer?.name ?? "Unknown Payer"}</div>
+              </div>
+              <button type="button" onClick={() => setEditRow(null)} style={{ background: "none", border: "none", color: "#fff", fontSize: 24, cursor: "pointer", lineHeight: 1 }}>×</button>
+            </div>
+
+            {editDetailLoading ? (
+              <div style={{ padding: 40, textAlign: "center", color: "#94A3B8", fontSize: 14 }}>Loading charge details…</div>
+            ) : editError && !editDetail ? (
+              <div style={{ padding: 24, color: "#991B1B", fontSize: 13 }}>{editError}</div>
+            ) : editDetail ? (
+              <div style={{ padding: "20px 24px 0" }}>
+
+                {editError ? (
+                  <div style={{ padding: "9px 12px", background: "#FEF2F2", color: "#991B1B", borderRadius: 6, marginBottom: 14, fontSize: 13 }}>{editError}</div>
+                ) : null}
+
+                {/* ── Section A: Patient & Insured Info ── */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                  <FieldBox label="2. Patient's Name">
+                    <ReadonlyVal>{editDetail.client?.displayName ?? "—"}</ReadonlyVal>
+                  </FieldBox>
+                  <FieldBox label="3. Patient's Date of Birth">
+                    <ReadonlyVal>{editDetail.client?.dateOfBirth ? fmtDate(editDetail.client.dateOfBirth) : "—"}</ReadonlyVal>
+                  </FieldBox>
+                  <FieldBox label="1a. Insured's ID # / Member ID">
+                    <ReadonlyVal>{editDetail.policy?.subscriberId ?? editDetail.policy?.policyNumber ?? "—"}</ReadonlyVal>
+                  </FieldBox>
+                  <FieldBox label="4. Insured's Name">
+                    <ReadonlyVal>{editDetail.client?.displayName ?? "—"}</ReadonlyVal>
+                  </FieldBox>
+                  <FieldBox label="11. Insured's Policy / Group #">
+                    <ReadonlyVal>{editDetail.policy?.policyNumber ?? "—"}</ReadonlyVal>
+                  </FieldBox>
+                  <FieldBox label="5. Insurance Plan / Program Name">
+                    <ReadonlyVal>{editDetail.payer?.name ?? "—"}{editDetail.policy?.planName ? ` — ${editDetail.policy.planName}` : ""}</ReadonlyVal>
+                  </FieldBox>
+                </div>
+
+                {/* ── Section B: Physician / Supplier ── */}
+                <SectionHeader>Physician / Supplier Information</SectionHeader>
+
+                {/* Box 21 — Diagnoses */}
+                <FieldBox label="21. Diagnosis Codes (ICD-10-CM)" fullWidth>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {(editDiagnoses.length > 0 ? editDiagnoses : Array(4).fill("")).map((code, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", width: 14, textAlign: "right" }}>{String.fromCharCode(65 + i)}.</span>
+                        <input
+                          type="text"
+                          value={code}
+                          onChange={(e) => {
+                            const next = [...editDiagnoses];
+                            next[i] = e.target.value.toUpperCase();
+                            setEditDiagnoses(next);
+                          }}
+                          placeholder="ICD-10"
+                          style={{ width: 86, padding: "4px 6px", border: "1px solid #CBD5E1", borderRadius: 4, fontSize: 12, textTransform: "uppercase" }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </FieldBox>
+
+                {/* Box 23 — Prior Auth */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
+                  <FieldBox label="23. Prior Authorization #">
+                    <input
+                      type="text"
+                      value={editPriorAuth}
+                      onChange={(e) => setEditPriorAuth(e.target.value)}
+                      placeholder="Authorization number…"
+                      style={{ width: "100%", padding: "5px 8px", border: "1px solid #CBD5E1", borderRadius: 4, fontSize: 13 }}
+                    />
+                  </FieldBox>
+                  <FieldBox label="24B. Default Place of Service">
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <input
+                        type="text"
+                        value={editPlaceOfService}
+                        onChange={(e) => setEditPlaceOfService(e.target.value)}
+                        placeholder="11"
+                        style={{ width: 60, padding: "5px 8px", border: "1px solid #CBD5E1", borderRadius: 4, fontSize: 13 }}
+                      />
+                      <span style={{ fontSize: 11, color: "#94A3B8" }}>11=Office · 02=Telehealth · 21=Inpatient</span>
+                    </div>
+                  </FieldBox>
+                  <FieldBox label="33. Rendering Provider NPI">
+                    <ReadonlyVal>{editDetail.provider?.npi ?? "—"}</ReadonlyVal>
+                  </FieldBox>
+                  <FieldBox label="31. Signature of Physician">
+                    <ReadonlyVal>{editDetail.provider?.displayName ?? "—"}{editDetail.provider?.credential ? `, ${editDetail.provider.credential}` : ""}</ReadonlyVal>
+                  </FieldBox>
+                </div>
+
+                {/* ── Section C: Service Lines (Box 24) ── */}
+                <SectionHeader style={{ marginTop: 16 }}>Box 24 — Service Line Items</SectionHeader>
+                <div style={{ overflowX: "auto", marginBottom: 8 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: "#F1F5F9" }}>
+                        {["#", "24A DOS From", "24A DOS To", "24B POS", "24D CPT / Procedure", "24D Modifiers", "24E Dx Ptr", "24G Units", "24F Charge ($)", "24J Rendering NPI", "Auth #"].map((h) => (
+                          <th key={h} style={{ padding: "6px 7px", textAlign: "left", fontWeight: 700, color: "#475569", fontSize: 11, whiteSpace: "nowrap", border: "1px solid #E2E8F0" }}>{h}</th>
+                        ))}
+                        <th style={{ padding: "6px 7px", border: "1px solid #E2E8F0" }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editServiceLines.map((sl, idx) => (
+                        <tr key={idx} style={{ borderBottom: "1px solid #F1F5F9" }}>
+                          <td style={{ padding: "5px 7px", border: "1px solid #E2E8F0", fontWeight: 700, color: "#94A3B8", textAlign: "center" }}>{idx + 1}</td>
+                          <td style={{ padding: 4, border: "1px solid #E2E8F0" }}><input type="date" value={sl.serviceDateFrom} onChange={(e) => { const n=[...editServiceLines]; n[idx]={...n[idx], serviceDateFrom:e.target.value}; setEditServiceLines(n); }} style={slInputStyle(120)} /></td>
+                          <td style={{ padding: 4, border: "1px solid #E2E8F0" }}><input type="date" value={sl.serviceDateTo} onChange={(e) => { const n=[...editServiceLines]; n[idx]={...n[idx], serviceDateTo:e.target.value}; setEditServiceLines(n); }} style={slInputStyle(120)} /></td>
+                          <td style={{ padding: 4, border: "1px solid #E2E8F0" }}><input type="text" value={sl.placeOfService} onChange={(e) => { const n=[...editServiceLines]; n[idx]={...n[idx], placeOfService:e.target.value}; setEditServiceLines(n); }} placeholder="11" style={slInputStyle(44)} /></td>
+                          <td style={{ padding: 4, border: "1px solid #E2E8F0" }}><input type="text" value={sl.procedureCode} onChange={(e) => { const n=[...editServiceLines]; n[idx]={...n[idx], procedureCode:e.target.value.toUpperCase()}; setEditServiceLines(n); }} placeholder="90837" style={slInputStyle(72)} /></td>
+                          <td style={{ padding: 4, border: "1px solid #E2E8F0" }}><input type="text" value={sl.modifiers} onChange={(e) => { const n=[...editServiceLines]; n[idx]={...n[idx], modifiers:e.target.value}; setEditServiceLines(n); }} placeholder="GT, 95" style={slInputStyle(80)} /></td>
+                          <td style={{ padding: 4, border: "1px solid #E2E8F0" }}><input type="text" value={sl.diagnosisPointers} onChange={(e) => { const n=[...editServiceLines]; n[idx]={...n[idx], diagnosisPointers:e.target.value}; setEditServiceLines(n); }} placeholder="A, B" style={slInputStyle(60)} /></td>
+                          <td style={{ padding: 4, border: "1px solid #E2E8F0" }}><input type="number" min="1" value={sl.units} onChange={(e) => { const n=[...editServiceLines]; n[idx]={...n[idx], units:e.target.value}; setEditServiceLines(n); }} style={slInputStyle(50)} /></td>
+                          <td style={{ padding: 4, border: "1px solid #E2E8F0" }}><input type="number" min="0" step="0.01" value={sl.chargeAmount} onChange={(e) => { const n=[...editServiceLines]; n[idx]={...n[idx], chargeAmount:e.target.value}; setEditServiceLines(n); }} style={slInputStyle(88)} /></td>
+                          <td style={{ padding: 4, border: "1px solid #E2E8F0" }}><input type="text" value={sl.renderingProviderNpi} onChange={(e) => { const n=[...editServiceLines]; n[idx]={...n[idx], renderingProviderNpi:e.target.value}; setEditServiceLines(n); }} placeholder="NPI" style={slInputStyle(100)} /></td>
+                          <td style={{ padding: 4, border: "1px solid #E2E8F0" }}><input type="text" value={sl.authorizationNumber} onChange={(e) => { const n=[...editServiceLines]; n[idx]={...n[idx], authorizationNumber:e.target.value}; setEditServiceLines(n); }} placeholder="Auth #" style={slInputStyle(90)} /></td>
+                          <td style={{ padding: 4, border: "1px solid #E2E8F0", textAlign: "center" }}>
+                            <button type="button" onClick={() => setEditServiceLines((s) => s.filter((_, i) => i !== idx))} style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", fontSize: 16, lineHeight: 1 }} title="Remove line">×</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditServiceLines((s) => [...s, {
+                    procedureCode: "", serviceDateFrom: editDetail.serviceDate ?? "", serviceDateTo: editDetail.serviceDate ?? "",
+                    modifiers: "", diagnosisPointers: "A", units: "1", chargeAmount: "0",
+                    placeOfService: editPlaceOfService, renderingProviderNpi: editDetail.provider?.npi ?? "", authorizationNumber: editPriorAuth,
+                  }])}
+                  style={{ padding: "5px 12px", borderRadius: 5, border: "1px dashed #CBD5E1", background: "#F8FAFC", color: "#475569", fontSize: 12, cursor: "pointer", marginBottom: 16 }}
+                >
+                  + Add Service Line
+                </button>
+
+                {/* ── Totals row ── */}
+                <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#475569", borderTop: "1px solid #E2E8F0", paddingTop: 10, marginBottom: 18 }}>
+                  <span><strong style={{ color: "#0F172A" }}>28. Total Charge:</strong> {fmtMoney(editServiceLines.reduce((sum, sl) => sum + (parseFloat(sl.chargeAmount) || 0), 0))}</span>
+                  <span><strong style={{ color: "#0F172A" }}>Lines:</strong> {editServiceLines.length}</span>
+                </div>
+
+                {/* ── Action footer ── */}
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: "14px 0 20px", borderTop: "1px solid #F1F5F9" }}>
+                  <button
+                    type="button"
+                    onClick={() => setEditRow(null)}
+                    style={{ padding: "8px 18px", borderRadius: 6, border: "1px solid #CBD5E1", background: "#fff", fontWeight: 600, fontSize: 14, cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={editSaving}
+                    onClick={() => void saveEdit()}
+                    style={{ padding: "8px 22px", borderRadius: 6, border: "none", background: "#0F2D63", color: "#fff", fontWeight: 700, fontSize: 14, cursor: editSaving ? "not-allowed" : "pointer" }}
+                  >
+                    {editSaving ? "Saving…" : "Save Charge"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
       ) : null}
+
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+// ── Small presentational helpers ────────────────────────────────────────────
+
+function SectionHeader({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: 0.04, minWidth: 130 }}>{label}</span>
-      <span style={{ fontSize: 13, color: "#0F172A" }}>{value}</span>
+    <div style={{ padding: "6px 10px", background: "#F1F5F9", borderRadius: 4, fontSize: 10, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10, ...style }}>
+      {children}
     </div>
   );
+}
+
+function FieldBox({ label, children, fullWidth }: { label: string; children: React.ReactNode; fullWidth?: boolean }) {
+  return (
+    <div style={{ gridColumn: fullWidth ? "1 / -1" : undefined }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>{label}</div>
+      <div style={{ padding: "7px 10px", border: "1px solid #E2E8F0", borderRadius: 5, background: "#FAFBFC", minHeight: 34 }}>{children}</div>
+    </div>
+  );
+}
+
+function ReadonlyVal({ children }: { children: React.ReactNode }) {
+  return <span style={{ fontSize: 13, color: children ? "#0F172A" : "#94A3B8" }}>{children || "—"}</span>;
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireBillingAccess } from "@/lib/billing/requireBillingAccess";
 import { getProviderIdForUser } from "@/lib/rbac/auth";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
+import { rebuild837PBatchFile } from "@/lib/claims/rebuild837PBatchFile";
 
 type DbRow = Record<string, unknown>;
 
@@ -316,6 +317,183 @@ export async function GET(request: Request) {
       },
       chargeRows,
       batches: outBatches,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: getErrorMessage(error) },
+      { status: 500 },
+    );
+  }
+}
+
+// ─── POST /api/billing/charges/batches ──────────────────────────────────────
+//
+// Groups all `ready_for_batch` professional claims (not yet in an active
+// batch) by payer_profile_id, creates one claim_837p_batches record per
+// payer via the atomic RPC, stamps batch_source = "charge_auto", then
+// eagerly generates the 837P file content so it's ready to download.
+//
+// Body: { organizationId: string }
+
+function makeBatchNumber(suffix?: number) {
+  const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+  return suffix == null ? `CC-${stamp}` : `CC-${stamp}-${suffix}`;
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json().catch(() => ({}))) as { organizationId?: string };
+    const guard = await requireBillingAccess({ requestedOrganizationId: body.organizationId ?? null });
+    if (guard instanceof NextResponse) return guard;
+    const organizationId = guard.organizationId;
+
+    const supabase = createServerSupabaseAdminClient();
+    if (!supabase) {
+      return NextResponse.json({ success: false, error: "Database connection not available" }, { status: 500 });
+    }
+
+    // 1. Load all claims that are ready to batch
+    const { data: readyClaims, error: claimsError } = await supabase
+      .from("professional_claims")
+      .select("id, claim_status, total_charge, payer_profile_id")
+      .eq("organization_id", organizationId)
+      .eq("claim_status", "ready_for_batch")
+      .is("archived_at", null)
+      .order("created_at", { ascending: true })
+      .limit(500);
+    if (claimsError) throw claimsError;
+
+    const allReady = (readyClaims ?? []) as DbRow[];
+    if (allReady.length === 0) {
+      return NextResponse.json({
+        success: true,
+        batchesCreated: 0,
+        batches: [],
+        message: "No claims are currently in ready_for_batch status. Release charges first.",
+      });
+    }
+
+    // 2. Find which claims are already in an active (non-submitted, non-archived) batch
+    const readyIds = allReady.map((c) => text(c.id)).filter(Boolean);
+    const { data: existingLinks } = await supabase
+      .from("claim_837p_batch_claims")
+      .select("professional_claim_id, batch_id")
+      .eq("organization_id", organizationId)
+      .in("professional_claim_id", readyIds)
+      .is("archived_at", null);
+
+    // Resolve batch statuses for linked claims
+    const linkedBatchIds = [...new Set(((existingLinks ?? []) as DbRow[]).map((r) => text(r.batch_id)).filter(Boolean))];
+    let activeBatchIds = new Set<string>();
+    if (linkedBatchIds.length > 0) {
+      const { data: linkedBatches } = await supabase
+        .from("claim_837p_batches")
+        .select("id, batch_status")
+        .eq("organization_id", organizationId)
+        .in("id", linkedBatchIds)
+        .is("archived_at", null);
+      activeBatchIds = new Set(
+        ((linkedBatches ?? []) as DbRow[])
+          .filter((b) => !["submitted", "accepted", "voided"].includes(text(b.batch_status).toLowerCase()))
+          .map((b) => text(b.id)),
+      );
+    }
+
+    const alreadyBatchedClaimIds = new Set(
+      ((existingLinks ?? []) as DbRow[])
+        .filter((r) => activeBatchIds.has(text(r.batch_id)))
+        .map((r) => text(r.professional_claim_id)),
+    );
+
+    // 3. Only process claims not already in an active batch
+    const unbatched = allReady.filter((c) => !alreadyBatchedClaimIds.has(text(c.id)));
+    if (unbatched.length === 0) {
+      return NextResponse.json({
+        success: true,
+        batchesCreated: 0,
+        batches: [],
+        message: "All ready claims are already assigned to active batches. Download them below.",
+      });
+    }
+
+    // 4. Group by payer_profile_id (null payers go to their own group)
+    const groups = new Map<string, DbRow[]>();
+    for (const claim of unbatched) {
+      const key = text(claim.payer_profile_id) || "__no_payer__";
+      const group = groups.get(key) ?? [];
+      group.push(claim);
+      groups.set(key, group);
+    }
+
+    const orderedGroups = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const createdBatches: Array<{
+      batchId: string; batchNumber: string; payerProfileId: string | null;
+      claimCount: number; totalChargeAmount: number; claimIds: string[];
+    }> = [];
+
+    // 5. Create one batch per payer group via the atomic RPC
+    for (let i = 0; i < orderedGroups.length; i++) {
+      const [payerKey, rows] = orderedGroups[i];
+      const payerProfileId = payerKey === "__no_payer__" ? null : payerKey;
+      const ids = rows.map((c) => text(c.id));
+      const totalChargeAmount = rows.reduce((s, r) => s + money(r.total_charge), 0);
+      const number = orderedGroups.length === 1 ? makeBatchNumber() : makeBatchNumber(i + 1);
+
+      const { data: rpcData, error: rpcError } = await (supabase as any).rpc("create_837p_batch_atomic", {
+        p_organization_id: organizationId,
+        p_claim_ids: ids,
+        p_batch_number: number,
+        p_payer_profile_id: payerProfileId,
+      });
+      if (rpcError) throw new Error(rpcError.message ?? "Batch creation failed");
+
+      const result = (rpcData ?? {}) as { batch_id?: string; batch_number?: string };
+      if (!result.batch_id) throw new Error("Batch creation returned no batch id");
+
+      // Stamp batch_source so the download/mark-submitted routes recognize it
+      await supabase
+        .from("claim_837p_batches")
+        .update({ batch_source: "charge_auto", updated_at: new Date().toISOString() })
+        .eq("id", result.batch_id)
+        .eq("organization_id", organizationId);
+
+      createdBatches.push({
+        batchId: result.batch_id,
+        batchNumber: result.batch_number ?? number,
+        payerProfileId,
+        claimCount: rows.length,
+        totalChargeAmount: Math.round(totalChargeAmount * 100) / 100,
+        claimIds: ids,
+      });
+    }
+
+    // 6. Eagerly generate 837P content for each batch (best-effort)
+    const batchResults = await Promise.allSettled(
+      createdBatches.map((b) =>
+        rebuild837PBatchFile({ batchId: b.batchId, organizationId }),
+      ),
+    );
+
+    const outputBatches = createdBatches.map((b, i) => {
+      const res = batchResults[i];
+      return {
+        batchId: b.batchId,
+        batchNumber: b.batchNumber,
+        payerProfileId: b.payerProfileId,
+        claimCount: b.claimCount,
+        totalChargeAmount: b.totalChargeAmount,
+        generated: res.status === "fulfilled" && res.value.ok,
+        generationError: res.status === "rejected"
+          ? String((res as PromiseRejectedResult).reason)
+          : (res.status === "fulfilled" && !res.value.ok ? res.value.error : null),
+      };
+    });
+
+    return NextResponse.json({
+      success: true,
+      batchesCreated: createdBatches.length,
+      claimsQueued: unbatched.length,
+      batches: outputBatches,
     });
   } catch (error) {
     return NextResponse.json(

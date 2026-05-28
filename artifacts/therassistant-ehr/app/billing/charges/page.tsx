@@ -1,5 +1,5 @@
-import ChargesClient from "./ChargesClient";
+import { redirect } from "next/navigation";
 
 export default function ChargesPage() {
-  return <ChargesClient />;
+  redirect("/billing/charge-capture");
 }

@@ -20,12 +20,12 @@ export const metadata: Metadata = {
   description: "Clinician-first EHR and revenue cycle workspace",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const hdrs = headers();
+  const hdrs = await headers();
   const pathname = hdrs.get("x-pathname") ?? "";
   const isBillingTheme = pathname.startsWith("/billing");
   const isPatientTheme = pathname.startsWith("/portal") || pathname.startsWith("/check-in");

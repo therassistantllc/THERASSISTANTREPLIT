@@ -167,6 +167,16 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
     return analyzeMedicaidDocumentation(medicaidDocumentationText);
   }, [summary?.coverage?.isMedicaid, medicaidDocumentationText]);
 
+  const medicaidCodeTags = useMemo(() => {
+    if (!medicaidSuggestions) return [] as Array<{ code: string; className: string }>;
+    return medicaidSuggestions.recommendations
+      .filter((rec) => rec.action === "suggest" || rec.action === "clarify_before_suggesting")
+      .map((rec) => ({
+        code: rec.code,
+        className: rec.action === "suggest" ? "status status-green" : "status status-yellow",
+      }));
+  }, [medicaidSuggestions]);
+
   const claimReadinessChecks = useMemo((): ClaimReadinessCheck[] => {
     return [
       { label: "Primary diagnosis selected", isComplete: diagnoses.some((d) => d.is_primary), required: true },
@@ -659,65 +669,6 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
               <p><strong>Status:</strong> <span className={statusClass(encounter.encounter_status)}>{encounter.encounter_status ?? "not set"}</span></p>
             </div>
           </article>
-          {summary.coverage?.isMedicaid && medicaidSuggestions ? (
-            <article className="panel">
-              <h2>Medicaid Code Suggestions</h2>
-              <p className="muted" style={{ marginTop: 4 }}>
-                Live documentation cues shown only for Medicaid-covered clients.
-              </p>
-              {medicaidSuggestions.recommendations.filter((rec) => rec.action !== "do_not_suggest").length === 0 ? (
-                <p className="muted" style={{ marginBottom: 0 }}>
-                  No Medicaid assessment, screening, SUD assessment, or treatment-planning code is supported yet by the current note text.
-                </p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {medicaidSuggestions.recommendations
-                    .filter((rec) => rec.action !== "do_not_suggest")
-                    .map((rec) => (
-                      <div key={rec.code} style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                          <strong>{rec.code} · {rec.label}</strong>
-                          <span className={rec.action === "suggest" ? "status status-green" : "status status-yellow"}>
-                            {rec.action === "suggest" ? "Suggest" : "Clarify"}
-                          </span>
-                        </div>
-                        <p style={{ margin: "6px 0 0 0", fontSize: 13 }}>
-                          {rec.explanation}
-                        </p>
-                        <p className="muted" style={{ margin: "6px 0 0 0", fontSize: 12 }}>
-                          Confidence: {rec.confidence.replaceAll("_", " ")} · Score: {rec.score}
-                        </p>
-                        {rec.missingElements.length > 0 ? (
-                          <p className="muted" style={{ margin: "6px 0 0 0", fontSize: 12 }}>
-                            Missing for higher confidence: {rec.missingElements.join(", ")}
-                          </p>
-                        ) : null}
-                        {rec.clarificationQuestion ? (
-                          <p style={{ margin: "6px 0 0 0", fontSize: 12 }}>
-                            <strong>Clarify:</strong> {rec.clarificationQuestion}
-                          </p>
-                        ) : null}
-                        {rec.documentationSuggestion ? (
-                          <p style={{ margin: "6px 0 0 0", fontSize: 12 }}>
-                            <strong>Document:</strong> {rec.documentationSuggestion}
-                          </p>
-                        ) : null}
-                      </div>
-                    ))}
-                </div>
-              )}
-              {medicaidSuggestions.globalWarnings.length > 0 ? (
-                <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
-                  <strong style={{ fontSize: 13 }}>Documentation warnings</strong>
-                  <ul style={{ margin: "8px 0 0 18px", padding: 0 }}>
-                    {medicaidSuggestions.globalWarnings.map((warning) => (
-                      <li key={warning} style={{ fontSize: 12 }}>{warning}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </article>
-          ) : null}
           <ClaimReadinessSidebar checks={claimReadinessChecks} />
         </aside>
 
@@ -840,6 +791,16 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
           <SoapNoteEditor data={soapNote} onChange={setSoapNote} disabled={finalized} />
           <DiagnosisPicker diagnoses={diagnoses} onChange={setDiagnoses} disabled={finalized} />
           <CptCodePanel serviceLines={serviceLines} onChange={setServiceLines} disabled={finalized} serviceDate={encounter.service_date || undefined} />
+          {summary.coverage?.isMedicaid && medicaidCodeTags.length > 0 ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: "-0.75rem" }}>
+              <span className="muted" style={{ fontSize: 12 }}>Suggested codes:</span>
+              {medicaidCodeTags.map((tag) => (
+                <span key={`${tag.code}-${tag.className}`} className={tag.className} style={{ fontSize: 11, letterSpacing: 0.2 }}>
+                  {tag.code}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </main>
       </section>
 

@@ -10,6 +10,7 @@ import {
   PaymentPostingForbiddenError,
   PaymentPostingUnauthenticatedError,
 } from "@/lib/payments/postingEngine";
+import { UNIQUE_VIOLATION } from "@/lib/db/findOrCreate";
 
 function generateUuid() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -111,7 +112,9 @@ export async function POST(request: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const unmatchedClaims: any[] = [];
 
-    for (const claim of parsed.claims) {
+    let duplicateClaims = 0;
+
+    for (const [claimIndex, claim] of parsed.claims.entries()) {
       const patientControlNumber = claim.patientControlNumber;
 
       let matchedClaim: { id: string; client_id: string | null } | null = null;
@@ -159,6 +162,8 @@ export async function POST(request: Request) {
         raw_claim_payload: claim.raw,
       } as unknown as Json;
 
+      const itemFileHash = `${fileHash}:${patientControlNumber || claim.payerClaimControlNumber || claim.traceNumber || claimIndex + 1}`;
+
       const itemRecord = {
         id: itemId,
         organization_id: organizationId,
@@ -180,7 +185,7 @@ export async function POST(request: Request) {
         original_file_name: file.name,
         storage_bucket: null,
         storage_path: null,
-        file_hash: fileHash,
+        file_hash: itemFileHash,
         parse_status: "parsed",
         parse_error: null,
         parsed_at: now,
@@ -197,7 +202,13 @@ export async function POST(request: Request) {
         .from("payment_import_items")
         .insert(itemRecord);
 
-      if (itemError) throw itemError;
+      if (itemError) {
+        if ((itemError as { code?: string }).code === UNIQUE_VIOLATION) {
+          duplicateClaims += 1;
+          continue;
+        }
+        throw itemError;
+      }
 
       importedItems.push(itemRecord);
 
@@ -241,6 +252,7 @@ export async function POST(request: Request) {
         matchedClaims: importedItems.filter((x) => x.claim_id).length,
         unmatchedClaims: unmatchedClaims.length,
         postingReady: importedItems.filter((x) => x.posting_ready).length,
+        duplicateClaims,
         totalPaymentAmount: parsed.totalPaymentAmount,
         payerName: parsed.payerName,
         paymentDate: parsed.paymentDate,

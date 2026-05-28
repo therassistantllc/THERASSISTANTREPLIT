@@ -206,11 +206,12 @@ serve(async (req: Request) => {
         const fileHash = await sha256(rawEdi);
         const parsed = parse835(rawEdi);
 
-        for (const claim of parsed.claims) {
+        for (const [claimIndex, claim] of parsed.claims.entries()) {
           const importedItemRef =
             claim.claim_ref ||
             claim.payer_claim_control_number ||
             `${fileHash}-${result.claims_imported + 1}`;
+          const itemFileHash = `${fileHash}:${importedItemRef || claimIndex + 1}`;
 
           const { data: matchedClaim } = await supabase
             .from("claims")
@@ -244,7 +245,7 @@ serve(async (req: Request) => {
                 storage_bucket: "payment-imports",
                 storage_path: storagePath,
                 original_file_name: storagePath.split("/").pop() ?? storagePath,
-                file_hash: fileHash,
+                file_hash: itemFileHash,
                 raw_edi: rawEdi,
                 parsed_payload: parsed,
                 parse_status: "parsed",

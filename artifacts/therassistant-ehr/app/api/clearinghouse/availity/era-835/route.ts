@@ -108,7 +108,7 @@ export async function POST(request: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const unmatchedClaims: any[] = [];
 
-    for (const claim of parsed.claims) {
+    for (const [claimIndex, claim] of parsed.claims.entries()) {
       const patientControlNumber = claim.patientControlNumber;
 
       let matchedClaim: { id: string; client_id: string | null } | null = null;
@@ -158,6 +158,8 @@ export async function POST(request: Request) {
 
       const adjustmentTotal = claim.adjustments.reduce((sum, adj) => sum + Number(adj.amount ?? 0), 0);
 
+      const itemFileHash = `${fileHash}:${patientControlNumber || claim.payerClaimControlNumber || claim.traceNumber || claimIndex + 1}`;
+
       const itemRecord = {
         id: itemId,
         organization_id: organizationId,
@@ -178,7 +180,7 @@ export async function POST(request: Request) {
         original_file_name: fileName,
         storage_bucket: null,
         storage_path: null,
-        file_hash: fileHash,
+        file_hash: itemFileHash,
         parse_status: "parsed",
         parse_error: null,
         parsed_at: now,

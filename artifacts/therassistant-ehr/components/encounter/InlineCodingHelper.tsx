@@ -107,10 +107,6 @@ const InlineCodingHelper = forwardRef<InlineCodingHelperHandle>(function InlineC
           window.__theraCodingHelperBootstrapped = true;
         }
 
-        window.initLibraries?.();
-        window.refreshVisiblePages?.();
-        window.updateProgress?.();
-
         if (!cancelled) {
           setReady(true);
           setLoadError(null);

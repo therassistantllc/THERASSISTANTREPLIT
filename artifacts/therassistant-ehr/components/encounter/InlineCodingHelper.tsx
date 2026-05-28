@@ -23,6 +23,7 @@ declare global {
     refreshVisiblePages?: () => void;
     updateProgress?: () => void;
     getLatestCodingReport?: () => unknown;
+    initializeCodingHelper?: () => void;
   }
 }
 
@@ -106,6 +107,9 @@ const InlineCodingHelper = forwardRef<InlineCodingHelperHandle>(function InlineC
 
           window.__theraCodingHelperBootstrapped = true;
         }
+
+        // Re-initialize helper state for the freshly mounted DOM.
+        window.initializeCodingHelper?.();
 
         if (!cancelled) {
           setReady(true);

@@ -3691,12 +3691,7 @@ function getSelectedSymptoms() {
   return [...document.querySelectorAll('.symptom-choice:checked')].map(x => x.value);
 }
 
-let helperInitialized = false;
-
 function initializeCodingHelper() {
-  if (helperInitialized) return;
-  helperInitialized = true;
-
   if (typeof initDashboard === 'function') initDashboard(CLINICIAN_ROLES);
   initLibraries();
   const icdCatEl = document.getElementById('icdCat');
@@ -3761,10 +3756,14 @@ function initializeCodingHelper() {
   }
 }
 
-window.addEventListener('DOMContentLoaded', initializeCodingHelper);
+window.initializeCodingHelper = initializeCodingHelper;
 
-if (document.readyState !== 'loading') {
-  initializeCodingHelper();
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', () => {
+    window.initializeCodingHelper();
+  }, { once: true });
+} else {
+  window.initializeCodingHelper();
 }
 </script>
 </body>

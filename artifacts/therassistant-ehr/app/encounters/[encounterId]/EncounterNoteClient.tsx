@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import SoapNoteEditor, { SoapNoteData } from "@/components/encounter/SoapNoteEditor";
 import DiagnosisPicker, { Diagnosis } from "@/components/encounter/DiagnosisPicker";
 import CptCodePanel, { ServiceLine } from "@/components/encounter/CptCodePanel";
@@ -102,6 +102,9 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
   const [mailroomDocs, setMailroomDocs] = useState<EncounterMailroomDocument[]>([]);
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [showJournalModal, setShowJournalModal] = useState(false);
+  const [showCodingHelper, setShowCodingHelper] = useState(false);
+  const [savingCodingHelperReport, setSavingCodingHelperReport] = useState(false);
+  const codingHelperFrameRef = useRef<HTMLIFrameElement | null>(null);
 
   const personalTemplates = useMemo(
     () => templates.filter((t) => t.provider_id !== null),
@@ -459,6 +462,66 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
     }
   }
 
+  async function saveCodingHelperReportToChart() {
+    if (!organizationId) {
+      setError("Missing organizationId. Add ?organizationId=... to the URL or configure NEXT_PUBLIC_ORGANIZATION_ID.");
+      return;
+    }
+
+    setSavingCodingHelperReport(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      type HelperWindow = Window & {
+        latestCodingReport?: unknown;
+        generateAll?: () => void;
+      };
+
+      const helperWindow = codingHelperFrameRef.current?.contentWindow as HelperWindow | null;
+      if (!helperWindow) throw new Error("Coding helper is not loaded yet. Try again in a moment.");
+
+      if (!helperWindow.latestCodingReport && typeof helperWindow.generateAll === "function") {
+        helperWindow.generateAll();
+      }
+
+      const report = helperWindow.latestCodingReport;
+      if (!report || typeof report !== "object") {
+        throw new Error("No coding report found. Click Generate Output in the helper first.");
+      }
+
+      const response = await fetch(`/api/encounters/${encounterId}/coding-report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          report,
+        }),
+      });
+
+      const json = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        title?: string;
+        noteUpdated?: boolean;
+      };
+
+      if (!response.ok || !json.success) {
+        throw new Error(json.error ?? "Failed to save coding report to chart");
+      }
+
+      setMessage(
+        json.noteUpdated
+          ? `Saved coding support into this encounter note${json.title ? ` and chart document: ${json.title}` : "."}`
+          : `Saved coding report to chart${json.title ? `: ${json.title}` : "."}`,
+      );
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Failed to save coding report to chart");
+    } finally {
+      setSavingCodingHelperReport(false);
+    }
+  }
+
   async function signNote() {
     setSaving(true);
     setError(null);
@@ -608,6 +671,15 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
         <div className="hero-actions">
           {client?.id ? <Link className="button button-secondary" href={`/clients/${client.id}`}>Client Chart</Link> : null}
           <Link className="button button-secondary" href="/clinician/agenda">Agenda</Link>
+          {summary?.coverage?.isMedicaid ? (
+            <button
+              className="button button-secondary"
+              type="button"
+              onClick={() => setShowCodingHelper(true)}
+            >
+              Coding Helper
+            </button>
+          ) : null}
           {isSigned && !amending ? (
             <button
               className="button button-secondary"
@@ -805,6 +877,76 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
       </section>
 
       <SignNoteModal isOpen={showSignModal} onClose={() => setShowSignModal(false)} onConfirm={signNote} isLoading={saving} />
+
+      {showCodingHelper ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(11, 20, 39, 0.45)",
+            zIndex: 80,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+          }}
+          onClick={() => setShowCodingHelper(false)}
+        >
+          <div
+            style={{
+              width: "min(940px, 96vw)",
+              height: "min(82vh, 760px)",
+              background: "var(--surface)",
+              border: "1px solid var(--line)",
+              borderRadius: "16px",
+              boxShadow: "0 18px 60px rgba(11, 20, 39, 0.28)",
+              overflow: "hidden",
+              display: "grid",
+              gridTemplateRows: "auto 1fr",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                padding: "0.75rem 0.9rem",
+                borderBottom: "1px solid var(--line)",
+                background: "var(--surface-subtle)",
+              }}
+            >
+              <div style={{ display: "grid", gap: 2 }}>
+                <strong style={{ fontSize: 14 }}>Clinical Coding Helper</strong>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  Medicaid documentation and coding support for this encounter.
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={saveCodingHelperReportToChart}
+                  disabled={savingCodingHelperReport}
+                >
+                  {savingCodingHelperReport ? "Saving…" : "Save To Chart"}
+                </button>
+                <button className="button button-secondary" type="button" onClick={() => setShowCodingHelper(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <iframe
+              ref={codingHelperFrameRef}
+              title="Clinical Coding Helper"
+              src="/clinical-coding-tool.html"
+              style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {showJournalModal && summary?.client?.id ? (
         <div

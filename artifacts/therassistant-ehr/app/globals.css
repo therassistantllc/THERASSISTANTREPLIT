@@ -8,7 +8,7 @@
   --sage-soft: #d9e4dd;
   --sage-mid: #d9e4dd;
   --line: #d9e4dd;
-  --text: #2f4858;
+  --text: #1f2937;
   --muted: #6b9080;
   --danger: #b02020;
   --warning: #7a5000;
@@ -19,6 +19,25 @@
   --font-sans: var(--font-inter), "Inter", "Segoe UI", "Helvetica Neue", sans-serif;
   --font-heading: var(--font-manrope), "Manrope", "Segoe UI", "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+body.theme-billing {
+  --background: #f8fafc;
+  --card: #ffffff;
+  --line: #d9e4dd;
+  --success: #4f8a5b;
+  --warning: #c0843d;
+  --danger: #b4534b;
+  --muted: #475569;
+}
+
+body.theme-patient {
+  --background: #fcfaf6;
+  --card: #fffdfa;
+  --line: #e3ebe5;
+  --sage-soft: #eef4f0;
+  --sage-mid: #d9e4dd;
+  --muted: #667b71;
 }
 
 * {
@@ -78,6 +97,13 @@ textarea {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 4px;
+}
+
+body.theme-patient .panel,
+body.theme-patient .metric-card,
+body.theme-patient .agenda-card {
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(47, 72, 88, 0.05);
 }
 
 .hero-panel {

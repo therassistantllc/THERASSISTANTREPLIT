@@ -322,6 +322,61 @@
   overflow: auto;
 }
 
+/* Billing: stronger operational contrast */
+:global(body.theme-billing) .sidebar {
+  background: #1e293b;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+:global(body.theme-billing) .navSection {
+  color: #94a3b8;
+}
+
+:global(body.theme-billing) .navItem {
+  color: #cbd5e1;
+}
+
+:global(body.theme-billing) .navItemActive {
+  border-left-color: #6b9080;
+}
+
+:global(body.theme-billing) .subnavItemActive {
+  border-left-color: #6b9080;
+}
+
+/* Patient-facing: softer, calmer shell */
+:global(body.theme-patient) .topbar {
+  background: #fffdfa;
+  border-bottom-color: #e3ebe5;
+}
+
+:global(body.theme-patient) .sidebar {
+  background: #f1f6f2;
+  border-right: 1px solid #e3ebe5;
+}
+
+:global(body.theme-patient) .navSection {
+  color: #6b9080;
+}
+
+:global(body.theme-patient) .navItem,
+:global(body.theme-patient) .subnavItem {
+  color: #4a5f54;
+}
+
+:global(body.theme-patient) .navItem:hover,
+:global(body.theme-patient) .subnavItem:hover {
+  background: #e9f1eb;
+  color: #2f4858;
+}
+
+:global(body.theme-patient) .navItemActive,
+:global(body.theme-patient) .subnavItemActive {
+  background: #e3ece5;
+  color: #2f4858;
+  border-left-color: #6b9080;
+}
+
 /* ── Client sticky group (banner + tab nav) ─────────────────────────────── */
 .patientStickyGroup {
   position: sticky;

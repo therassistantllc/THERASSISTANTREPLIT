@@ -2,8 +2,9 @@ import type { Diagnosis } from "@/components/encounter/DiagnosisPicker";
 import type { ServiceLine } from "@/components/encounter/CptCodePanel";
 import type { SoapNoteData } from "@/components/encounter/SoapNoteEditor";
 import type { MedicaidDetectionResult } from "@/lib/encounters/medicaidCodeDetection";
-import type { CodingQuestionnaireAnswers } from "./questions";
 import type { CodingQuestionnaireScore } from "./scoring";
+
+type CodingQuestionnaireAnswers = Partial<Record<string, string>>;
 
 export type CodingHelperReport = {
   id: string;
@@ -17,7 +18,6 @@ export type CodingHelperReport = {
   questionnaireScore: CodingQuestionnaireScore;
   suggestedCodes: string[];
   documentationWarnings: string[];
-  screeningDetails: string[];
   sourceSnapshot: string;
   noteAnalysisSummary: string[];
   noteSuggestedCodes: string[];
@@ -73,9 +73,7 @@ export function buildCodingReport(params: BuildCodingReportParams): CodingHelper
     ),
   );
 
-  const suggestedCodes = Array.from(
-    new Set([...questionnaireScore.suggestedCodes, ...questionnaireScore.psychotherapyCodes]),
-  );
+  const suggestedCodes = Array.from(new Set(questionnaireScore.suggestedCodes));
 
   const scoreBreakdown = questionnaireScore.codeScores
     .map((score) => `${score.code}: ${score.earnedPoints}/${score.possiblePoints} (${score.status})`)
@@ -133,7 +131,6 @@ export function buildCodingReport(params: BuildCodingReportParams): CodingHelper
     questionnaireScore,
     suggestedCodes,
     documentationWarnings,
-    screeningDetails: questionnaireScore.screeningDetails,
     sourceSnapshot,
     noteAnalysisSummary: noteAnalysis?.auditSummary ?? [],
     noteSuggestedCodes,

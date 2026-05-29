@@ -1,8 +1,6 @@
 import {
   CODING_QUESTIONNAIRE_SECTIONS,
-  getAnswerList,
   getAnswerString,
-  getNumberAnswer,
   isYes,
   type CodingQuestionnaireAnswers,
 } from "./questions";
@@ -43,7 +41,6 @@ export type CodingSectionScore = {
 export type CodingQuestionnaireScore = {
   suggestedCodes: string[];
   consideredCodes: string[];
-  psychotherapyCodes: string[];
   totalAnsweredQuestions: number;
   sectionScores: CodingSectionScore[];
   codeScores: CodingCodeScore[];
@@ -70,12 +67,12 @@ const CODE_THRESHOLDS: Thresholds = {
 };
 
 const SCORE_RULES: ScoreRule[] = [
-  { questionId: "screenUsed", code: "H0002", points: 3, description: "Formal screening tool used", when: (answers) => isYes(answers, "screenUsed") || getAnswerList(answers, "screenTools").length > 0 },
-  { questionId: "screenScored", code: "H0002", points: 2, description: "Screening score documented", when: (answers) => isYes(answers, "screenScored") || !!getAnswerString(answers, "screenScores") },
+  { questionId: "screenUsed", code: "H0002", points: 3, description: "Formal screening tool used", when: (answers) => isYes(answers, "screenUsed") },
+  { questionId: "screenScored", code: "H0002", points: 2, description: "Screening score documented", when: (answers) => isYes(answers, "screenScored") },
   { questionId: "screenInterpreted", code: "H0002", points: 2, description: "Screening interpreted with client", when: (answers) => isYes(answers, "screenInterpreted") },
-  { questionId: "screenAction", code: "H0002", points: 2, description: "Screening informed next steps", when: (answers) => ["referral", "triage", "further-assessment"].includes(getAnswerString(answers, "screenAction")) },
-  { questionId: "screenSeverity", code: "H0002", points: 1, description: "Screening severity documented", when: (answers) => !!getAnswerString(answers, "screenSeverity") },
-  { questionId: "screenClinicalSignificance", code: "H0002", points: 1, description: "Clinical significance documented", when: (answers) => !!getAnswerString(answers, "screenClinicalSignificance") },
+  { questionId: "screenAction", code: "H0002", points: 2, description: "Screening informed next steps", when: (answers) => isYes(answers, "screenAction") },
+  { questionId: "screenSeverity", code: "H0002", points: 1, description: "Screening severity documented", when: (answers) => isYes(answers, "screenSeverity") },
+  { questionId: "screenClinicalSignificance", code: "H0002", points: 1, description: "Clinical significance documented", when: (answers) => isYes(answers, "screenClinicalSignificance") },
 
   { questionId: "newConcerns", code: "H0031", points: 2, description: "New symptoms reviewed", when: (answers) => isYes(answers, "newConcerns") },
   { questionId: "currentExperience", code: "H0031", points: 1, description: "Current symptoms reviewed", when: (answers) => isYes(answers, "currentExperience") },
@@ -107,7 +104,7 @@ const SCORE_RULES: ScoreRule[] = [
   { questionId: "plan_progress", code: "H0032", points: 1, description: "Progress reviewed", when: (answers) => isYes(answers, "plan_progress") },
   { questionId: "plan_barriers", code: "H0032", points: 1, description: "Barriers reviewed", when: (answers) => isYes(answers, "plan_barriers") },
   { questionId: "plan_collaboration", code: "H0032", points: 1, description: "Client collaboration documented", when: (answers) => isYes(answers, "plan_collaboration") },
-  { questionId: "planReason", code: "H0032", points: 2, description: "Reason for plan work documented", when: (answers) => getAnswerString(answers, "planReason") && getAnswerString(answers, "planReason") !== "none" },
+  { questionId: "planReason", code: "H0032", points: 2, description: "Reason for plan work documented", when: (answers) => isYes(answers, "planReason") },
 
 ];
 
@@ -119,16 +116,6 @@ const SECTION_LOOKUP = new Map(
 
 function clean(value: unknown): string {
   return String(value ?? "").trim();
-}
-
-function buildPsychotherapyCodes(minutes: number | null): string[] {
-  if (!minutes) return [];
-  if (minutes >= 75 && minutes <= 90) return ["90834 x 2"];
-  if (minutes >= 53) return ["90837"];
-  if (minutes >= 39) return ["90834"];
-  if (minutes >= 16) return ["90832"];
-  if (minutes >= 8) return ["H0004"];
-  return [];
 }
 
 function confidenceFromStatus(status: CodingCodeScore["status"], ratio: number): CodingCodeScore["confidence"] {
@@ -149,7 +136,7 @@ export function scoreCodingQuestionnaire(answers: CodingQuestionnaireAnswers): C
     possibleByCode.set(rule.code, (possibleByCode.get(rule.code) ?? 0) + rule.points);
     possibleByQuestion.set(rule.questionId, Math.max(possibleByQuestion.get(rule.questionId) ?? 0, rule.points + (possibleByQuestion.get(rule.questionId) ?? 0)));
 
-    const answer = clean(Array.isArray(answers[rule.questionId]) ? getAnswerList(answers, rule.questionId).join(", ") : getAnswerString(answers, rule.questionId));
+    const answer = clean(getAnswerString(answers, rule.questionId));
     if (!questionScores.has(rule.questionId)) {
       const meta = SECTION_LOOKUP.get(rule.questionId);
       questionScores.set(rule.questionId, {
@@ -182,7 +169,7 @@ export function scoreCodingQuestionnaire(answers: CodingQuestionnaireAnswers): C
       return existing ?? {
         questionId: question.id,
         label: question.label,
-        answer: clean(Array.isArray(answers[question.id]) ? getAnswerList(answers, question.id).join(", ") : getAnswerString(answers, question.id)),
+        answer: clean(getAnswerString(answers, question.id)),
         earnedPoints: 0,
         possiblePoints: 0,
         matchedCodes: [],
@@ -230,35 +217,29 @@ export function scoreCodingQuestionnaire(answers: CodingQuestionnaireAnswers): C
 
   const totalAnsweredQuestions = sectionScores.reduce((sum, section) => sum + section.answeredQuestions, 0);
   const screeningDetails = [
-    getAnswerList(answers, "screenTools").length ? `Screening tools: ${getAnswerList(answers, "screenTools").join(", ")}` : "",
+    isYes(answers, "screenUsed") ? "Screening tool used" : "",
     isYes(answers, "screenScored") ? "Score documented" : "",
     isYes(answers, "screenInterpreted") ? "Results discussed" : "",
-    getAnswerString(answers, "screenAction") && getAnswerString(answers, "screenAction") !== "none" ? `Result used for: ${getAnswerString(answers, "screenAction")}` : "",
-    getAnswerString(answers, "screenScores") ? `Scores: ${getAnswerString(answers, "screenScores")}` : "",
+    isYes(answers, "screenAction") ? "Result used for next step" : "",
+    isYes(answers, "screenSeverity") ? "Screening severity documented" : "",
+    isYes(answers, "screenClinicalSignificance") ? "Clinically significant symptoms documented" : "",
   ].filter(Boolean);
   const documentationWarnings = new Set<string>();
   if (!totalAnsweredQuestions) documentationWarnings.add("No questionnaire answers have been recorded yet.");
-  if (!getNumberAnswer(answers, "totalMinutes")) documentationWarnings.add("Session minutes are missing.");
-  if ((isYes(answers, "screenScored") || isYes(answers, "screenInterpreted") || !!getAnswerString(answers, "screenScores")) && !(isYes(answers, "screenUsed") || getAnswerList(answers, "screenTools").length)) {
-    documentationWarnings.add("Screening details were entered without identifying a formal screening tool.");
-  }
   if (codeScores.find((score) => score.code === "H0032")?.status === "suggest" && !["plan_goalsRevised", "plan_objectives", "plan_interventions"].some((key) => isYes(answers, key))) {
     documentationWarnings.add("Treatment planning scored as supported, but core goal/objective/intervention changes were not marked yes.");
   }
 
   const suggestedCodes = codeScores.filter((score) => score.status === "suggest").map((score) => score.code);
   const consideredCodes = codeScores.filter((score) => score.status === "consider").map((score) => score.code);
-  const psychotherapyCodes = buildPsychotherapyCodes(getNumberAnswer(answers, "totalMinutes"));
   const summary = [
     suggestedCodes.length ? `Questionnaire-supported codes: ${suggestedCodes.join(", ")}.` : "Questionnaire scoring did not reach a suggest threshold for add-on codes.",
     consideredCodes.length ? `Consider reviewing: ${consideredCodes.join(", ")}.` : "",
-    psychotherapyCodes.length ? `Time-based psychotherapy support: ${psychotherapyCodes.join(", ")}.` : "No psychotherapy time code supported by the recorded minutes.",
   ].filter(Boolean).join(" ");
 
   return {
     suggestedCodes,
     consideredCodes,
-    psychotherapyCodes,
     totalAnsweredQuestions,
     sectionScores,
     codeScores,

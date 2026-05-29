@@ -8,7 +8,8 @@ import type { ServiceLine } from "@/components/encounter/CptCodePanel";
 import CodingQuestionnaire from "@/components/encounter/coding-helper/CodingQuestionnaire";
 import { buildCodingReport, type CodingHelperReport } from "@/components/encounter/coding-helper/buildCodingReport";
 import { scoreCodingQuestionnaire } from "@/components/encounter/coding-helper/scoring";
-import type { CodingQuestionnaireAnswers } from "@/components/encounter/coding-helper/questions";
+
+type CodingQuestionnaireAnswers = Partial<Record<string, string>>;
 
 type Props = {
   encounterId: string;
@@ -106,7 +107,7 @@ export default function CodingHelperPanel(props: Props) {
   }, [documentationText]);
 
   const suggestedCodes = useMemo(
-    () => Array.from(new Set([...questionnaireScore.suggestedCodes, ...questionnaireScore.psychotherapyCodes])),
+    () => Array.from(new Set(questionnaireScore.suggestedCodes)),
     [questionnaireScore],
   );
 

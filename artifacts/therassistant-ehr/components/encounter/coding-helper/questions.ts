@@ -1,23 +1,12 @@
-export type CodingAnswerValue = string | number | string[];
+export type CodingAnswerValue = string;
 
 export type CodingQuestionnaireAnswers = Partial<Record<string, CodingAnswerValue>>;
-
-export type CodingQuestionOption = {
-  value: string;
-  label: string;
-  description?: string;
-};
 
 export type CodingQuestion = {
   id: string;
   label: string;
-  type: "yesNo" | "number" | "select" | "text" | "textarea" | "multiselect";
+  type: "yesNo";
   helperText?: string;
-  placeholder?: string;
-  min?: number;
-  max?: number;
-  options?: CodingQuestionOption[];
-  /** If set, this question is only shown when answers[parentId] === showWhen */
   parentId?: string;
   showWhen?: string;
 };
@@ -29,70 +18,18 @@ export type CodingQuestionSection = {
   questions: CodingQuestion[];
 };
 
-export const SCREENING_TOOL_OPTIONS: CodingQuestionOption[] = [
-  { value: "PHQ-9", label: "PHQ-9" },
-  { value: "GAD-7", label: "GAD-7" },
-  { value: "AUDIT-C", label: "AUDIT-C" },
-  { value: "DAST-10", label: "DAST-10" },
-  { value: "PCL-5", label: "PCL-5" },
-  { value: "C-SSRS", label: "C-SSRS" },
-  { value: "MDQ", label: "MDQ" },
-  { value: "Other validated tool", label: "Other validated tool" },
-];
-
 export const CODING_QUESTIONNAIRE_SECTIONS: CodingQuestionSection[] = [
   {
     id: "session-intake",
     title: "Session Intake",
-    description: "Capture the core intake details that drive time and screening logic.",
+    description: "Capture the core intake details that drive screening logic.",
     questions: [
-      { id: "totalMinutes", label: "How many minutes did you spend with this client?", type: "number", min: 1, max: 480 },
       { id: "screenUsed", label: "Was a formal screening tool used?", type: "yesNo" },
-      { id: "screenTools", label: "Which screening tools were used?", type: "multiselect", options: SCREENING_TOOL_OPTIONS, parentId: "screenUsed", showWhen: "yes" },
       { id: "screenScored", label: "Did you record the score?", type: "yesNo", parentId: "screenUsed", showWhen: "yes" },
-      { id: "screenScores", label: "Document key scores or findings", type: "textarea", placeholder: "Example: PHQ-9 16, GAD-7 12, discussed with client and used for referral.", parentId: "screenScored", showWhen: "yes" },
       { id: "screenInterpreted", label: "Did you discuss what the score means with the client?", type: "yesNo", parentId: "screenUsed", showWhen: "yes" },
-      {
-        id: "screenAction",
-        label: "What did you do with the result?",
-        type: "select",
-        options: [
-          { value: "none", label: "No specific action taken" },
-          { value: "referral", label: "Made a referral" },
-          { value: "further-assessment", label: "Ordered further assessment" },
-          { value: "triage", label: "Used for eligibility decision" },
-          { value: "monitoring", label: "Created a monitoring plan" },
-        ],
-        parentId: "screenUsed",
-        showWhen: "yes",
-      },
-      {
-        id: "screenSeverity",
-        label: "Overall screening severity",
-        type: "select",
-        options: [
-          { value: "", label: "Select severity" },
-          { value: "minimal", label: "Minimal" },
-          { value: "mild", label: "Mild" },
-          { value: "moderate", label: "Moderate" },
-          { value: "moderately severe", label: "Moderately severe" },
-          { value: "severe", label: "Severe" },
-        ],
-        parentId: "screenUsed",
-        showWhen: "yes",
-      },
-      {
-        id: "screenClinicalSignificance",
-        label: "Clinically significant symptoms",
-        type: "select",
-        options: [
-          { value: "", label: "Select finding" },
-          { value: "presence", label: "Presence" },
-          { value: "absence", label: "Absence" },
-        ],
-        parentId: "screenUsed",
-        showWhen: "yes",
-      },
+      { id: "screenAction", label: "Did screening inform the next step?", type: "yesNo", parentId: "screenUsed", showWhen: "yes" },
+      { id: "screenSeverity", label: "Was screening severity documented?", type: "yesNo", parentId: "screenUsed", showWhen: "yes" },
+      { id: "screenClinicalSignificance", label: "Were clinically significant symptoms documented?", type: "yesNo", parentId: "screenUsed", showWhen: "yes" },
     ],
   },
   {
@@ -143,47 +80,15 @@ export const CODING_QUESTIONNAIRE_SECTIONS: CodingQuestionSection[] = [
       { id: "plan_progress", label: "Did you review progress toward goals?", type: "yesNo" },
       { id: "plan_barriers", label: "Did you discuss barriers to progress?", type: "yesNo" },
       { id: "plan_collaboration", label: "Did the client participate in the planning work?", type: "yesNo" },
-      {
-        id: "planReason",
-        label: "What best describes the reason for plan work?",
-        type: "select",
-        options: [
-          { value: "none", label: "No plan work" },
-          { value: "new-focus", label: "New focus or problem" },
-          { value: "symptom-change", label: "Symptom or risk change" },
-          { value: "scheduled-review", label: "Scheduled review" },
-          { value: "external", label: "Care coordination or external change" },
-          { value: "safety", label: "Safety or crisis reason" },
-        ],
-      },
+      { id: "planReason", label: "Did you document the reason for plan work?", type: "yesNo" },
     ],
   },
 ];
 
 export function getAnswerString(answers: CodingQuestionnaireAnswers, key: string): string {
-  const value = answers[key];
-  if (Array.isArray(value)) return value.join(", ");
-  if (typeof value === "number") return String(value);
-  return String(value ?? "").trim();
-}
-
-export function getAnswerList(answers: CodingQuestionnaireAnswers, key: string): string[] {
-  const value = answers[key];
-  if (Array.isArray(value)) return value.map((item) => String(item));
-  if (typeof value === "string" && value.trim()) return [value.trim()];
-  return [];
+  return String(answers[key] ?? "").trim();
 }
 
 export function isYes(answers: CodingQuestionnaireAnswers, key: string): boolean {
   return getAnswerString(answers, key) === "yes";
-}
-
-export function getNumberAnswer(answers: CodingQuestionnaireAnswers, key: string): number | null {
-  const raw = answers[key];
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  if (typeof raw === "string") {
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
 }

@@ -2,7 +2,6 @@
 
 import {
   CODING_QUESTIONNAIRE_SECTIONS,
-  getAnswerList,
   getAnswerString,
   type CodingQuestion,
   type CodingQuestionSection,
@@ -17,7 +16,7 @@ type Props = {
 function setAnswer(
   answers: CodingQuestionnaireAnswers,
   id: string,
-  value: string | number | string[],
+  value: string,
 ): CodingQuestionnaireAnswers {
   return {
     ...answers,
@@ -61,97 +60,7 @@ function renderQuestion(params: {
     );
   }
 
-  if (question.type === "number") {
-    return (
-      <input
-        type="number"
-        min={question.min}
-        max={question.max}
-        value={getAnswerString(answers, question.id)}
-        onChange={(event) => onChange(setAnswer(answers, question.id, event.target.value))}
-        placeholder={question.placeholder}
-        style={commonStyle}
-      />
-    );
-  }
-
-  if (question.type === "select") {
-    return (
-      <select
-        value={getAnswerString(answers, question.id)}
-        onChange={(event) => onChange(setAnswer(answers, question.id, event.target.value))}
-        style={commonStyle}
-      >
-        <option value="">Select one</option>
-        {(question.options ?? []).map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    );
-  }
-
-  if (question.type === "multiselect") {
-    const selected = new Set(getAnswerList(answers, question.id));
-    return (
-      <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-        {(question.options ?? []).map((option) => {
-          const active = selected.has(option.value);
-          return (
-            <label
-              key={option.value}
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "flex-start",
-                border: "1px solid var(--line, #d9e7f4)",
-                borderRadius: 8,
-                padding: "10px 12px",
-                background: active ? "var(--surface-subtle, #f7fbff)" : "#fff",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={active}
-                onChange={(event) => {
-                  const next = new Set(selected);
-                  if (event.target.checked) next.add(option.value);
-                  else next.delete(option.value);
-                  onChange(setAnswer(answers, question.id, Array.from(next)));
-                }}
-              />
-              <span>
-                <strong>{option.label}</strong>
-                {option.description ? <span className="muted" style={{ display: "block", fontSize: 12 }}>{option.description}</span> : null}
-              </span>
-            </label>
-          );
-        })}
-      </div>
-    );
-  }
-
-  if (question.type === "textarea") {
-    return (
-      <textarea
-        value={getAnswerString(answers, question.id)}
-        onChange={(event) => onChange(setAnswer(answers, question.id, event.target.value))}
-        placeholder={question.placeholder}
-        style={{ ...commonStyle, minHeight: 110, resize: "vertical" }}
-      />
-    );
-  }
-
-  return (
-    <input
-      type="text"
-      value={getAnswerString(answers, question.id)}
-      onChange={(event) => onChange(setAnswer(answers, question.id, event.target.value))}
-      placeholder={question.placeholder}
-      style={commonStyle}
-    />
-  );
+  return null;
 }
 
 function SectionCard(props: {

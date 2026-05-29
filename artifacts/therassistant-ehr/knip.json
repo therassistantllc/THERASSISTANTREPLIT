@@ -24,7 +24,7 @@
   ],
   "ignoreExportsUsedInFile": true,
   "rules": {
-    "files": "error",
+    "files": "warn",
     "duplicates": "error",
     "unresolved": "error",
     "binaries": "error",

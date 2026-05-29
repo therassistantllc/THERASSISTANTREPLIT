@@ -83,7 +83,7 @@ async function listClientsFallback(params: {
 
   let dataQuery = (supabase as any)
     .from("clients")
-    .select("id, first_name, last_name, preferred_name, email, phone, status, intake_status, updated_at")
+    .select("id, first_name, last_name, preferred_name, email, phone, status, intake_status, updated_at, primary_provider_id")
     .eq("organization_id", organizationId)
     .is("archived_at", null)
     .order("last_name", { ascending: true })
@@ -98,7 +98,26 @@ async function listClientsFallback(params: {
     dataQuery = dataQuery.or(filter);
   }
 
-  const [{ count, error: countError }, { data, error: dataError }] = await Promise.all([countQuery, dataQuery]);
+  let countResult: { count: number | null; error: unknown };
+  let dataResult: { data: Row[] | null; error: unknown };
+  try {
+    [countResult, dataResult] = await Promise.all([countQuery, dataQuery]);
+  } catch {
+    // Backward compatibility while primary_provider_id migration is rolling out.
+    dataQuery = (supabase as any)
+      .from("clients")
+      .select("id, first_name, last_name, preferred_name, email, phone, status, intake_status, updated_at, primary_clinician_user_id")
+      .eq("organization_id", organizationId)
+      .is("archived_at", null)
+      .order("last_name", { ascending: true })
+      .order("first_name", { ascending: true })
+      .range(offset, offset + limit - 1);
+
+    [countResult, dataResult] = await Promise.all([countQuery, dataQuery]);
+  }
+
+  const { count, error: countError } = countResult;
+  const { data, error: dataError } = dataResult;
   if (countError) throw countError;
   if (dataError) throw dataError;
 
@@ -281,7 +300,7 @@ export async function GET(request: Request) {
         nextAppointmentAt: client.next_appointment_at ?? null,
         openWorkqueueCount: Number(client.open_workqueue_count ?? 0),
         claimIssueCount: Number(client.claim_issue_count ?? 0),
-        primaryClinicianUserId: client.primary_clinician_user_id ? String(client.primary_clinician_user_id) : null,
+        primaryProviderId: client.primary_provider_id ? String(client.primary_provider_id) : null,
       };
     });
 

@@ -106,31 +106,36 @@ export default function UsersSettingsClient({ apiEnabled = true }: { apiEnabled?
         throw new Error((j as { error?: string }).error ?? "Failed to load members");
       }
       const membersJson = await membersRes.json();
+      const currentOrgId = String(membersJson.organizationId ?? "").trim();
 
       setMembers(membersJson.members ?? []);
       setRoles(membersJson.roles ?? []);
 
+      let loadedOrgs: OrgOption[] = [];
       if ((orgsRes as Response).ok) {
         const orgsJson = await (orgsRes as Response).json();
-        setOrgs(orgsJson.organizations ?? []);
+        loadedOrgs = (orgsJson.organizations ?? []) as OrgOption[];
+        setOrgs(loadedOrgs);
       }
 
-      // Load providers (for "assigned clinician" dropdown)
-      const firstOrg = (membersJson.members as StaffMember[] | undefined)?.[0];
-      if (firstOrg || true) {
-        const orgParam = orgs[0]?.id ?? "";
-        const provRes = await fetch(orgParam ? `/api/providers?organizationId=${encodeURIComponent(orgParam)}` : "/api/providers", { cache: "no-store" }).catch(() => null);
-        if (provRes?.ok) {
-          const provJson = await provRes.json();
-          if (Array.isArray(provJson.providers)) {
-            setProviders(
-              (provJson.providers as { id: string; user_id?: string | null; provider_name?: string; display_name?: string }[]).map((p) => ({
-                id: p.id,
-                userId: p.user_id ?? null,
-                name: p.provider_name ?? p.display_name ?? p.id,
-              })),
-            );
-          }
+      // Load providers (for "assigned clinician" dropdown) using the current org.
+      const providerOrgId = currentOrgId || loadedOrgs[0]?.id || "";
+      const provRes = await fetch(
+        providerOrgId
+          ? `/api/providers?organizationId=${encodeURIComponent(providerOrgId)}`
+          : "/api/providers",
+        { cache: "no-store" },
+      ).catch(() => null);
+      if (provRes?.ok) {
+        const provJson = await provRes.json();
+        if (Array.isArray(provJson.providers)) {
+          setProviders(
+            (provJson.providers as { id: string; user_id?: string | null; provider_name?: string; display_name?: string }[]).map((p) => ({
+              id: p.id,
+              userId: p.user_id ?? null,
+              name: p.provider_name ?? p.display_name ?? p.id,
+            })),
+          );
         }
       }
     } catch (e) {
@@ -138,7 +143,7 @@ export default function UsersSettingsClient({ apiEnabled = true }: { apiEnabled?
     } finally {
       setLoading(false);
     }
-  }, [apiEnabled, orgs]);
+  }, [apiEnabled]);
 
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -198,5 +198,5 @@ export async function GET(_request: NextRequest) {
     };
   });
 
-  return NextResponse.json({ success: true, members, roles, providers, payerProfiles });
+  return NextResponse.json({ success: true, organizationId, members, roles, providers, payerProfiles });
 }

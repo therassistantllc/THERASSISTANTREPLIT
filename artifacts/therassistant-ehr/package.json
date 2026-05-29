@@ -37,6 +37,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "knip": "^6.14.2",
     "tailwindcss": "^4",
     "tsx": "catalog:",

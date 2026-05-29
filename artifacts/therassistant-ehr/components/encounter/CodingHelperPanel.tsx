@@ -69,7 +69,6 @@ function sectionsFromState(params: {
 export default function CodingHelperPanel(props: Props) {
   const {
     encounterId,
-    organizationId,
     clientName,
     payerName,
     isMedicaid,
@@ -119,16 +118,9 @@ export default function CodingHelperPanel(props: Props) {
   function buildReport(): CodingHelperReport {
     return buildCodingReport({
       encounterId,
-      organizationId,
       answers,
       questionnaireScore,
       noteAnalysis,
-      sourceSnapshot: documentationText,
-      soapNote,
-      diagnoses,
-      serviceLines,
-      payerName,
-      isMedicaid,
     });
   }
 
@@ -235,20 +227,9 @@ export default function CodingHelperPanel(props: Props) {
           <p style={{ marginBottom: 8 }}><strong>Report date:</strong> {latestReport.date}</p>
           <p style={{ marginBottom: 8 }}><strong>Codes:</strong> {latestReport.codes || "None"}</p>
           <p style={{ marginBottom: 8 }}><strong>Summary:</strong> {latestReport.auditSummary}</p>
-          <p style={{ marginBottom: 8 }}><strong>Saved answers:</strong> {Object.keys(latestReport.answers).length}</p>
-          <p style={{ marginBottom: 8 }}><strong>Questionnaire-supported codes:</strong> {latestReport.questionnaireScore.suggestedCodes.length ? latestReport.questionnaireScore.suggestedCodes.join(", ") : "None"}</p>
-          <details>
-            <summary>View questionnaire score breakdown</summary>
-            <pre style={{ whiteSpace: "pre-wrap", marginTop: 8, fontSize: 12 }}>
-              {latestReport.questionnaireScore.codeScores
-                .map((score) => `${score.code}: ${score.earnedPoints}/${score.possiblePoints} (${score.status})`)
-                .join("\n") || "No score breakdown available."}
-            </pre>
-          </details>
-          <details>
-            <summary>View full report details</summary>
-            <pre style={{ whiteSpace: "pre-wrap", marginTop: 8, fontSize: 12 }}>{latestReport.formSummary}</pre>
-          </details>
+          <p style={{ marginBottom: 8 }}><strong>Coding rationale:</strong> {latestReport.codingRationale}</p>
+          <p style={{ marginBottom: 8 }}><strong>Documentation gaps:</strong> {latestReport.documentationGaps.length ? latestReport.documentationGaps.join(" | ") : "None"}</p>
+          <p style={{ marginBottom: 0 }}><strong>Source encounter:</strong> {latestReport.sourceEncounterId}</p>
         </article>
       ) : null}
     </div>

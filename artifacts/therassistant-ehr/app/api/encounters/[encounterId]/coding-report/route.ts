@@ -10,7 +10,9 @@ type SaveCodingReportBody = {
     codes?: string;
     suggestedCodes?: unknown;
     auditSummary?: string;
-    formSummary?: string;
+    codingRationale?: string;
+    documentationGaps?: unknown;
+    sourceEncounterId?: string;
     [key: string]: unknown;
   };
 };
@@ -107,7 +109,6 @@ export async function POST(request: Request, context: { params: Promise<{ encoun
       ? parseCodes(report.suggestedCodes)
       : parseCodes(report.codes);
     const auditSummary = typeof report.auditSummary === "string" ? report.auditSummary.trim() : "";
-    const formSummary = typeof report.formSummary === "string" ? report.formSummary.trim() : "";
 
     const { data: existingNote, error: noteReadError } = await supabase
       .from("encounter_clinical_notes")

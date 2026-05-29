@@ -173,10 +173,10 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
   const medicaidCodeTags = useMemo(() => {
     if (!medicaidSuggestions) return [] as Array<{ code: string; className: string }>;
     return medicaidSuggestions.recommendations
-      .filter((rec) => rec.action === "suggest" || rec.action === "clarify_before_suggesting")
+      .filter((rec) => rec.action === "suggest")
       .map((rec) => ({
         code: rec.code,
-        className: rec.action === "suggest" ? "status status-green" : "status status-yellow",
+        className: "status status-green",
       }));
   }, [medicaidSuggestions]);
 

@@ -65,6 +65,16 @@ function isRpcUnavailable(error: unknown): boolean {
   return typeof code === "string" && code === "PGRST202";
 }
 
+function isMissingPrimaryProviderColumn(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: unknown }).code;
+  const message = String((error as { message?: unknown }).message ?? "");
+  return (
+    (code === "42703" || code === "PGRST204" || code === "PGRST200") &&
+    /primary_provider_id/i.test(message)
+  );
+}
+
 async function listClientsFallback(params: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any;
@@ -98,11 +108,9 @@ async function listClientsFallback(params: {
     dataQuery = dataQuery.or(filter);
   }
 
-  let countResult: { count: number | null; error: unknown };
-  let dataResult: { data: Row[] | null; error: unknown };
-  try {
-    [countResult, dataResult] = await Promise.all([countQuery, dataQuery]);
-  } catch {
+  let [countResult, dataResult] = await Promise.all([countQuery, dataQuery]);
+
+  if (isMissingPrimaryProviderColumn(dataResult.error)) {
     // Backward compatibility while primary_provider_id migration is rolling out.
     dataQuery = (supabase as any)
       .from("clients")
@@ -287,7 +295,7 @@ export async function GET(request: Request) {
         copay_amount: client.copay_amount,
       });
       return {
-        id: value(client.client_id),
+        id: value(client.client_id ?? client.id),
         name: nameOf(client),
         preferredName: client.preferred_name ?? null,
         email: client.email ?? null,
@@ -300,7 +308,11 @@ export async function GET(request: Request) {
         nextAppointmentAt: client.next_appointment_at ?? null,
         openWorkqueueCount: Number(client.open_workqueue_count ?? 0),
         claimIssueCount: Number(client.claim_issue_count ?? 0),
-        primaryProviderId: client.primary_provider_id ? String(client.primary_provider_id) : null,
+        primaryProviderId: client.primary_provider_id
+          ? String(client.primary_provider_id)
+          : client.primary_clinician_user_id
+            ? String(client.primary_clinician_user_id)
+            : null,
       };
     });
 

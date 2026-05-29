@@ -35,6 +35,7 @@ type IncomingUpdates = {
   sourceClientId?: string | null;
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
+  primaryProviderId?: string | null;
   primaryClinicianUserId?: string | null;
 };
 
@@ -59,7 +60,9 @@ const FIELD_MAP: Record<keyof IncomingUpdates, string> = {
   sourceClientId: "external_client_ref",
   emergencyContactName: "emergency_contact_name",
   emergencyContactPhone: "emergency_contact_phone",
-  primaryClinicianUserId: "primary_clinician_user_id",
+  primaryProviderId: "primary_provider_id",
+  // Backward-compat for older clients that still send primaryClinicianUserId.
+  primaryClinicianUserId: "primary_provider_id",
 };
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -83,7 +86,7 @@ const COLUMN_LABELS: Record<string, string> = {
   external_client_ref: "Source client ID",
   emergency_contact_name: "Emergency contact name",
   emergency_contact_phone: "Emergency contact phone",
-  primary_clinician_user_id: "Assigned clinician",
+  primary_provider_id: "Assigned clinician",
 };
 
 const AUDIT_COLUMNS = Object.values(FIELD_MAP);
@@ -246,22 +249,38 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: validationError }, { status: 400 });
     }
 
-    // Enforce that assigned clinician points to an active user in this org
-    // with a clinician-like role.
-    if ("primary_clinician_user_id" in allowed && allowed.primary_clinician_user_id) {
-      const clinicianUserId = String(allowed.primary_clinician_user_id);
+    // Enforce that assigned clinician points to an active provider in this org
+    // with a linked active staff user that has clinician-like role.
+    if ("primary_provider_id" in allowed && allowed.primary_provider_id) {
+      const providerId = String(allowed.primary_provider_id);
+      const { data: providerRow, error: providerError } = await supabase
+        .from("providers")
+        .select("id, user_id")
+        .eq("organization_id", organizationId)
+        .eq("id", providerId)
+        .eq("is_active", true)
+        .is("archived_at", null)
+        .maybeSingle();
+      if (providerError) throw providerError;
+      if (!providerRow?.id || !providerRow.user_id) {
+        return NextResponse.json(
+          { success: false, error: "Assigned clinician must be an active provider linked to a user in this organization." },
+          { status: 400 },
+        );
+      }
+
       const { data: staffProfile, error: staffProfileError } = await supabase
         .from("staff_profiles")
         .select("id")
         .eq("organization_id", organizationId)
-        .eq("auth_user_id", clinicianUserId)
+        .eq("auth_user_id", providerRow.user_id)
         .eq("is_active", true)
         .is("archived_at", null)
         .maybeSingle();
       if (staffProfileError) throw staffProfileError;
       if (!staffProfile?.id) {
         return NextResponse.json(
-          { success: false, error: "Assigned clinician must be an active user in this organization." },
+          { success: false, error: "Assigned clinician must be linked to an active user in this organization." },
           { status: 400 },
         );
       }

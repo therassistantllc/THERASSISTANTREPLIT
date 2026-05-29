@@ -31,7 +31,7 @@ type ClientRecord = {
   nextAppointmentAt: string | null;
   openWorkqueueCount: number;
   claimIssueCount: number;
-  primaryClinicianUserId?: string | null;
+  primaryProviderId?: string | null;
 };
 
 type Metrics = {
@@ -236,8 +236,7 @@ export default function PatientsRosterClient({
   const clients = payload?.clients ?? [];
   const filteredClients = clients.filter((c) => {
     if (clinicianFilter) {
-      const provider = providerOptions.find((p) => p.id === clinicianFilter);
-      if (provider && provider.userId && c.primaryClinicianUserId !== provider.userId) return false;
+      if (c.primaryProviderId !== clinicianFilter) return false;
     }
     switch (needsFilter) {
       case "needs-eligibility": return c.eligibility.status === "none";

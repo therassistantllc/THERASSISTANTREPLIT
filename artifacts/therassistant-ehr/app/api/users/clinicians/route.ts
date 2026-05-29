@@ -56,12 +56,46 @@ export async function GET(request: Request) {
       .order("first_name", { ascending: true });
     if (staffError) throw staffError;
 
+    const authUserIds = ((staffData ?? []) as DbRow[])
+      .map((row) => text(row.auth_user_id))
+      .filter(Boolean);
+
+    if (authUserIds.length === 0) {
+      return NextResponse.json({ success: true, organizationId, clinicians: [] as unknown[] });
+    }
+
+    const { data: providerData, error: providerError } = await supabase
+      .from("providers")
+      .select("id, user_id, first_name, last_name, display_name, email")
+      .eq("organization_id", organizationId)
+      .in("user_id", authUserIds)
+      .eq("is_active", true)
+      .is("archived_at", null);
+    if (providerError) throw providerError;
+
+    const providerByUserId = new Map<string, DbRow>();
+    for (const row of (providerData ?? []) as DbRow[]) {
+      const userId = text(row.user_id);
+      if (userId) providerByUserId.set(userId, row);
+    }
+
     const clinicians = ((staffData ?? []) as DbRow[])
       .map((row) => {
         const userId = text(row.auth_user_id);
         if (!userId) return null;
-        const displayName = [text(row.first_name), text(row.last_name)].filter(Boolean).join(" ") || text(row.email) || userId;
+        const provider = providerByUserId.get(userId) ?? null;
+        if (!provider) return null;
+        const providerId = text(provider.id);
+        if (!providerId) return null;
+        const displayName =
+          text(provider.display_name) ||
+          [text(provider.first_name), text(provider.last_name)].filter(Boolean).join(" ") ||
+          [text(row.first_name), text(row.last_name)].filter(Boolean).join(" ") ||
+          text(provider.email) ||
+          text(row.email) ||
+          userId;
         return {
+          providerId,
           staffId: text(row.id),
           userId,
           displayName,

@@ -197,7 +197,7 @@ type PatientSummary = {
     sourceClientId?: string | null;
     emergencyContactName?: string | null;
     emergencyContactPhone?: string | null;
-    primaryClinicianUserId?: string | null;
+    primaryProviderId?: string | null;
   };
   insurance?: {
     policies: InsurancePolicySummary[];
@@ -222,7 +222,7 @@ type AppointmentSummary = {
 };
 
 type ClinicianOption = {
-  userId: string;
+  providerId: string;
   displayName: string;
 };
 
@@ -493,7 +493,7 @@ export default function PatientChartClient({
       sourceClientId: p.sourceClientId ?? "",
       emergencyContactName: p.emergencyContactName ?? "",
       emergencyContactPhone: p.emergencyContactPhone ?? "",
-      primaryClinicianUserId: p.primaryClinicianUserId ?? "",
+      primaryProviderId: p.primaryProviderId ?? "",
     };
     setDemoDraft(initial);
     setDemoOriginal(initial);
@@ -1102,9 +1102,9 @@ export default function PatientChartClient({
     .filter((s) => s && s.length > 0)
     .join(" · ");
   const assignedClinicianName = (() => {
-    const userId = String(client.primaryClinicianUserId ?? "").trim();
-    if (!userId) return null;
-    return clinicianOptions.find((c) => c.userId === userId)?.displayName ?? userId;
+    const providerId = String(client.primaryProviderId ?? "").trim();
+    if (!providerId) return null;
+    return clinicianOptions.find((c) => c.providerId === providerId)?.displayName ?? providerId;
   })();
 
   const railActions: Array<{ key: string; label: string; href: string }> = [
@@ -1411,15 +1411,15 @@ export default function PatientChartClient({
                   />
                 </div>
                 <div className="summary-field">
-                  <label htmlFor="demo-primaryClinicianUserId">Assigned clinician</label>
+                  <label htmlFor="demo-primaryProviderId">Assigned clinician</label>
                   <select
-                    id="demo-primaryClinicianUserId"
-                    value={demoDraft.primaryClinicianUserId ?? ""}
-                    onChange={(e) => setDemoField("primaryClinicianUserId", e.target.value)}
+                    id="demo-primaryProviderId"
+                    value={demoDraft.primaryProviderId ?? ""}
+                    onChange={(e) => setDemoField("primaryProviderId", e.target.value)}
                   >
                     <option value="">—</option>
                     {clinicianOptions.map((option) => (
-                      <option key={option.userId} value={option.userId}>{option.displayName}</option>
+                      <option key={option.providerId} value={option.providerId}>{option.displayName}</option>
                     ))}
                   </select>
                 </div>

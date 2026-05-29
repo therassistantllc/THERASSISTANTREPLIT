@@ -46,8 +46,12 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
     const organizationId = guard.organizationId;
 
     const FULL_CLIENT_COLS =
-      "id, first_name, middle_name, last_name, date_of_birth, email, phone, preferred_name, pronouns, mrn, external_client_ref, sex_at_birth, gender_identity, address_line_1, address_line_2, city, state, postal_code, preferred_language, emergency_contact_name, emergency_contact_phone, primary_clinician_user_id";
+      "id, first_name, middle_name, last_name, date_of_birth, email, phone, preferred_name, pronouns, mrn, external_client_ref, sex_at_birth, gender_identity, address_line_1, address_line_2, city, state, postal_code, preferred_language, emergency_contact_name, emergency_contact_phone, primary_provider_id";
     const BASE_CLIENT_COLS =
+      "id, first_name, middle_name, last_name, date_of_birth, email, phone, preferred_name, pronouns, mrn, external_client_ref, sex_at_birth, gender_identity, address_line_1, address_line_2, city, state, postal_code, preferred_language, primary_provider_id";
+    const LEGACY_FULL_CLIENT_COLS =
+      "id, first_name, middle_name, last_name, date_of_birth, email, phone, preferred_name, pronouns, mrn, external_client_ref, sex_at_birth, gender_identity, address_line_1, address_line_2, city, state, postal_code, preferred_language, emergency_contact_name, emergency_contact_phone, primary_clinician_user_id";
+    const LEGACY_BASE_CLIENT_COLS =
       "id, first_name, middle_name, last_name, date_of_birth, email, phone, preferred_name, pronouns, mrn, external_client_ref, sex_at_birth, gender_identity, address_line_1, address_line_2, city, state, postal_code, preferred_language, primary_clinician_user_id";
 
     let { data: client, error: clientError } = await supabase
@@ -64,19 +68,35 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
       const missingEmergency =
         (errCode === "42703" || errCode === "PGRST204" || errCode === "PGRST200") &&
         /emergency_contact_(name|phone)/i.test(errMessage);
-      if (missingEmergency) {
+      const missingPrimaryProvider =
+        (errCode === "42703" || errCode === "PGRST204" || errCode === "PGRST200") &&
+        /primary_provider_id/i.test(errMessage);
+      if (missingEmergency || missingPrimaryProvider) {
         console.warn(
-          "[client summary] emergency_contact_* columns missing; loading without them.",
+          "[client summary] fallback to legacy columns (missing emergency_contact_* or primary_provider_id).",
         );
+        const fallbackCols = missingPrimaryProvider ? LEGACY_FULL_CLIENT_COLS : BASE_CLIENT_COLS;
         const retry = await supabase
           .from("clients")
-          .select(BASE_CLIENT_COLS)
+          .select(fallbackCols)
           .eq("organization_id", organizationId)
           .eq("id", clientId)
           .is("archived_at", null)
           .maybeSingle();
         client = retry.data as typeof client;
         clientError = retry.error;
+
+        if (clientError && missingPrimaryProvider) {
+          const retryLegacyBase = await supabase
+            .from("clients")
+            .select(LEGACY_BASE_CLIENT_COLS)
+            .eq("organization_id", organizationId)
+            .eq("id", clientId)
+            .is("archived_at", null)
+            .maybeSingle();
+          client = retryLegacyBase.data as typeof client;
+          clientError = retryLegacyBase.error;
+        }
       }
     }
 
@@ -190,7 +210,7 @@ export async function GET(request: Request, context: { params: Promise<{ clientI
         sourceClientId: client.external_client_ref ?? null,
         emergencyContactName: client.emergency_contact_name ?? null,
         emergencyContactPhone: client.emergency_contact_phone ?? null,
-        primaryClinicianUserId: client.primary_clinician_user_id ?? null,
+        primaryProviderId: client.primary_provider_id ?? client.primary_clinician_user_id ?? null,
       },
       insurance: {
         policies: policies ?? [],

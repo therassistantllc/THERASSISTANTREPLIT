@@ -295,7 +295,7 @@ export async function GET(request: Request) {
       clientIds.size
         ? (supabase as any)
             .from("clients")
-            .select("id, first_name, last_name, primary_clinician_user_id")
+            .select("id, first_name, last_name, primary_provider_id, primary_clinician_user_id")
             .in("id", Array.from(clientIds))
         : Promise.resolve({ data: [] as DbRow[] }),
       payerIds.size
@@ -395,7 +395,9 @@ export async function GET(request: Request) {
     function clinicianId(clientId: string | null): string | null {
       if (!clientId) return null;
       const c = clientById.get(clientId);
-      return c ? text(c.primary_clinician_user_id) || null : null;
+      return c
+        ? text(c.primary_provider_id) || text(c.primary_clinician_user_id) || null
+        : null;
     }
 
     // ── Build rows ───────────────────────────────────────────────────────

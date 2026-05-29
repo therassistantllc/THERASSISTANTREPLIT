@@ -119,14 +119,14 @@ function seed() {
       id: "client-A",
       first_name: "Alice",
       last_name: "Alpha",
-      primary_clinician_user_id: "clin-1",
+      primary_provider_id: "clin-1",
       organization_id: "practice-1",
     },
     {
       id: "client-B",
       first_name: "Bob",
       last_name: "Beta",
-      primary_clinician_user_id: "clin-2",
+      primary_provider_id: "clin-2",
       organization_id: "practice-2",
     },
   ];
@@ -212,7 +212,7 @@ test("practice filter narrows to one client", async () => {
   );
 });
 
-test("clinician filter narrows by primary_clinician_user_id", async () => {
+test("clinician filter narrows by primary_provider_id", async () => {
   const items = await fetchItems("clinician=clin-2");
   assert.deepEqual(
     items.map((i) => i.client_id),

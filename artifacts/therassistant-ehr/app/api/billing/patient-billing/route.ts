@@ -227,7 +227,7 @@ export async function GET(request: Request) {
         ? supabase
             .from("clients")
             .select(
-              "id, first_name, last_name, primary_clinician_user_id, organization_id, autopay_enabled, stripe_payment_method_brand, stripe_payment_method_last4",
+              "id, first_name, last_name, primary_provider_id, primary_clinician_user_id, organization_id, autopay_enabled, stripe_payment_method_brand, stripe_payment_method_last4",
             )
             .in("id", clientIds)
         : Promise.resolve({ data: [] as DbRow[] }),
@@ -279,7 +279,7 @@ export async function GET(request: Request) {
     const providerIds = [
       ...new Set(
         ((clients ?? []) as DbRow[])
-          .map((c) => text(c.primary_clinician_user_id))
+          .map((c) => text(c.primary_provider_id) || text(c.primary_clinician_user_id))
           .filter(Boolean),
       ),
     ];
@@ -441,7 +441,7 @@ export async function GET(request: Request) {
         [client.first_name, client.last_name].map(text).filter(Boolean).join(" ") ||
         "Unknown client";
 
-      const provId = text(client.primary_clinician_user_id) || null;
+      const provId = text(client.primary_provider_id) || text(client.primary_clinician_user_id) || null;
       const provider = provId ? providerById.get(provId) : undefined;
       const providerName = provider
         ? text(provider.display_name) ||

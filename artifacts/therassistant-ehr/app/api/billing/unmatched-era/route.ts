@@ -42,7 +42,7 @@ export interface UnmatchedEraRow {
   payerCheckEft: string | null;
   clientId: string | null;
   clientName: string;
-  primaryClinicianUserId: string | null;
+  primaryProviderId: string | null;
   patientName: string;
   claimNumberFromEra: string;
   payerClaimControlNumber: string | null;
@@ -285,7 +285,7 @@ export async function GET(request: Request) {
     const { data: clients } = clientIds.length
       ? await (supabase as any)
           .from("clients")
-          .select("id, first_name, last_name, primary_clinician_user_id")
+          .select("id, first_name, last_name, primary_provider_id, primary_clinician_user_id")
           .in("id", clientIds)
       : { data: [] as DbRow[] };
     const clientById = new Map<string, DbRow>(
@@ -473,8 +473,8 @@ export async function GET(request: Request) {
         payerCheckEft: text(p.check_eft_number) || null,
         clientId,
         clientName,
-        primaryClinicianUserId: client
-          ? (text(client.primary_clinician_user_id) || null)
+        primaryProviderId: client
+          ? (text(client.primary_provider_id) || text(client.primary_clinician_user_id) || null)
           : null,
         patientName: patientName || "Unknown client",
         claimNumberFromEra: text(p.clp01_claim_control_number),
@@ -551,12 +551,12 @@ export async function GET(request: Request) {
         if (!r.followUpDue || !r.followUpDue.startsWith(filter.followUpDue))
           return false;
       }
-      // Clinician filter accepts either a user id (exact match against the
-      // client's primary clinician) or a free-text name fragment.
+      // Clinician filter accepts either a provider id (exact match against the
+      // client's assigned provider) or a free-text name fragment.
       if (filter.clinician) {
         const needle = filter.clinician.trim();
         if (needle) {
-          const idMatch = r.primaryClinicianUserId === needle;
+          const idMatch = r.primaryProviderId === needle;
           const textMatch =
             ciContains(r.clientName, needle) || ciContains(r.assignedTo, needle);
           if (!idMatch && !textMatch) return false;

@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerSupabaseAdminClient } from "@/lib/supabase/server";
 import {
@@ -327,9 +328,9 @@ export default async function PatientPortalHomePage() {
           <h1>Hi, {patientName}</h1>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <a href="/portal/journal" className="button button-secondary">
+          <Link href="/portal/journal" className="button button-secondary">
             Open journal
-          </a>
+          </Link>
           <form action={signOut}>
             <button type="submit" className="button button-secondary">
               Sign out

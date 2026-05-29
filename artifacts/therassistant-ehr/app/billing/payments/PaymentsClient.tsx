@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
@@ -703,24 +704,24 @@ export default function PaymentsClient() {
           Payments &amp; ERA
         </span>
         <span className="text-[11px] text-slate-400">Posting workspace</span>
-        <a
+        <Link
           href="/billing/era-import"
           className="inline-flex h-7 items-center gap-1.5 rounded border border-teal-300 bg-teal-50 px-2.5 text-[11px] font-semibold text-teal-800 hover:bg-teal-100"
         >
           Open ERA queue →
-        </a>
-        <a
+        </Link>
+        <Link
           href="/billing/payments/manual-insurance"
           className="inline-flex h-7 items-center gap-1.5 rounded border border-indigo-300 bg-indigo-50 px-2.5 text-[11px] font-semibold text-indigo-800 hover:bg-indigo-100"
         >
           Post manual EOB
-        </a>
-        <a
+        </Link>
+        <Link
           href="/billing/payments/patient"
           className="inline-flex h-7 items-center gap-1.5 rounded border border-amber-300 bg-amber-50 px-2.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100"
         >
           Client payment
-        </a>
+        </Link>
         <div className="flex-1" />
         <div className="relative">
           <Search

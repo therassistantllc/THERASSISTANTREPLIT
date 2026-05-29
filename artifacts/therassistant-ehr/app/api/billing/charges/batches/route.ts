@@ -49,22 +49,41 @@ export async function GET(request: Request) {
     const clinicianOnly = isClinicianScoped(guard.roles ?? []);
     const providerId = clinicianOnly && guard.userId ? await getProviderIdForUser(guard.userId, guard.organizationId) : null;
 
-    const { data: batchRows, error: batchError, count: batchCount } = await supabase
-      .from("claim_837p_batches")
-      .select(
-        "id, batch_number, batch_status, claim_count, total_charge_amount, generated_file_name, submitted_at, created_at, updated_at, payer_profile_id, billing_provider_tax_id",
-        { count: "exact" },
-      )
-      .eq("organization_id", guard.organizationId)
-      .eq("batch_source", "charge_auto")
-      .is("archived_at", null)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+    if (clinicianOnly && !providerId) {
+      return NextResponse.json({
+        success: true,
+        clinicianOnly,
+        canManage: false,
+        practiceOptions: [] as Array<{ value: string; label: string }>,
+        pagination: {
+          limit,
+          offset,
+          returned: 0,
+          totalCount: 0,
+          hasMore: false,
+        },
+        totals: {
+          totalUnbilledCharges: 0,
+          pendingBatches: 0,
+          readyToSubmit: 0,
+        },
+        chargeRows: [] as unknown[],
+        batches: [] as unknown[],
+      });
+    }
 
-    if (batchError) throw batchError;
+    const { data, error } = await (supabase as any).rpc("billing_charge_batches_page", {
+      p_organization_id: guard.organizationId,
+      p_practice: practiceFilter || null,
+      p_provider_id: clinicianOnly ? providerId : null,
+      p_limit: limit,
+      p_offset: offset,
+    });
+    if (error) throw error;
 
-    const batches = (batchRows ?? []) as unknown as DbRow[];
-    if (batches.length === 0) {
+    const rpcRows = (data ?? []) as DbRow[];
+    const totalCount = rpcRows.length > 0 ? Number(rpcRows[0].total_count ?? 0) : 0;
+    if (rpcRows.length === 0) {
       return NextResponse.json({
         success: true,
         clinicianOnly,
@@ -74,97 +93,21 @@ export async function GET(request: Request) {
           limit,
           offset,
           returned: 0,
-          totalCount: batchCount ?? 0,
+          totalCount,
           hasMore: false,
         },
+        totals: {
+          totalUnbilledCharges: 0,
+          pendingBatches: 0,
+          readyToSubmit: 0,
+        },
+        chargeRows: [] as unknown[],
         batches: [] as unknown[],
       });
     }
-
-    const batchIds = batches.map((b) => text(b.id)).filter(Boolean);
-
-    const { data: linkRows, error: linkError } = await supabase
-      .from("claim_837p_batch_claims")
-      .select("batch_id, professional_claim_id")
-      .eq("organization_id", guard.organizationId)
-      .in("batch_id", batchIds)
-      .is("archived_at", null);
-    if (linkError) throw linkError;
-
-    const claimIds = [...new Set(((linkRows ?? []) as DbRow[]).map((r) => text(r.professional_claim_id)).filter(Boolean))];
-
-    const { data: claimRows } = claimIds.length
-        ? await supabase
-          .from("professional_claims")
-        .select("id, claim_number, claim_status, total_charge, payer_profile_id, appointment_id, patient_id, client_id")
-          .eq("organization_id", guard.organizationId)
-          .in("id", claimIds)
-          .is("archived_at", null)
-      : { data: [] as DbRow[] };
-
-    const claims = (claimRows ?? []) as DbRow[];
-    const appointmentIds = [...new Set(claims.map((c) => text(c.appointment_id)).filter(Boolean))];
-    const clientIds = [...new Set(claims.map((c) => text(c.patient_id) || text(c.client_id)).filter(Boolean))];
-
-    const { data: appointmentRows } = appointmentIds.length
-        ? await supabase
-          .from("appointments")
-          .select("id, provider_id, provider_location_id")
-          .eq("organization_id", guard.organizationId)
-          .in("id", appointmentIds)
-      : { data: [] as DbRow[] };
-
-    const providerIds = [...new Set(((appointmentRows ?? []) as DbRow[]).map((a) => text(a.provider_id)).filter(Boolean))];
-
-    const { data: providerRows } = providerIds.length
-      ? await supabase
-          .from("providers")
-          .select("id, first_name, last_name, display_name")
-          .eq("organization_id", guard.organizationId)
-          .in("id", providerIds)
-      : { data: [] as DbRow[] };
-
-    const { data: clientRows } = clientIds.length
-      ? await supabase
-          .from("clients")
-          .select("id, first_name, last_name")
-          .eq("organization_id", guard.organizationId)
-          .in("id", clientIds)
-      : { data: [] as DbRow[] };
-
-    const { data: serviceLineRows } = claimIds.length
-      ? await supabase
-          .from("professional_claim_service_lines")
-          .select("id, claim_id, line_number, service_date_from, procedure_code, charge_amount")
-          .eq("organization_id", guard.organizationId)
-          .in("claim_id", claimIds)
-          .is("archived_at", null)
-      : { data: [] as DbRow[] };
-
-    const { data: payerRows } = await supabase
-      .from("payer_profiles")
-      .select("id, payer_name")
-      .eq("organization_id", guard.organizationId)
-      .is("archived_at", null);
-
-    const claimById = new Map<string, DbRow>(claims.map((c) => [text(c.id), c]));
-    const appointmentById = new Map<string, DbRow>(((appointmentRows ?? []) as DbRow[]).map((a) => [text(a.id), a]));
-    const providerById = new Map<string, DbRow>(((providerRows ?? []) as DbRow[]).map((p) => [text(p.id), p]));
-    const clientById = new Map<string, DbRow>(((clientRows ?? []) as DbRow[]).map((c) => [text(c.id), c]));
-    const payerNameById = new Map<string, string>(((payerRows ?? []) as DbRow[]).map((p) => [text(p.id), text(p.payer_name) || "Payer"]));
-    const serviceLinesByClaimId = new Map<string, DbRow[]>();
-
-    for (const line of (serviceLineRows ?? []) as DbRow[]) {
-      const claimId = text(line.claim_id);
-      if (!claimId) continue;
-      const group = serviceLinesByClaimId.get(claimId) ?? [];
-      group.push(line);
-      serviceLinesByClaimId.set(claimId, group);
-    }
-
     const practiceSet = new Set<string>();
 
-    const claimsByBatch = new Map<string, Array<{
+    type BatchClaim = {
       id: string;
       claimNumber: string;
       status: string;
@@ -179,76 +122,49 @@ export async function GET(request: Request) {
         procedureCode: string;
         chargeAmount: number;
       }>;
-    }>>();
+    };
 
-    for (const link of (linkRows ?? []) as DbRow[]) {
-      const batchId = text(link.batch_id);
-      const claim = claimById.get(text(link.professional_claim_id));
-      if (!claim) continue;
-      const appt = appointmentById.get(text(claim.appointment_id));
-      const claimProviderId = text(appt?.provider_id);
-      const practiceId = text(appt?.provider_location_id) || null;
-      const provider = providerById.get(claimProviderId);
-      const providerName =
-        text(provider?.display_name)
-        || [text(provider?.first_name), text(provider?.last_name)].filter(Boolean).join(" ")
-        || "—";
+    const outBatches = rpcRows.map((r) => {
+      const rawClaims = Array.isArray(r.claims) ? (r.claims as DbRow[]) : [];
+      const claims: BatchClaim[] = rawClaims.map((claim) => {
+        const serviceLinesRaw = Array.isArray(claim.serviceLines) ? (claim.serviceLines as DbRow[]) : [];
+        const practiceId = text(claim.practiceId) || null;
+        if (practiceId) practiceSet.add(practiceId);
 
-      const client = clientById.get(text(claim.patient_id) || text(claim.client_id));
-      const patientName = client
-        ? [text(client.first_name), text(client.last_name)].filter(Boolean).join(" ") || "Unknown Client"
-        : "Unknown Client";
-
-      const serviceLines = (serviceLinesByClaimId.get(text(claim.id)) ?? [])
-        .map((line) => ({
-          id: text(line.id) || `${text(claim.id)}-${text(line.line_number) || "1"}`,
-          lineNumber: Number(line.line_number ?? 0) || 0,
-          dateOfService: text(line.service_date_from) || null,
-          procedureCode: text(line.procedure_code) || "—",
-          chargeAmount: money(line.charge_amount),
-        }))
-        .sort((a, b) => a.lineNumber - b.lineNumber);
-
-      if (practiceId) practiceSet.add(practiceId);
-      if (clinicianOnly && providerId && claimProviderId !== providerId) continue;
-      if (practiceFilter && practiceId !== practiceFilter) continue;
-
-      const out = claimsByBatch.get(batchId) ?? [];
-      out.push({
-        id: text(claim.id),
-        claimNumber: text(claim.claim_number) || text(claim.id).slice(0, 8),
-        status: text(claim.claim_status),
-        totalCharge: money(claim.total_charge),
-        practiceId,
-        patientName,
-        providerName,
-        serviceLines,
-      });
-      claimsByBatch.set(batchId, out);
-    }
-
-    const outBatches = batches
-      .map((b) => {
-        const id = text(b.id);
-        const claimList = claimsByBatch.get(id) ?? [];
-        const payerId = text(b.payer_profile_id) || (claimList.length > 0 ? text(claimById.get(claimList[0].id)?.payer_profile_id) : "");
         return {
-          id,
-          batchNumber: text(b.batch_number) || id.slice(0, 8),
-          status: text(b.batch_status),
-          claimCount: claimList.length,
-          totalChargeAmount: Math.round(claimList.reduce((sum, c) => sum + c.totalCharge, 0) * 100) / 100,
-          generatedFileName: text(b.generated_file_name) || null,
-          submittedAt: text(b.submitted_at) || null,
-          createdAt: text(b.created_at) || null,
-          updatedAt: text(b.updated_at) || null,
-          payerProfileId: payerId || null,
-          payerName: payerId ? payerNameById.get(payerId) ?? "Payer" : "Payer",
-          billingProviderTaxId: text(b.billing_provider_tax_id) || null,
-          claims: claimList,
+          id: text(claim.id),
+          claimNumber: text(claim.claimNumber) || text(claim.id).slice(0, 8),
+          status: text(claim.status),
+          totalCharge: money(claim.totalCharge),
+          practiceId,
+          patientName: text(claim.patientName) || "Unknown Client",
+          providerName: text(claim.providerName) || "—",
+          serviceLines: serviceLinesRaw.map((line) => ({
+            id: text(line.id) || `${text(claim.id)}-${text(line.lineNumber) || "1"}`,
+            lineNumber: Number(line.lineNumber ?? 0) || 0,
+            dateOfService: text(line.dateOfService) || null,
+            procedureCode: text(line.procedureCode) || "—",
+            chargeAmount: money(line.chargeAmount),
+          })),
         };
-      })
-      .filter((b) => b.claimCount > 0);
+      });
+
+      return {
+        id: text(r.id),
+        batchNumber: text(r.batch_number) || text(r.id).slice(0, 8),
+        status: text(r.batch_status),
+        claimCount: Number(r.claim_count ?? claims.length) || claims.length,
+        totalChargeAmount: money(r.total_charge_amount),
+        generatedFileName: text(r.generated_file_name) || null,
+        submittedAt: text(r.submitted_at) || null,
+        createdAt: text(r.created_at) || null,
+        updatedAt: text(r.updated_at) || null,
+        payerProfileId: text(r.payer_profile_id) || null,
+        payerName: text(r.payer_name) || "Payer",
+        billingProviderTaxId: text(r.billing_provider_tax_id) || null,
+        claims,
+      };
+    });
 
     const chargeRows = outBatches.flatMap((batch) =>
       batch.claims.flatMap((claim) => {
@@ -288,7 +204,7 @@ export async function GET(request: Request) {
 
     const totalUnbilledCharges = Math.round(
       chargeRows
-        .filter((row) => !batches.some((b) => text(b.batch_number) === row.batchId && ["submitted", "accepted"].includes(text(b.batch_status).toLowerCase())))
+        .filter((row) => !outBatches.some((b) => b.batchNumber === row.batchId && ["submitted", "accepted"].includes((b.status || "").toLowerCase())))
         .reduce((sum, row) => sum + Number(row.billedAmount ?? 0), 0)
       * 100,
     ) / 100;
@@ -304,8 +220,8 @@ export async function GET(request: Request) {
         limit,
         offset,
         returned: outBatches.length,
-        totalCount: batchCount ?? null,
-        hasMore: batchCount != null ? offset + outBatches.length < batchCount : outBatches.length === limit,
+        totalCount,
+        hasMore: offset + outBatches.length < totalCount,
       },
       totals: {
         totalUnbilledCharges,

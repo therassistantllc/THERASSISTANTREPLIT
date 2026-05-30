@@ -360,9 +360,7 @@ as $$
       (array_agg(sl.rendering_provider_npi order by sl.line_number asc))[1] as rendering_provider_npi
     from public.professional_claim_service_lines sl
     left join lateral unnest(coalesce(sl.modifiers, '{}'::text[])) as mods(modifier) on true
-    where sl.organization_id = p_organization_id
-      and sl.claim_id = m.id
-      and sl.archived_at is null
+    where sl.claim_id = m.id
   ) sl on true
   left join lateral (
     select

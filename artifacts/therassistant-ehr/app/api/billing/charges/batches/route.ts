@@ -20,60 +20,25 @@ function isClinicianScoped(roles: string[]) {
   const hasExpandedAccess = roles.some((r) =>
     ["admin", "biller", "supervisor", "support"].includes(r),
   );
-
   return hasClinician && !hasExpandedAccess;
+}
+
+function isMissingRpcError(error: unknown) {
+  return !!error && typeof error === "object" && (error as { code?: unknown }).code === "PGRST202";
 }
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     const m = error.message.toLowerCase();
-
     if (m.includes("not authenticated")) return "Not authenticated";
     if (m.includes("forbidden")) return "Forbidden";
   }
-
   return "Failed to load charge batches";
-}
-
-function isMissingRpcError(error: unknown) {
-  if (!error || typeof error !== "object") return false;
-
-  return (error as { code?: unknown }).code === "PGRST202";
 }
 
 function makeBatchNumber(suffix?: number) {
   const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
-
   return suffix == null ? `CC-${stamp}` : `CC-${stamp}-${suffix}`;
-}
-
-function emptyPayload(params: {
-  clinicianOnly: boolean;
-  canManage: boolean;
-  limit: number;
-  offset: number;
-  totalCount?: number;
-}) {
-  return {
-    success: true,
-    clinicianOnly: params.clinicianOnly,
-    canManage: params.canManage,
-    practiceOptions: [] as Array<{ value: string; label: string }>,
-    pagination: {
-      limit: params.limit,
-      offset: params.offset,
-      returned: 0,
-      totalCount: params.totalCount ?? 0,
-      hasMore: false,
-    },
-    totals: {
-      totalUnbilledCharges: 0,
-      pendingBatches: 0,
-      readyToSubmit: 0,
-    },
-    chargeRows: [] as unknown[],
-    batches: [] as unknown[],
-  };
 }
 
 export async function GET(request: Request) {
@@ -83,11 +48,9 @@ export async function GET(request: Request) {
     const guard = await requireBillingAccess({
       requestedOrganizationId: searchParams.get("organizationId"),
     });
-
     if (guard instanceof NextResponse) return guard;
 
     const supabase = createServerSupabaseAdminClient();
-
     if (!supabase) {
       return NextResponse.json(
         { success: false, error: "Database connection not available" },
@@ -99,13 +62,8 @@ export async function GET(request: Request) {
     const limitRaw = Number(searchParams.get("limit") ?? "50");
     const offsetRaw = Number(searchParams.get("offset") ?? "0");
 
-    const limit = Number.isFinite(limitRaw)
-      ? Math.min(Math.max(Math.trunc(limitRaw), 1), 200)
-      : 50;
-
-    const offset = Number.isFinite(offsetRaw)
-      ? Math.max(Math.trunc(offsetRaw), 0)
-      : 0;
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 200) : 50;
+    const offset = Number.isFinite(offsetRaw) ? Math.max(Math.trunc(offsetRaw), 0) : 0;
 
     const clinicianOnly = isClinicianScoped(guard.roles ?? []);
     const providerId =
@@ -113,90 +71,65 @@ export async function GET(request: Request) {
         ? await getProviderIdForUser(guard.userId, guard.organizationId)
         : null;
 
+    const emptyPayload = {
+      success: true,
+      clinicianOnly,
+      canManage: !clinicianOnly,
+      practiceOptions: [] as Array<{ value: string; label: string }>,
+      pagination: {
+        limit,
+        offset,
+        returned: 0,
+        totalCount: 0,
+        hasMore: false,
+      },
+      totals: {
+        totalUnbilledCharges: 0,
+        pendingBatches: 0,
+        readyToSubmit: 0,
+      },
+      chargeRows: [] as unknown[],
+      batches: [] as unknown[],
+    };
+
     if (clinicianOnly && !providerId) {
-      return NextResponse.json(
-        emptyPayload({
-          clinicianOnly,
-          canManage: false,
-          limit,
-          offset,
-        }),
-      );
+      return NextResponse.json({ ...emptyPayload, canManage: false });
     }
 
-    const { data, error } = await (supabase as any).rpc(
-      "billing_charge_batches_page",
-      {
-        p_organization_id: guard.organizationId,
-        p_practice: practiceFilter || null,
-        p_provider_id: clinicianOnly ? providerId : null,
-        p_limit: limit,
-        p_offset: offset,
-      },
-    );
+    const { data, error } = await (supabase as any).rpc("billing_charge_batches_page", {
+      p_organization_id: guard.organizationId,
+      p_practice: practiceFilter || null,
+      p_provider_id: clinicianOnly ? providerId : null,
+      p_limit: limit,
+      p_offset: offset,
+    });
 
     if (error) {
-      if (isMissingRpcError(error)) {
-        console.warn("billing_charge_batches_page RPC not available");
-
-        return NextResponse.json(
-          emptyPayload({
-            clinicianOnly,
-            canManage: !clinicianOnly,
-            limit,
-            offset,
-          }),
-        );
-      }
-
+      if (isMissingRpcError(error)) return NextResponse.json(emptyPayload);
       throw error;
     }
 
     const rpcRows = (data ?? []) as DbRow[];
-    const totalCount =
-      rpcRows.length > 0 ? Number(rpcRows[0].total_count ?? 0) : 0;
+    const totalCount = rpcRows.length > 0 ? Number(rpcRows[0].total_count ?? 0) : 0;
 
     if (rpcRows.length === 0) {
-      return NextResponse.json(
-        emptyPayload({
-          clinicianOnly,
-          canManage: !clinicianOnly,
-          limit,
-          offset,
-          totalCount,
-        }),
-      );
+      return NextResponse.json({
+        ...emptyPayload,
+        pagination: { limit, offset, returned: 0, totalCount, hasMore: false },
+      });
     }
 
     const practiceSet = new Set<string>();
 
-    type BatchClaim = {
-      id: string;
-      claimNumber: string;
-      status: string;
-      totalCharge: number;
-      practiceId: string | null;
-      patientName: string;
-      providerName: string;
-      serviceLines: Array<{
-        id: string;
-        lineNumber: number;
-        dateOfService: string | null;
-        procedureCode: string;
-        chargeAmount: number;
-      }>;
-    };
-
-    const outBatches = rpcRows.map((r) => {
+    const batches = rpcRows.map((r) => {
       const rawClaims = Array.isArray(r.claims) ? (r.claims as DbRow[]) : [];
 
-      const claims: BatchClaim[] = rawClaims.map((claim) => {
+      const claims = rawClaims.map((claim) => {
         const serviceLinesRaw = Array.isArray(claim.serviceLines)
           ? (claim.serviceLines as DbRow[])
           : [];
 
         const practiceId = text(claim.practiceId) || null;
-
         if (practiceId) practiceSet.add(practiceId);
 
         return {
@@ -234,7 +167,7 @@ export async function GET(request: Request) {
       };
     });
 
-    const chargeRows = outBatches.flatMap((batch) =>
+    const chargeRows = batches.flatMap((batch) =>
       batch.claims.flatMap((claim) => {
         if (!claim.serviceLines.length) {
           return [
@@ -273,10 +206,8 @@ export async function GET(request: Request) {
     );
 
     const submittedBatchIds = new Set(
-      outBatches
-        .filter((b) =>
-          ["submitted", "accepted"].includes((b.status || "").toLowerCase()),
-        )
+      batches
+        .filter((b) => ["submitted", "accepted"].includes((b.status || "").toLowerCase()))
         .map((b) => b.id),
     );
 
@@ -287,31 +218,25 @@ export async function GET(request: Request) {
           .reduce((sum, row) => sum + Number(row.billedAmount ?? 0), 0) * 100,
       ) / 100;
 
-    const pendingBatches = outBatches.filter(
-      (b) =>
-        !["submitted", "accepted"].includes((b.status || "").toLowerCase()),
+    const pendingBatches = batches.filter(
+      (b) => !["submitted", "accepted"].includes((b.status || "").toLowerCase()),
     ).length;
 
-    const readyToSubmit = outBatches.filter(
-      (b) =>
-        ["generated", "ready_to_generate"].includes(
-          (b.status || "").toLowerCase(),
-        ) && Boolean(b.generatedFileName),
+    const readyToSubmit = batches.filter(
+      (b) => ["generated"].includes((b.status || "").toLowerCase()) && !!b.generatedFileName,
     ).length;
 
     return NextResponse.json({
       success: true,
       clinicianOnly,
       canManage: !clinicianOnly,
-      practiceOptions: Array.from(practiceSet)
-        .sort()
-        .map((p) => ({ value: p, label: p })),
+      practiceOptions: Array.from(practiceSet).sort().map((p) => ({ value: p, label: p })),
       pagination: {
         limit,
         offset,
-        returned: outBatches.length,
+        returned: batches.length,
         totalCount,
-        hasMore: offset + outBatches.length < totalCount,
+        hasMore: offset + batches.length < totalCount,
       },
       totals: {
         totalUnbilledCharges,
@@ -319,15 +244,11 @@ export async function GET(request: Request) {
         readyToSubmit,
       },
       chargeRows,
-      batches: outBatches,
+      batches,
     });
   } catch (error) {
     console.error("Failed to load charge batches", error);
-
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -342,7 +263,6 @@ export async function POST(request: Request) {
     const guard = await requireBillingAccess({
       requestedOrganizationId: body.organizationId ?? null,
     });
-
     if (guard instanceof NextResponse) return guard;
 
     const organizationId = guard.organizationId;
@@ -350,16 +270,6 @@ export async function POST(request: Request) {
     const selectedClaimIds = Array.isArray(body.claimIds)
       ? [...new Set(body.claimIds.map((id) => text(id)).filter(Boolean))]
       : [];
-
-    if (selectedClaimIds.length > 5000) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "At most 5000 claimIds can be submitted per request",
-        },
-        { status: 400 },
-      );
-    }
 
     const scopeAllReady =
       body.scopeAllReady === true ||
@@ -378,8 +288,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = createServerSupabaseAdminClient();
+    if (selectedClaimIds.length > 5000) {
+      return NextResponse.json(
+        { success: false, error: "At most 5000 claimIds can be submitted per request" },
+        { status: 400 },
+      );
+    }
 
+    const supabase = createServerSupabaseAdminClient();
     if (!supabase) {
       return NextResponse.json(
         { success: false, error: "Database connection not available" },
@@ -387,158 +303,111 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: existingAutoBatches, error: existingBatchError } =
-      await supabase
-        .from("claim_837p_batches")
-        .select("id, batch_number, batch_status")
-        .eq("organization_id", organizationId)
-        .eq("batch_source", "charge_auto")
-        .in("batch_status", ["draft", "ready_to_generate", "generated"])
-        .is("archived_at", null)
-        .order("created_at", { ascending: true });
+    /*
+      Existing batches must be regenerated even when there are no new unbatched claims.
+      This fixes the UI mismatch:
+      “25 charges ready to batch” but POST says “No unbatched claims.”
+    */
+    let existingBatchQuery = supabase
+      .from("claim_837p_batches")
+      .select("id, batch_number, batch_status, generated_file_name, batch_source")
+      .eq("organization_id", organizationId)
+      .in("batch_status", ["draft", "ready_to_generate", "generation_failed", "generated"])
+      .is("archived_at", null)
+      .order("created_at", { ascending: true });
 
-   if (existingProcessable.length === 0 && unbatched.length === 0) {
-  return NextResponse.json({
-    success: true,
-    batchesCreated: 0,
-    selectionMode: explicitSelection ? "explicit" : "auto",
-    totalReadyClaims: totalReadyCount ?? 0,
-    scannedReadyClaims: allReady.length,
-    remainingReadyClaims,
-    batches: [],
-    message: "No claims are currently in ready_for_batch status. Release charges first.",
-  });
-}
+    const { data: existingBatchesRaw, error: existingBatchesError } = await existingBatchQuery;
+    if (existingBatchesError) throw existingBatchesError;
 
-    if (explicitSelection) {
-      totalReadyCountQuery = totalReadyCountQuery.in("id", selectedClaimIds);
+    const existingBatchRows = (existingBatchesRaw ?? []) as DbRow[];
+    const existingBatchIds = existingBatchRows.map((b) => text(b.id)).filter(Boolean);
+
+    const { data: existingLinksRaw, error: existingLinksError } =
+      existingBatchIds.length > 0
+        ? await supabase
+            .from("claim_837p_batch_claims")
+            .select("batch_id, professional_claim_id")
+            .eq("organization_id", organizationId)
+            .in("batch_id", existingBatchIds)
+            .is("archived_at", null)
+        : { data: [] as DbRow[], error: null };
+
+    if (existingLinksError) throw existingLinksError;
+
+    const existingLinks = (existingLinksRaw ?? []) as DbRow[];
+    const existingClaimCountsByBatchId = new Map<string, number>();
+
+    for (const link of existingLinks) {
+      const batchId = text(link.batch_id);
+      if (!batchId) continue;
+      existingClaimCountsByBatchId.set(batchId, (existingClaimCountsByBatchId.get(batchId) ?? 0) + 1);
     }
 
-    const { count: totalReadyCount, error: countError } =
-      await totalReadyCountQuery;
+    const existingProcessable = existingBatchRows
+      .filter((b) => (existingClaimCountsByBatchId.get(text(b.id)) ?? 0) > 0)
+      .map((b) => ({
+        batchId: text(b.id),
+        batchNumber: text(b.batch_number) || text(b.id).slice(0, 8),
+        claimCount: existingClaimCountsByBatchId.get(text(b.id)) ?? 0,
+      }));
 
-    if (countError) throw countError;
+    let readyClaimsQuery = supabase
+      .from("professional_claims")
+      .select("id, claim_status, total_charge, payer_profile_id, created_at")
+      .eq("organization_id", organizationId)
+      .eq("claim_status", "ready_for_batch")
+      .is("archived_at", null)
+      .order("created_at", { ascending: true });
+
+    if (explicitSelection) {
+      readyClaimsQuery = readyClaimsQuery.in("id", selectedClaimIds);
+    }
 
     const allReady: DbRow[] = [];
 
     if (explicitSelection) {
-      const { data: selectedReady, error: selectedError } = await supabase
-        .from("professional_claims")
-        .select("id, claim_status, total_charge, payer_profile_id")
-        .eq("organization_id", organizationId)
-        .eq("claim_status", "ready_for_batch")
-        .is("archived_at", null)
-        .in("id", selectedClaimIds)
-        .order("created_at", { ascending: true });
-
-      if (selectedError) throw selectedError;
-
-      allReady.push(...((selectedReady ?? []) as DbRow[]));
+      const { data, error } = await readyClaimsQuery;
+      if (error) throw error;
+      allReady.push(...((data ?? []) as DbRow[]));
     } else {
       const pageSize = 500;
-      let pageOffset = 0;
+      let from = 0;
 
       while (true) {
-        const { data: pageRows, error: pageError } = await supabase
-          .from("professional_claims")
-          .select("id, claim_status, total_charge, payer_profile_id")
-          .eq("organization_id", organizationId)
-          .eq("claim_status", "ready_for_batch")
-          .is("archived_at", null)
-          .order("created_at", { ascending: true })
-          .range(pageOffset, pageOffset + pageSize - 1);
+        const { data, error } = await readyClaimsQuery.range(from, from + pageSize - 1);
+        if (error) throw error;
 
-        if (pageError) throw pageError;
-
-        const page = (pageRows ?? []) as DbRow[];
+        const page = (data ?? []) as DbRow[];
         allReady.push(...page);
 
         if (page.length < pageSize) break;
-
-        pageOffset += pageSize;
+        from += pageSize;
       }
     }
 
-    const remainingReadyClaims = Math.max(
-      (totalReadyCount ?? allReady.length) - allReady.length,
-      0,
-    );
-
     const readyIds = allReady.map((c) => text(c.id)).filter(Boolean);
-    let readyClaimLinks: DbRow[] = [];
 
-    if (readyIds.length > 0) {
-      const { data, error } = await supabase
-        .from("claim_837p_batch_claims")
-        .select("professional_claim_id, batch_id")
-        .eq("organization_id", organizationId)
-        .in("professional_claim_id", readyIds)
-        .is("archived_at", null);
+    const { data: readyLinksRaw, error: readyLinksError } =
+      readyIds.length > 0
+        ? await supabase
+            .from("claim_837p_batch_claims")
+            .select("professional_claim_id, batch_id")
+            .eq("organization_id", organizationId)
+            .in("professional_claim_id", readyIds)
+            .is("archived_at", null)
+        : { data: [] as DbRow[], error: null };
 
-      if (error) throw error;
+    if (readyLinksError) throw readyLinksError;
 
-      readyClaimLinks = (data ?? []) as DbRow[];
-    }
-
-    const linkedBatchIds = [
-      ...new Set(readyClaimLinks.map((r) => text(r.batch_id)).filter(Boolean)),
-    ];
-
-    let activeBatchIds = new Set<string>();
-
-    if (linkedBatchIds.length > 0) {
-      const { data: linkedBatches, error: linkedBatchesError } = await supabase
-        .from("claim_837p_batches")
-        .select("id, batch_status")
-        .eq("organization_id", organizationId)
-        .in("id", linkedBatchIds)
-        .is("archived_at", null);
-
-      if (linkedBatchesError) throw linkedBatchesError;
-
-      activeBatchIds = new Set(
-        ((linkedBatches ?? []) as DbRow[])
-          .filter(
-            (b) =>
-              !["submitted", "accepted", "voided"].includes(
-                text(b.batch_status).toLowerCase(),
-              ),
-          )
-          .map((b) => text(b.id)),
-      );
-    }
-
-    const alreadyBatchedClaimIds = new Set(
-      readyClaimLinks
-        .filter((r) => activeBatchIds.has(text(r.batch_id)))
-        .map((r) => text(r.professional_claim_id)),
+    const readyLinks = (readyLinksRaw ?? []) as DbRow[];
+    const alreadyLinkedClaimIds = new Set(
+      readyLinks.map((r) => text(r.professional_claim_id)).filter(Boolean),
     );
 
-    const unbatched = allReady.filter(
-      (c) => !alreadyBatchedClaimIds.has(text(c.id)),
-    );
-
-    if (existingProcessable.length === 0 && unbatched.length === 0) {
-      return NextResponse.json({
-        success: true,
-        batchesCreated: 0,
-        generationMode: "eager",
-        jobsQueued: 0,
-        selectionMode: explicitSelection ? "explicit" : "auto",
-        totalReadyClaims: totalReadyCount ?? 0,
-        scannedReadyClaims: allReady.length,
-        remainingReadyClaims,
-        claimsQueued: 0,
-        existingBatchesRegenerated: 0,
-        batches: [],
-        message:
-          "No unbatched claims are currently in ready_for_batch status. Release charges first.",
-      });
-    }
-
+    const unbatched = allReady.filter((c) => !alreadyLinkedClaimIds.has(text(c.id)));
     const unbatchedIds = unbatched.map((c) => text(c.id)).filter(Boolean);
 
-    const { data: partySnapshots, error: partySnapshotError } =
+    const { data: partySnapshotsRaw, error: partySnapshotError } =
       unbatchedIds.length > 0
         ? await supabase
             .from("claim_parties_snapshot")
@@ -550,14 +419,12 @@ export async function POST(request: Request) {
 
     const billingTinByClaimId = new Map<string, string>();
 
-    for (const row of (partySnapshots ?? []) as DbRow[]) {
+    for (const row of (partySnapshotsRaw ?? []) as DbRow[]) {
       const claimId = text(row.claim_id);
-
-      if (!claimId || billingTinByClaimId.has(claimId)) continue;
-
       const tin = text(row.billing_provider_tax_id);
-
-      if (tin) billingTinByClaimId.set(claimId, tin);
+      if (claimId && tin && !billingTinByClaimId.has(claimId)) {
+        billingTinByClaimId.set(claimId, tin);
+      }
     }
 
     const groups = new Map<
@@ -571,12 +438,8 @@ export async function POST(request: Request) {
 
     for (const claim of unbatched) {
       const payerProfileId = text(claim.payer_profile_id) || null;
-      const billingProviderTaxId =
-        billingTinByClaimId.get(text(claim.id)) ?? null;
-
-      const key = `${payerProfileId ?? "__no_payer__"}::${
-        billingProviderTaxId ?? "__no_tin__"
-      }`;
+      const billingProviderTaxId = billingTinByClaimId.get(text(claim.id)) ?? null;
+      const key = `${payerProfileId ?? "__no_payer__"}::${billingProviderTaxId ?? "__no_tin__"}`;
 
       const group =
         groups.get(key) ??
@@ -590,9 +453,7 @@ export async function POST(request: Request) {
       groups.set(key, group);
     }
 
-    const orderedGroups = [...groups.entries()].sort(([a], [b]) =>
-      a.localeCompare(b),
-    );
+    const orderedGroups = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
 
     const createdBatches: Array<{
       batchId: string;
@@ -606,31 +467,21 @@ export async function POST(request: Request) {
 
     for (let i = 0; i < orderedGroups.length; i++) {
       const [, group] = orderedGroups[i];
-
-      const payerProfileId = group.payerProfileId;
-      const billingProviderTaxId = group.billingProviderTaxId;
       const ids = group.rows.map((c) => text(c.id)).filter(Boolean);
-      const totalChargeAmount = group.rows.reduce(
-        (sum, row) => sum + money(row.total_charge),
-        0,
-      );
-
-      const number =
-        orderedGroups.length === 1 ? makeBatchNumber() : makeBatchNumber(i + 1);
+      const totalChargeAmount = group.rows.reduce((sum, row) => sum + money(row.total_charge), 0);
+      const batchNumber = orderedGroups.length === 1 ? makeBatchNumber() : makeBatchNumber(i + 1);
 
       const { data: rpcData, error: rpcError } = await (supabase as any).rpc(
         "create_837p_batch_atomic",
         {
           p_organization_id: organizationId,
           p_claim_ids: ids,
-          p_batch_number: number,
-          p_payer_profile_id: payerProfileId,
+          p_batch_number: batchNumber,
+          p_payer_profile_id: group.payerProfileId,
         },
       );
 
-      if (rpcError) {
-        throw new Error(rpcError.message ?? "Batch creation failed");
-      }
+      if (rpcError) throw new Error(rpcError.message ?? "Batch creation failed");
 
       const result = (rpcData ?? {}) as {
         batch_id?: string;
@@ -645,37 +496,76 @@ export async function POST(request: Request) {
         .from("claim_837p_batches")
         .update({
           batch_source: "charge_auto",
-          billing_provider_tax_id: billingProviderTaxId,
+          billing_provider_tax_id: group.billingProviderTaxId,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", result.batch_id)
-        .eq("organization_id", organizationId);
+        .eq("organization_id", organizationId)
+        .eq("id", result.batch_id);
 
       if (stampError) throw stampError;
 
       createdBatches.push({
         batchId: result.batch_id,
-        batchNumber: result.batch_number ?? number,
-        payerProfileId,
-        billingProviderTaxId,
+        batchNumber: result.batch_number ?? batchNumber,
+        payerProfileId: group.payerProfileId,
+        billingProviderTaxId: group.billingProviderTaxId,
         claimCount: group.rows.length,
         totalChargeAmount: Math.round(totalChargeAmount * 100) / 100,
         claimIds: ids,
       });
     }
 
-    const processedBatches = [
-      ...existingProcessable.map((b) => ({
-        batchId: b.batchId,
-        batchNumber: b.batchNumber,
-        payerProfileId: null as string | null,
-        billingProviderTaxId: null as string | null,
-        claimCount: b.claimCount,
+    const processedBatchMap = new Map<
+      string,
+      {
+        batchId: string;
+        batchNumber: string;
+        payerProfileId: string | null;
+        billingProviderTaxId: string | null;
+        claimCount: number;
+        totalChargeAmount: number;
+        claimIds: string[];
+        source: "existing" | "created";
+      }
+    >();
+
+    for (const batch of existingProcessable) {
+      processedBatchMap.set(batch.batchId, {
+        batchId: batch.batchId,
+        batchNumber: batch.batchNumber,
+        payerProfileId: null,
+        billingProviderTaxId: null,
+        claimCount: batch.claimCount,
         totalChargeAmount: 0,
-        claimIds: [] as string[],
-      })),
-      ...createdBatches,
-    ];
+        claimIds: [],
+        source: "existing",
+      });
+    }
+
+    for (const batch of createdBatches) {
+      processedBatchMap.set(batch.batchId, {
+        ...batch,
+        source: "created",
+      });
+    }
+
+    const processedBatches = Array.from(processedBatchMap.values());
+
+    if (processedBatches.length === 0) {
+      return NextResponse.json({
+        success: true,
+        batchesCreated: 0,
+        generationMode: "eager",
+        jobsQueued: 0,
+        selectionMode: explicitSelection ? "explicit" : "auto",
+        scannedReadyClaims: allReady.length,
+        claimsQueued: 0,
+        existingBatchesRegenerated: 0,
+        batches: [],
+        message:
+          "No ready batches or unbatched ready claims were found. Release charges first.",
+      });
+    }
 
     const batchResults = await Promise.allSettled(
       processedBatches.map((batch) =>
@@ -690,7 +580,6 @@ export async function POST(request: Request) {
       const result = batchResults[index];
 
       const generated = result.status === "fulfilled" && result.value.ok;
-
       const generationError =
         result.status === "rejected"
           ? String(result.reason)
@@ -705,26 +594,16 @@ export async function POST(request: Request) {
         billingProviderTaxId: batch.billingProviderTaxId,
         claimCount: batch.claimCount,
         totalChargeAmount: batch.totalChargeAmount,
+        source: batch.source,
         generated,
         generationError,
         generationDeferred: false,
       };
     });
 
-    const createdSet = new Set(createdBatches.map((b) => b.batchId));
-
-    const existingRegenerated = outputBatches.filter(
-      (b) => !createdSet.has(b.batchId),
-    ).length;
-
-    const totalClaimsCovered = processedBatches.reduce(
-      (sum, b) => sum + b.claimCount,
-      0,
-    );
-
-    const failedGenerationCount = outputBatches.filter(
-      (b) => !b.generated,
-    ).length;
+    const failedGenerationCount = outputBatches.filter((b) => !b.generated).length;
+    const existingRegenerated = outputBatches.filter((b) => b.source === "existing").length;
+    const totalClaimsCovered = processedBatches.reduce((sum, b) => sum + b.claimCount, 0);
 
     return NextResponse.json({
       success: failedGenerationCount === 0,
@@ -732,31 +611,15 @@ export async function POST(request: Request) {
       generationMode: "eager",
       jobsQueued: 0,
       selectionMode: explicitSelection ? "explicit" : "auto",
-      totalReadyClaims: totalReadyCount ?? allReady.length,
       scannedReadyClaims: allReady.length,
-      remainingReadyClaims,
       claimsQueued: totalClaimsCovered,
       existingBatchesRegenerated: existingRegenerated,
       message:
         failedGenerationCount > 0
-          ? `${failedGenerationCount} batch file${
-              failedGenerationCount === 1 ? "" : "s"
-            } failed to generate. Review generation errors.`
-          : remainingReadyClaims > 0
-            ? `Generated charge batches and 837P files for ${allReady.length} ready claim${
-                allReady.length === 1 ? "" : "s"
-              }; ${remainingReadyClaims} additional ready claim${
-                remainingReadyClaims === 1 ? "" : "s"
-              } remain.`
-            : createdBatches.length === 0 && existingRegenerated > 0
-              ? `Generated files for ${existingRegenerated} existing batch${
-                  existingRegenerated === 1 ? "" : "es"
-                }.`
-              : `Generated ${createdBatches.length} charge batch${
-                  createdBatches.length === 1 ? "" : "es"
-                } and built 837P file${
-                  createdBatches.length === 1 ? "" : "s"
-                }.`,
+          ? `${failedGenerationCount} batch file${failedGenerationCount === 1 ? "" : "s"} failed to generate.`
+          : createdBatches.length === 0 && existingRegenerated > 0
+            ? `Generated 837P files for ${existingRegenerated} existing batch${existingRegenerated === 1 ? "" : "es"}.`
+            : `Generated ${createdBatches.length} new batch${createdBatches.length === 1 ? "" : "es"} and built 837P files.`,
       batches: outputBatches,
     });
   } catch (error) {

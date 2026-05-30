@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+const DEFAULT_ORG_ID = "default";
+
 type ChargeRow = {
   chargeId: string;
   claimId: string;

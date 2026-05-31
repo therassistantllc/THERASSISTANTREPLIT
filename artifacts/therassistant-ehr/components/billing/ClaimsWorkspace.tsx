@@ -8,7 +8,7 @@ import styles from "./ClaimsWorkspace.module.css";
 
 // ─── Lifecycle taxonomy ────────────────────────────────────────────────────
 
-type LifecycleTab = "needs_attention" | "submitted" | "denials" | "follow_up" | "resolutions";
+type LifecycleTab = "needs_attention" | "submitted" | "follow_up" | "resolutions";
 type ChipTone = "info" | "pending" | "urgent" | "resolved" | "neutral";
 
 interface ChipDef {
@@ -60,24 +60,6 @@ const LIFECYCLES: LifecycleDef[] = [
       { id: "awaiting_277ca", label: "Awaiting 277CA", tone: "pending", serverTab: "awaiting_277ca" },
       { id: "awaiting_payer", label: "Awaiting payer response", tone: "pending", serverTab: "awaiting_payer" },
       { id: "no_response_risk", label: "No-response risk", tone: "urgent", serverTab: "no_response_risk" },
-    ],
-  },
-  {
-    id: "denials",
-    label: "Denials",
-    description: "Payer said no. Appeal, correct, or write off.",
-    chips: [
-      { id: "by_carc", label: "Has CARC code", tone: "urgent",
-        predicate: (r) => (r.carcCodes?.length ?? 0) > 0 },
-      { id: "by_rarc", label: "Has RARC code", tone: "pending",
-        predicate: (r) => (r.rarcCodes?.length ?? 0) > 0 },
-      { id: "partial", label: "Partial denial", tone: "pending",
-        predicate: (r) => r.balance > 0 && r.balance < r.totalCharge },
-      { id: "medical_necessity", label: "Medical necessity", tone: "urgent",
-        predicate: (r) =>
-          (r.carcCodes ?? []).some((c) => ["50", "55", "167"].includes(c)) },
-      { id: "underpayments", label: "Underpayment", tone: "pending",
-        predicate: (r) => r.balance > 0 && r.balance < r.totalCharge * 0.5 },
     ],
   },
   {
@@ -232,38 +214,6 @@ async function fetchSubmitted(ctx: FetchContext): Promise<ClaimRow[]> {
   });
 }
 
-async function fetchDenials(ctx: FetchContext): Promise<ClaimRow[]> {
-  const p = new URLSearchParams({ organizationId: ctx.organizationId });
-  const json = await fetchJson(`/api/billing/aging?${p}`);
-  const items = (json.items ?? []) as Array<any>;
-  return items.map((r): ClaimRow => {
-    const days = r.age_days ?? 0;
-    const issueLabel = (r.carc_codes?.length ?? 0) > 0
-      ? `CARC ${r.carc_codes[0]} · ${days}d`
-      : `${r.last_status || "Unresolved"} · ${days}d`;
-    const issueTone: ChipTone = days > 90 ? "urgent" : days > 60 ? "pending" : "info";
-    return {
-      id: String(r.id),
-      claimNumber: r.claim_number ?? String(r.id).slice(0, 8),
-      patientName: r.patient_name ?? "Unknown client",
-      patientId: r.patient_id ?? null,
-      dosFrom: r.service_date_from ?? null,
-      dosTo: r.service_date_to ?? null,
-      payer: r.payer_name ?? "—",
-      totalCharge: Number(r.total_charge ?? 0),
-      balance: Number(r.balance ?? r.total_charge ?? 0),
-      daysOut: days,
-      issue: { label: issueLabel, tone: issueTone },
-      lastAction: r.next_action || r.last_status || "Review",
-      lastActionAt: r.last_status_at ?? r.last_followup_at ?? null,
-      assignee: r.assigned_to_display_name ?? null,
-      followUp: r.follow_up_due_date ?? null,
-      carcCodes: r.carc_codes ?? [],
-      rarcCodes: r.rarc_codes ?? [],
-    };
-  });
-}
-
 async function fetchFollowUp(ctx: FetchContext): Promise<ClaimRow[]> {
   const p = new URLSearchParams({ organizationId: ctx.organizationId });
   if (ctx.chip?.serverTab) p.set("tab", ctx.chip.serverTab);
@@ -319,7 +269,6 @@ async function fetchResolutions(ctx: FetchContext): Promise<ClaimRow[]> {
 const FETCHERS: Record<LifecycleTab, (ctx: FetchContext) => Promise<ClaimRow[]>> = {
   needs_attention: fetchNeedsAttention,
   submitted: fetchSubmitted,
-  denials: fetchDenials,
   follow_up: fetchFollowUp,
   resolutions: fetchResolutions,
 };

@@ -8,7 +8,7 @@ import type { NextConfig } from "next";
  * Source = legacy /billing/<queue> route
  * Target = /billing/claims?tab=<lifecycle>&filter=<chip>
  *
- * Lifecycle tabs: needs_attention, submitted, denials, follow_up,
+ * Lifecycle tabs: needs_attention, submitted, follow_up,
  * resolutions. Chip ids are declared in components/billing/ClaimsWorkspace.tsx.
  *
  * Payments-class routes (era-import, paper-checks, partial-payments,
@@ -41,17 +41,6 @@ const claimRedirects: Array<{ from: string; tab: string; filter?: string }> = [
   { from: "/billing/submitted-claims", tab: "submitted" },
   { from: "/billing/payer-received", tab: "submitted", filter: "awaiting_payer" },
   { from: "/billing/transmission-failures", tab: "submitted" },
-
-  { from: "/billing/denials", tab: "denials" },
-  { from: "/billing/denials-by-carc", tab: "denials", filter: "by_carc" },
-  { from: "/billing/denials-by-rarc", tab: "denials", filter: "by_rarc" },
-  { from: "/billing/claim-submission", tab: "denials" },
-  { from: "/billing/partial-denials", tab: "denials", filter: "partial" },
-  { from: "/billing/medical-necessity", tab: "denials", filter: "medical_necessity" },
-  { from: "/billing/medical-review", tab: "denials", filter: "medical_necessity" },
-  { from: "/billing/aging", tab: "denials" },
-  { from: "/billing/payer-rejections", tab: "denials" },
-  { from: "/billing/underpayments", tab: "denials", filter: "underpayments" },
 
   { from: "/billing/appeals", tab: "follow_up", filter: "appeals" },
   { from: "/billing/corrected-claims", tab: "follow_up", filter: "corrected" },

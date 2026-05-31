@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { RefreshCw, Search, ChevronRight, Archive, Clock, Copy, FileText, Upload } from "lucide-react";
+import { RefreshCw, Search, ChevronRight, Archive, Clock, Copy, FileText, Upload, Plus } from "lucide-react";
 import { DEFAULT_ORG_ID } from "@/lib/config";
 import styles from "./era.module.css";
 
@@ -361,6 +361,24 @@ export default function EraQueueClient() {
                         <Link href={`/billing/payments/era/${b.id}`} className={`${styles.btn} ${styles.btnPrimary}`}>
                           Open
                         </Link>
+                        <button
+                          className={styles.btn}
+                          title={
+                            b.counts.unmatched > 0
+                              ? "Create a patient from this unmatched ERA batch"
+                              : "No unmatched claims in this batch"
+                          }
+                          disabled={b.counts.unmatched === 0}
+                          onClick={() => {
+                            window.open(
+                              `/clients/new?prefill=era&eraBatchId=${encodeURIComponent(b.id)}`,
+                              "_blank",
+                              "noopener,noreferrer",
+                            );
+                          }}
+                        >
+                          <Plus size={12} /> Add Patient
+                        </button>
                         <button
                           className={styles.btnGhost}
                           title={b.deferred ? "Un-defer" : "Defer for later"}

@@ -141,6 +141,20 @@ interface AssignRolePayload {
   expires_at?: string;
 }
 
+async function resolveRoleIdInOrg(roleIdentifier: string, organizationId: string): Promise<string | null> {
+  const supabase = createServerSupabaseAdminClient();
+  if (!supabase) return null;
+  let query = supabase
+    .from("staff_roles")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .is("archived_at", null);
+  if (isValidUuid(roleIdentifier)) query = query.eq("id", roleIdentifier);
+  else query = query.eq("role_code", roleIdentifier.toLowerCase());
+  const { data } = await query.maybeSingle();
+  return data?.id ? String(data.id) : null;
+}
+
 /**
  * POST /api/staff/[id]/roles
  * Assign a role to a staff member
@@ -169,12 +183,17 @@ export async function POST(
 
   const payload = bodyOrError;
 
-  // Validate role_id
-  if (!payload.role_id || !isValidUuid(payload.role_id)) {
+  // Validate/resolve role identifier (UUID or role code)
+  if (!payload.role_id) {
     return NextResponse.json(
       { error: "Invalid or missing role_id" },
       { status: 400 },
     );
+  }
+
+  const resolvedRoleId = await resolveRoleIdInOrg(payload.role_id, organizationId);
+  if (!resolvedRoleId) {
+    return NextResponse.json({ error: "Role not found in organization" }, { status: 400 });
   }
 
   const supabase = createServerSupabaseAdminClient();
@@ -205,7 +224,7 @@ export async function POST(
     if (orgError) return orgError;
 
     // Verify role exists in org
-    const roleExists = await roleExistsInOrg(payload.role_id, organizationId);
+    const roleExists = await roleExistsInOrg(resolvedRoleId, organizationId);
     if (!roleExists) {
       return NextResponse.json({ error: "Role not found in organization" }, { status: 400 });
     }
@@ -213,7 +232,7 @@ export async function POST(
     // Check if staff already has this role assigned (active)
     const alreadyAssigned = await staffHasRoleAssignment(
       id,
-      payload.role_id,
+      resolvedRoleId,
       organizationId,
     );
     if (alreadyAssigned) {
@@ -228,7 +247,7 @@ export async function POST(
       .from("staff_role_assignments")
       .insert({
         staff_id: id,
-        staff_role_id: payload.role_id,
+        staff_role_id: resolvedRoleId,
         organization_id: organizationId,
         assigned_at: new Date().toISOString(),
         effective_at: payload.effective_at || null,

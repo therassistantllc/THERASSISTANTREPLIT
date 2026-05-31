@@ -36,8 +36,8 @@ export async function PATCH(
 
   const bodyOrError = await parseRequestBody<UpdateRolePayload>(request);
   if (bodyOrError instanceof NextResponse) return bodyOrError;
-  const { role_id: newRoleId } = bodyOrError;
-  if (!newRoleId || !isValidUuid(newRoleId)) {
+  const { role_id: newRoleIdentifier } = bodyOrError;
+  if (!newRoleIdentifier || typeof newRoleIdentifier !== "string") {
     return NextResponse.json({ error: "Invalid or missing role_id" }, { status: 400 });
   }
 
@@ -66,11 +66,14 @@ export async function PATCH(
   }
 
   // New role
-  const { data: newRole, error: roleError } = await supabase
+  let roleQuery = supabase
     .from("staff_roles")
     .select("id, role_code, role_name, organization_id, archived_at")
-    .eq("id", newRoleId)
-    .single();
+    .eq("organization_id", organizationId)
+    .is("archived_at", null);
+  if (isValidUuid(newRoleIdentifier)) roleQuery = roleQuery.eq("id", newRoleIdentifier);
+  else roleQuery = roleQuery.eq("role_code", newRoleIdentifier.toLowerCase());
+  const { data: newRole, error: roleError } = await roleQuery.maybeSingle();
   if (roleError || !newRole) {
     return NextResponse.json({ error: "Role not found" }, { status: 404 });
   }
@@ -92,7 +95,7 @@ export async function PATCH(
   }>;
 
   // No-op if already only this role assigned.
-  if (current.length === 1 && current[0].staff_role_id === newRoleId) {
+  if (current.length === 1 && current[0].staff_role_id === newRole.id) {
     return NextResponse.json({
       success: true,
       message: "Role unchanged",
@@ -147,7 +150,7 @@ export async function PATCH(
     .from("staff_role_assignments")
     .insert({
       staff_id: staffId,
-      staff_role_id: newRoleId,
+        staff_role_id: newRole.id,
       organization_id: organizationId,
       assigned_at: new Date().toISOString(),
     });

@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   if (!isValidEmail(email)) {
     return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
   }
-  if (!roleId || !isValidUuid(roleId)) {
+  if (!roleId) {
     return NextResponse.json(
       { error: "A valid starting role is required" },
       { status: 400 },
@@ -81,12 +81,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Validate role belongs to org and is active.
-  const { data: role, error: roleError } = await supabase
+  // Resolve role by UUID or role_code within the org.
+  let roleQuery = supabase
     .from("staff_roles")
     .select("id, role_code, role_name, organization_id, archived_at")
-    .eq("id", roleId)
-    .single();
+    .eq("organization_id", organizationId)
+    .is("archived_at", null);
+  if (isValidUuid(roleId)) roleQuery = roleQuery.eq("id", roleId);
+  else roleQuery = roleQuery.eq("role_code", roleId.toLowerCase());
+  const { data: role, error: roleError } = await roleQuery.maybeSingle();
   if (roleError || !role) {
     return NextResponse.json({ error: "Role not found" }, { status: 404 });
   }

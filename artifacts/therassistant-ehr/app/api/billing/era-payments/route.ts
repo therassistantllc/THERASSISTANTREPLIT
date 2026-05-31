@@ -60,21 +60,32 @@ type LedgerRow = {
 type EraClaimPaymentRow = {
   id: string;
   organization_id: string;
-  era_import_batch_id: string;
-  professional_claim_id: string | null;
+  batch_id: string;
+  claim_id: string | null;
   client_id: string | null;
-  clp01_claim_control_number: string;
-  clp03_total_charge: number | string;
-  clp04_payment_amount: number | string;
-  clp05_patient_responsibility: number | string;
-  payer_claim_control_number: string | null;
-  claim_match_status: string;
-  posting_status: string;
-  cas_adjustments: CasAdjustment[] | null;
-  service_lines: ServiceLine[] | null;
+  imported_item_ref: string | null;
+  gross_amount: number | string;
+  net_amount: number | string;
+  adjustment_amount: number | string;
+  match_status: string;
+  payment_import_status: string;
+  raw_item_payload: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 };
+
+function mapMatchStatus(status: string): string {
+  if (status === "matched" || status === "manual_matched") return "matched";
+  if (status === "ignored") return "ignored";
+  return "unmatched";
+}
+
+function mapPostingStatus(status: string): string {
+  if (status === "posted") return "posted";
+  if (status === "ready_to_post") return "ready";
+  if (status === "needs_review" || status === "failed") return "blocked";
+  return "pending";
+}
 
 function money(value: unknown) {
   const n = Number(value ?? 0);
@@ -115,9 +126,7 @@ export async function GET(request: Request) {
     const offsetParam = Number.parseInt(searchParams.get("offset") ?? "", 10);
     const offset = Number.isFinite(offsetParam) && offsetParam >= 0 ? offsetParam : 0;
 
-    // If filtering by payer, resolve the payer profile -> matching ERA batches.
-    // `era_claim_payments` has no direct payer FK; payer is denormalized on
-    // `era_import_batches` (payer_identifier + payer_name).
+    // If filtering by payer, resolve the payer profile -> matching importer batches.
     let batchIdFilter: string[] | null = null;
     if (payerProfileId) {
       const { data: profile, error: profileError } = await supabase
@@ -148,7 +157,7 @@ export async function GET(request: Request) {
         orParts.push(`payer_name.ilike.${profile.payer_name}`);
       }
       let batchQuery = supabase
-        .from("era_import_batches")
+        .from("v_era_queue_from_payment_imports")
         .select("id")
         .eq("organization_id", organizationId)
         .is("archived_at", null);
@@ -171,14 +180,14 @@ export async function GET(request: Request) {
     }
 
     let query = supabase
-      .from("era_claim_payments")
+      .from("payment_import_items")
       .select(
-        "id, organization_id, era_import_batch_id, professional_claim_id, client_id, clp01_claim_control_number, clp03_total_charge, clp04_payment_amount, clp05_patient_responsibility, payer_claim_control_number, claim_match_status, posting_status, cas_adjustments, service_lines, created_at, updated_at",
+        "id, organization_id, batch_id, claim_id, client_id, imported_item_ref, gross_amount, net_amount, adjustment_amount, match_status, payment_import_status, raw_item_payload, created_at, updated_at",
       )
       .eq("organization_id", organizationId)
       .is("archived_at", null);
 
-    if (batchIdFilter) query = query.in("era_import_batch_id", batchIdFilter);
+    if (batchIdFilter) query = query.in("batch_id", batchIdFilter);
     if (dateFrom) query = query.gte("created_at", dateFrom);
     if (dateTo) query = query.lte("created_at", dateTo);
 
@@ -187,9 +196,7 @@ export async function GET(request: Request) {
       const pat = `%${searchClean}%`;
       query = query.or(
         [
-          `clp01_claim_control_number.ilike.${pat}`,
-          `payer_claim_control_number.ilike.${pat}`,
-          `check_eft_number.ilike.${pat}`,
+          `imported_item_ref.ilike.${pat}`,
         ].join(","),
       );
     }
@@ -205,15 +212,15 @@ export async function GET(request: Request) {
     const rows = (payments ?? []) as EraClaimPaymentRow[];
     const hasMore = rows.length === limit;
 
-    const batchIds = Array.from(new Set(rows.map((r) => r.era_import_batch_id).filter(Boolean)));
-    const claimIds = Array.from(new Set(rows.map((r) => r.professional_claim_id).filter((id): id is string => Boolean(id))));
+    const batchIds = Array.from(new Set(rows.map((r) => r.batch_id).filter(Boolean)));
+    const claimIds = Array.from(new Set(rows.map((r) => r.claim_id).filter((id): id is string => Boolean(id))));
     const clientIds = Array.from(new Set(rows.map((r) => r.client_id).filter((id): id is string => Boolean(id))));
     const paymentIds = rows.map((r) => r.id);
 
     const [batchesRes, claimsRes, clientsRes, ledgerRes] = await Promise.all([
       batchIds.length
         ? supabase
-            .from("era_import_batches")
+            .from("v_era_queue_from_payment_imports")
             .select("id, payer_identifier, payer_name, parsed_summary, imported_at")
             .in("id", batchIds)
         : Promise.resolve({ data: [] as EraImportBatchRow[], error: null }),
@@ -251,10 +258,7 @@ export async function GET(request: Request) {
       ((clientsRes.data ?? []) as ClientRow[]).map((c) => [c.id, c]),
     );
 
-    // era_import_batches carries its own `payer_name` denormalized from
-    // N1*PR at import time; there is no FK to payer_profiles. The display
-    // payer name therefore comes straight from the batch row (with a
-    // parsed_summary.payer fallback), not from a payer_profiles join.
+    // The importer queue view carries payer display fields per batch.
 
     const ledgerByPaymentId = new Map<string, LedgerRow[]>();
     for (const row of (ledgerRes.data ?? []) as LedgerRow[]) {
@@ -264,9 +268,13 @@ export async function GET(request: Request) {
     }
 
     const items = rows.map((row) => {
-      const batch = batchesById.get(row.era_import_batch_id) ?? null;
-      const claim = row.professional_claim_id ? claimsById.get(row.professional_claim_id) ?? null : null;
+      const batch = batchesById.get(row.batch_id) ?? null;
+      const claim = row.claim_id ? claimsById.get(row.claim_id) ?? null : null;
       const client = row.client_id ? clientsById.get(row.client_id) ?? null : null;
+      const payload =
+        row.raw_item_payload && typeof row.raw_item_payload === "object"
+          ? (row.raw_item_payload as Record<string, unknown>)
+          : {};
       const parsedPayerName =
         batch?.payer_name ??
         (batch?.parsed_summary && typeof batch.parsed_summary === "object"
@@ -276,24 +284,29 @@ export async function GET(request: Request) {
         batch?.parsed_summary && typeof batch.parsed_summary === "object"
           ? safeString((batch.parsed_summary as Record<string, unknown>).check_number)
           : null;
+      const claimControlNumber = String(payload.claim_ref ?? row.imported_item_ref ?? "").trim();
+      const payerClaimControlNumber = safeString(payload.payer_claim_control_number);
+      const patientResponsibility = money(payload.patient_responsibility);
+      const casAdjustments = (Array.isArray(payload.adjustments) ? payload.adjustments : []) as CasAdjustment[];
+      const serviceLines = (Array.isArray(payload.service_lines) ? payload.service_lines : []) as ServiceLine[];
 
       return {
         id: row.id,
-        eraImportBatchId: row.era_import_batch_id,
-        claimControlNumber: row.clp01_claim_control_number,
-        payerClaimControlNumber: row.payer_claim_control_number,
-        totalCharge: money(row.clp03_total_charge),
-        paymentAmount: money(row.clp04_payment_amount),
-        patientResponsibility: money(row.clp05_patient_responsibility),
-        claimMatchStatus: row.claim_match_status,
-        postingStatus: row.posting_status,
-        casAdjustments: (row.cas_adjustments ?? []).map((adj) => ({
+        eraImportBatchId: row.batch_id,
+        claimControlNumber,
+        payerClaimControlNumber,
+        totalCharge: money(row.gross_amount),
+        paymentAmount: money(row.net_amount),
+        patientResponsibility,
+        claimMatchStatus: mapMatchStatus(row.match_status),
+        postingStatus: mapPostingStatus(row.payment_import_status),
+        casAdjustments: casAdjustments.map((adj) => ({
           groupCode: adj.groupCode ?? adj.group_code ?? null,
           reasonCode: adj.reasonCode ?? adj.reason_code ?? null,
           amount: money(adj.amount),
           description: adj.description ?? null,
         })),
-        serviceLines: (row.service_lines ?? []).map((line) => ({
+        serviceLines: serviceLines.map((line) => ({
           procedureCode: line.procedure_code ?? null,
           charge: money(line.charge),
           allowed: money(line.allowed),

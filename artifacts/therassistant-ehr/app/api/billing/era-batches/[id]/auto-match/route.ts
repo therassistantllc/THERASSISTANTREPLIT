@@ -20,12 +20,12 @@ import {
 
 type ClaimPaymentRow = {
   id: string;
-  clp01_claim_control_number: string;
-  payer_claim_control_number: string | null;
-  clp03_total_charge: number | string;
-  claim_match_status: string;
-  service_lines: unknown;
-  era_import_batch_id: string;
+  imported_item_ref: string | null;
+  net_amount: number | string;
+  gross_amount: number | string;
+  match_status: string;
+  raw_item_payload: unknown;
+  batch_id: string;
 };
 
 type BatchRow = {
@@ -66,7 +66,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     }
 
     const { data: batch } = await supabase
-      .from("era_import_batches")
+      .from("v_era_queue_from_payment_imports")
       .select("id, parsed_summary")
       .eq("organization_id", organizationId)
       .eq("id", id)
@@ -81,13 +81,13 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
         : null;
 
     const { data: payments } = await supabase
-      .from("era_claim_payments")
+      .from("payment_import_items")
       .select(
-        "id, clp01_claim_control_number, payer_claim_control_number, clp03_total_charge, claim_match_status, service_lines, era_import_batch_id",
+        "id, imported_item_ref, net_amount, gross_amount, match_status, raw_item_payload, batch_id",
       )
       .eq("organization_id", organizationId)
-      .eq("era_import_batch_id", id)
-      .neq("claim_match_status", "matched")
+      .eq("batch_id", id)
+      .not("match_status", "in", "(matched,manual_matched)")
       .is("archived_at", null);
     const rows = (payments ?? []) as ClaimPaymentRow[];
 
@@ -101,13 +101,22 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     }> = [];
 
     for (const row of rows) {
-      const serviceDate = firstServiceDate(row.service_lines);
+      const payload =
+        row.raw_item_payload && typeof row.raw_item_payload === "object"
+          ? (row.raw_item_payload as Record<string, unknown>)
+          : {};
+      const serviceDate = firstServiceDate(payload.service_lines);
+      const clp01 = String(payload.claim_ref ?? row.imported_item_ref ?? "").trim();
+      const payerClaimControlNumber =
+        payload.payer_claim_control_number === null || payload.payer_claim_control_number === undefined
+          ? null
+          : String(payload.payer_claim_control_number);
       const { exact, probable } = await findCandidatesForEraClaimPayment({
         organizationId,
         eraClaimPaymentId: row.id,
-        clp01ClaimControlNumber: row.clp01_claim_control_number,
-        payerClaimControlNumber: row.payer_claim_control_number,
-        totalCharge: n(row.clp03_total_charge),
+        clp01ClaimControlNumber: clp01,
+        payerClaimControlNumber,
+        totalCharge: n(row.gross_amount || row.net_amount),
         payerProfileId,
         serviceDateFrom: serviceDate,
         serviceDateTo: serviceDate,
@@ -116,12 +125,14 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
 
       if (exact && exact.confidence >= 0.95) {
         const { error: updErr } = await supabase
-          .from("era_claim_payments")
+          .from("payment_import_items")
           .update({
-            professional_claim_id: exact.professionalClaimId,
+            claim_id: exact.professionalClaimId,
             client_id: exact.clientId,
-            claim_match_status: "matched",
-            posting_status: "ready",
+            match_status: "matched",
+            payment_import_status: "ready_to_post",
+            posting_ready: true,
+            matched_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq("id", row.id)

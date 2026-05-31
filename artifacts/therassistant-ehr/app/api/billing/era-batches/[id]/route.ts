@@ -38,20 +38,17 @@ type ClientRow = { id: string; first_name: string | null; last_name: string | nu
 
 type ClaimPaymentRow = {
   id: string;
-  era_import_batch_id: string;
-  professional_claim_id: string | null;
+  batch_id: string;
+  claim_id: string | null;
   client_id: string | null;
-  clp01_claim_control_number: string;
-  clp02_claim_status_code: string | null;
-  clp03_total_charge: number | string;
-  clp04_payment_amount: number | string;
-  clp05_patient_responsibility: number | string;
-  payer_claim_control_number: string | null;
-  claim_match_status: string;
-  posting_status: string;
-  cas_adjustments: unknown;
-  service_lines: unknown;
-  raw_segments: unknown;
+  imported_item_ref: string | null;
+  gross_amount: number | string;
+  net_amount: number | string;
+  adjustment_amount: number | string;
+  match_status: string;
+  payment_import_status: string;
+  raw_item_payload: unknown;
+  parsed_payload: unknown;
   created_at: string;
   updated_at: string;
 };
@@ -83,6 +80,19 @@ function asArray<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
 
+function itemStatusToPostingStatus(status: string): string {
+  if (status === "posted") return "posted";
+  if (status === "ready_to_post") return "ready";
+  if (status === "needs_review" || status === "failed") return "blocked";
+  return "pending";
+}
+
+function itemMatchToClaimMatch(status: string): string {
+  if (status === "matched" || status === "manual_matched") return "matched";
+  if (status === "ignored") return "ignored";
+  return "unmatched";
+}
+
 export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;
@@ -102,9 +112,9 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     await requireAuthenticatedPaymentPoster(organizationId);
 
     const { data: batch, error: batchErr } = await supabase
-      .from("era_import_batches")
+      .from("v_era_queue_from_payment_imports")
       .select(
-        "id, source, file_name, raw_content, parsed_summary, import_status, total_claims, total_payment_amount, total_patient_responsibility, payer_identifier, payer_name, eft_or_check_number, payment_date, payment_method_code, imported_at, created_at, updated_at, archived_at",
+        "id, source, file_name, parsed_summary, import_status, total_claims, total_payment_amount, total_patient_responsibility, payer_identifier, payer_name, eft_or_check_number, payment_date, payment_method_code, imported_at, created_at, updated_at, archived_at",
       )
       .eq("organization_id", organizationId)
       .eq("id", id)
@@ -117,12 +127,12 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     }
 
     const { data: rawClaimPayments, error: claimErr } = await supabase
-      .from("era_claim_payments")
+      .from("payment_import_items")
       .select(
-        "id, era_import_batch_id, professional_claim_id, client_id, clp01_claim_control_number, clp02_claim_status_code, clp03_total_charge, clp04_payment_amount, clp05_patient_responsibility, payer_claim_control_number, claim_match_status, posting_status, cas_adjustments, service_lines, raw_segments, created_at, updated_at",
+        "id, batch_id, claim_id, client_id, imported_item_ref, gross_amount, net_amount, adjustment_amount, match_status, payment_import_status, raw_item_payload, parsed_payload, created_at, updated_at",
       )
       .eq("organization_id", organizationId)
-      .eq("era_import_batch_id", id)
+      .eq("batch_id", id)
       .is("archived_at", null)
       .order("created_at", { ascending: true });
     if (claimErr) {
@@ -131,7 +141,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     const claimPayments = (rawClaimPayments ?? []) as ClaimPaymentRow[];
 
     const claimIds = Array.from(
-      new Set(claimPayments.map((c) => c.professional_claim_id).filter((x): x is string => Boolean(x))),
+      new Set(claimPayments.map((c) => c.claim_id).filter((x): x is string => Boolean(x))),
     );
     const clientIds = Array.from(
       new Set(claimPayments.map((c) => c.client_id).filter((x): x is string => Boolean(x))),
@@ -174,30 +184,49 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
 
     const hydrated = await Promise.all(
       claimPayments.map(async (row) => {
-        const claim = row.professional_claim_id ? claimsById.get(row.professional_claim_id) ?? null : null;
+        const claim = row.claim_id ? claimsById.get(row.claim_id) ?? null : null;
         const client = row.client_id ? clientsById.get(row.client_id) ?? null : null;
+        const payload =
+          row.raw_item_payload && typeof row.raw_item_payload === "object"
+            ? (row.raw_item_payload as Record<string, unknown>)
+            : {};
         const cas = asArray<{ groupCode?: string; reasonCode?: string; amount?: number }>(
-          row.cas_adjustments,
+          payload.adjustments,
         );
+        const clp01 = String(payload.claim_ref ?? row.imported_item_ref ?? "").trim();
+        const clp02 =
+          payload.claim_status_code === null || payload.claim_status_code === undefined
+            ? null
+            : String(payload.claim_status_code);
+        const payerClaimControlNumber =
+          payload.payer_claim_control_number === null || payload.payer_claim_control_number === undefined
+            ? null
+            : String(payload.payer_claim_control_number);
+        const postingStatus = itemStatusToPostingStatus(row.payment_import_status);
+        const claimMatchStatus = itemMatchToClaimMatch(row.match_status);
+        const patientResponsibility =
+          payload.patient_responsibility === null || payload.patient_responsibility === undefined
+            ? 0
+            : n(payload.patient_responsibility);
 
         const validation = validateEra835Posting({
           id: row.id,
-          professional_claim_id: row.professional_claim_id,
+          professional_claim_id: row.claim_id,
           client_id: row.client_id,
-          clp01_claim_control_number: row.clp01_claim_control_number,
-          clp03_total_charge: n(row.clp03_total_charge),
-          clp04_payment_amount: n(row.clp04_payment_amount),
-          clp05_patient_responsibility: n(row.clp05_patient_responsibility),
+          clp01_claim_control_number: clp01,
+          clp03_total_charge: n(row.gross_amount),
+          clp04_payment_amount: n(row.net_amount),
+          clp05_patient_responsibility: patientResponsibility,
           cas_adjustments: cas,
-          claim_match_status: row.claim_match_status,
-          posting_status: row.posting_status,
+          claim_match_status: claimMatchStatus,
+          posting_status: postingStatus,
         } as EraClaimPaymentRow);
 
         const suggestions = generatePostingSuggestions({
-          clp02ClaimStatusCode: row.clp02_claim_status_code,
-          clp03TotalCharge: n(row.clp03_total_charge),
-          clp04PaymentAmount: n(row.clp04_payment_amount),
-          clp05PatientResponsibility: n(row.clp05_patient_responsibility),
+          clp02ClaimStatusCode: clp02,
+          clp03TotalCharge: n(row.gross_amount),
+          clp04PaymentAmount: n(row.net_amount),
+          clp05PatientResponsibility: patientResponsibility,
           casAdjustments: cas,
         });
         const dup = await detectDuplicatePostingSuggestion(
@@ -206,29 +235,29 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
           {
             organizationId,
             selfEraClaimPaymentId: row.id,
-            payerClaimControlNumber: row.payer_claim_control_number,
+            payerClaimControlNumber,
           },
         );
         const allSuggestions = dup ? [...suggestions, dup] : suggestions;
 
         return {
           id: row.id,
-          eraImportBatchId: row.era_import_batch_id,
-          clp01ClaimControlNumber: row.clp01_claim_control_number,
-          clp02ClaimStatusCode: row.clp02_claim_status_code,
-          payerClaimControlNumber: row.payer_claim_control_number,
-          totalCharge: n(row.clp03_total_charge),
-          paymentAmount: n(row.clp04_payment_amount),
-          patientResponsibility: n(row.clp05_patient_responsibility),
-          claimMatchStatus: row.claim_match_status,
-          postingStatus: row.posting_status,
+          eraImportBatchId: row.batch_id,
+          clp01ClaimControlNumber: clp01,
+          clp02ClaimStatusCode: clp02,
+          payerClaimControlNumber,
+          totalCharge: n(row.gross_amount),
+          paymentAmount: n(row.net_amount),
+          patientResponsibility,
+          claimMatchStatus,
+          postingStatus,
           casAdjustments: cas.map((a) => ({
             groupCode: a.groupCode ?? null,
             reasonCode: a.reasonCode ?? null,
             amount: n(a.amount),
           })),
-          serviceLines: asArray(row.service_lines),
-          rawSegments: asArray<string>(row.raw_segments),
+          serviceLines: asArray(payload.service_lines),
+          rawSegments: asArray<string>(payload.raw_segments),
           professionalClaim: claim
             ? {
                 id: claim.id,
@@ -313,7 +342,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
         paymentMethodCode: batch.payment_method_code,
         paymentDate: batch.payment_date,
         receivedAt: batch.imported_at,
-        rawContent: batch.raw_content,
+        rawContent: "",
         parsedSummary: batch.parsed_summary,
         archivedAt: batch.archived_at,
         createdAt: batch.created_at,

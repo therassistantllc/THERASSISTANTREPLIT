@@ -14,8 +14,8 @@ function errMsg(e: unknown) {
 
 /**
  * POST { organizationId, professionalClaimId? | claimId? | claimNumber?, clientId? }
- * Manually binds a professional_claim (and optionally a client) to an ERA
- * claim-payment row. Sets claim_match_status='matched' and posting_status='ready'.
+ * Manually binds a professional_claim (and optionally a client) to an imported
+ * payment item row. Sets match_status='matched' and payment_import_status='ready_to_post'.
  *
  * Requires an authenticated payment poster (role guard).
  */
@@ -92,19 +92,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       }
     }
     const updatePayload: Record<string, unknown> = {
-      professional_claim_id: claimId,
-      claim_match_status: "matched",
-      posting_status: "ready",
+      claim_id: claimId,
+      match_status: "matched",
+      payment_import_status: "ready_to_post",
+      posting_ready: true,
+      matched_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
     if (clientIdInput) updatePayload.client_id = clientIdInput;
 
     const { data, error } = await supabase
-      .from("era_claim_payments")
+      .from("payment_import_items")
       .update(updatePayload)
       .eq("id", id)
       .eq("organization_id", organizationId)
-      .select("id, professional_claim_id, client_id, claim_match_status, posting_status")
+      .select("id, claim_id, client_id, match_status, payment_import_status")
       .single();
     if (error) throw error;
 

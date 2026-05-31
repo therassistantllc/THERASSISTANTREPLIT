@@ -3,7 +3,7 @@
  * Body: { organizationId, undo?: boolean, note?: string }
  *
  * Marks the batch as deferred (biller wants to revisit later). Stored as
- * `parsed_summary.deferred = true` because the era_import_batches.import_status
+ * `parsed_summary.deferred = true` because the importer status
  * enum does not include a 'deferred' value.
  */
 import { NextResponse } from "next/server";
@@ -34,7 +34,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     }
 
     const { data: batch } = await supabase
-      .from("era_import_batches")
+      .from("payment_import_batches")
       .select("id, parsed_summary")
       .eq("organization_id", organizationId)
       .eq("id", id)
@@ -57,7 +57,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     }
 
     const { error: updErr } = await supabase
-      .from("era_import_batches")
+      .from("payment_import_batches")
       .update({ parsed_summary: parsedSummary, updated_at: new Date().toISOString() })
       .eq("id", id)
       .eq("organization_id", organizationId);

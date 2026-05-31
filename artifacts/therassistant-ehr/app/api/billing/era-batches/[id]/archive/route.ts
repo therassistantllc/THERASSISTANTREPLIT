@@ -34,7 +34,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     }
 
     const { data: batch } = await supabase
-      .from("era_import_batches")
+      .from("payment_import_batches")
       .select("id, parsed_summary")
       .eq("organization_id", organizationId)
       .eq("id", id)
@@ -52,7 +52,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       delete parsedSummary.marked_duplicate_of;
       delete parsedSummary.archived_reason;
       const { error: updErr } = await supabase
-        .from("era_import_batches")
+        .from("payment_import_batches")
         .update({ archived_at: null, parsed_summary: parsedSummary, updated_at: now })
         .eq("id", id)
         .eq("organization_id", organizationId);
@@ -68,7 +68,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     parsedSummary.archived_reason = body.reason ?? "archive";
 
     const { error: updErr } = await supabase
-      .from("era_import_batches")
+      .from("payment_import_batches")
       .update({ archived_at: now, parsed_summary: parsedSummary, updated_at: now })
       .eq("id", id)
       .eq("organization_id", organizationId);

@@ -46,9 +46,9 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     await requireAuthenticatedPaymentPoster(organizationId);
 
     const { data: payment } = await supabase
-      .from("era_claim_payments")
+      .from("payment_import_items")
       .select(
-        "id, era_import_batch_id, clp01_claim_control_number, payer_claim_control_number, clp03_total_charge, service_lines",
+        "id, batch_id, imported_item_ref, gross_amount, net_amount, raw_item_payload",
       )
       .eq("organization_id", organizationId)
       .eq("id", id)
@@ -57,25 +57,34 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
       return NextResponse.json({ success: false, error: "ERA claim payment not found" }, { status: 404 });
     }
 
+    const payload =
+      payment.raw_item_payload && typeof payment.raw_item_payload === "object"
+        ? (payment.raw_item_payload as Record<string, unknown>)
+        : {};
+    const clp01ClaimControlNumber = String(payload.claim_ref ?? payment.imported_item_ref ?? "").trim();
+    const payerClaimControlNumber =
+      payload.payer_claim_control_number === null || payload.payer_claim_control_number === undefined
+        ? null
+        : String(payload.payer_claim_control_number);
+    const serviceDate = firstServiceDate(payload.service_lines);
+
     const { data: batch } = await supabase
-      .from("era_import_batches")
+      .from("v_era_queue_from_payment_imports")
       .select("parsed_summary")
       .eq("organization_id", organizationId)
-      .eq("id", payment.era_import_batch_id)
+      .eq("id", payment.batch_id)
       .maybeSingle();
     const payerProfileId =
       batch?.parsed_summary && typeof batch.parsed_summary === "object"
         ? (((batch.parsed_summary as Record<string, unknown>).payerProfileId as string) ?? null)
         : null;
 
-    const serviceDate = firstServiceDate(payment.service_lines);
-
     const result = await findCandidatesForEraClaimPayment({
       organizationId,
       eraClaimPaymentId: payment.id,
-      clp01ClaimControlNumber: payment.clp01_claim_control_number,
-      payerClaimControlNumber: payment.payer_claim_control_number,
-      totalCharge: n(payment.clp03_total_charge),
+      clp01ClaimControlNumber,
+      payerClaimControlNumber,
+      totalCharge: n(payment.gross_amount || payment.net_amount),
       payerProfileId,
       serviceDateFrom: serviceDate,
       serviceDateTo: serviceDate,

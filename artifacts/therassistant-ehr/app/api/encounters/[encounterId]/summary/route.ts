@@ -10,6 +10,15 @@ function fullName(client: DbRow | null | undefined) {
   return [first, last].filter(Boolean).join(" ") || "Unknown client";
 }
 
+function fullProviderName(provider: DbRow | null | undefined) {
+  if (!provider) return "Unknown provider";
+  const displayName = typeof provider.display_name === "string" ? provider.display_name.trim() : "";
+  if (displayName) return displayName;
+  const first = typeof provider.first_name === "string" ? provider.first_name : "";
+  const last = typeof provider.last_name === "string" ? provider.last_name : "";
+  return [first, last].filter(Boolean).join(" ") || "Unknown provider";
+}
+
 function isMedicaidPayerType(value: unknown): boolean {
   return typeof value === "string" && /medicaid|mcd/i.test(value);
 }
@@ -48,6 +57,23 @@ export async function GET(request: Request, context: { params: Promise<{ encount
       .eq("id", encounter.client_id)
       .is("archived_at", null)
       .maybeSingle();
+
+    const { data: organization } = await supabase
+      .from("organizations")
+      .select("id, name, legal_name")
+      .eq("id", organizationId)
+      .is("archived_at", null)
+      .maybeSingle();
+
+    const { data: provider } = encounter.provider_id
+      ? await supabase
+          .from("providers")
+          .select("id, first_name, last_name, display_name, credential")
+          .eq("organization_id", organizationId)
+          .eq("id", encounter.provider_id)
+          .is("archived_at", null)
+          .maybeSingle()
+      : { data: null };
 
     const { data: appointment } = encounter.appointment_id
       ? await supabase
@@ -108,6 +134,20 @@ export async function GET(request: Request, context: { params: Promise<{ encount
       success: true,
       organizationId,
       encounter,
+      practice: organization
+        ? {
+            id: String(organization.id),
+            name: typeof organization.name === "string" ? organization.name : null,
+            legalName: typeof organization.legal_name === "string" ? organization.legal_name : null,
+          }
+        : null,
+      provider: provider
+        ? {
+            id: String(provider.id),
+            name: fullProviderName(provider as DbRow),
+            credential: typeof provider.credential === "string" ? provider.credential : null,
+          }
+        : null,
       client: client
         ? {
             id: client.id,

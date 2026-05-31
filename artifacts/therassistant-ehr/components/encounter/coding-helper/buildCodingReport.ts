@@ -27,6 +27,13 @@ export type CodingReportSection = {
   commonDeficiencies: string;
 };
 
+type CodingReportLegalHeader = {
+  practiceName: string;
+  providerName: string;
+  dateOfService: string;
+  clientName: string;
+};
+
 const CODE_REPORT_REFERENCE: Record<ReportCode, CodeReportReference> = {
   H0002: {
     description: "Behavioral health screening using a structured and validated screening process.",
@@ -138,8 +145,9 @@ function referenceForCode(code: string): CodeReportReference {
   };
 }
 
-function buildSectionReportText(section: CodingReportSection): string {
+function buildSectionReportText(section: CodingReportSection, index: number): string {
   return [
+    `SECTION ${index + 1}: CODE REVIEW`,
     `CODE: ${section.code}`,
     `DESCRIPTION: ${section.description}`,
     `REIMBURSEMENT RANGE: ${section.reimbursementRange}`,
@@ -152,10 +160,39 @@ function buildSectionReportText(section: CodingReportSection): string {
   ].join("\n");
 }
 
+function buildLegalHeaderText(params: {
+  encounterId: string;
+  reportDate: string;
+  legalHeader: CodingReportLegalHeader;
+  sourceReference: string;
+}): string {
+  const { encounterId, reportDate, legalHeader, sourceReference } = params;
+  return [
+    "CODING COMPLIANCE REPORT",
+    "REPORT CLASSIFICATION: INTERNAL CLINICAL/BILLING DOCUMENT",
+    "",
+    "CASE IDENTIFICATION",
+    `PRACTICE: ${legalHeader.practiceName}`,
+    `PROVIDER: ${legalHeader.providerName}`,
+    `DATE OF SERVICE: ${legalHeader.dateOfService}`,
+    `CLIENT NAME: ${legalHeader.clientName}`,
+    `ENCOUNTER ID: ${encounterId}`,
+    `REPORT DATE: ${reportDate}`,
+    "",
+    "LEGAL AND COMPLIANCE NOTICE",
+    "This report is generated to support coding review and billing documentation quality. Final billing responsibility remains with the rendering provider and practice compliance program.",
+    "",
+    "SOURCE RECORD",
+    sourceReference,
+    "",
+  ].join("\n");
+}
+
 export type CodingHelperReport = {
   id: string;
   date: string;
   codes: string;
+  legalHeader: CodingReportLegalHeader;
   auditSummary: string;
   codingRationale: string;
   documentationGaps: string[];
@@ -166,6 +203,10 @@ export type CodingHelperReport = {
 
 type BuildCodingReportParams = {
   encounterId: string;
+  practiceName?: string;
+  providerName?: string;
+  dateOfService?: string | null;
+  clientName?: string;
   answers: CodingQuestionnaireAnswers;
   questionnaireScore: CodingQuestionnaireScore;
   noteAnalysis: MedicaidDetectionResult | null;
@@ -174,11 +215,21 @@ type BuildCodingReportParams = {
 export function buildCodingReport(params: BuildCodingReportParams): CodingHelperReport {
   const {
     encounterId,
+    practiceName,
+    providerName,
+    dateOfService,
+    clientName,
     answers,
     questionnaireScore,
     noteAnalysis,
   } = params;
   const date = new Date().toISOString().slice(0, 10);
+  const legalHeader: CodingReportLegalHeader = {
+    practiceName: practiceName?.trim() || "UNKNOWN PRACTICE",
+    providerName: providerName?.trim() || "UNKNOWN PROVIDER",
+    dateOfService: dateOfService?.trim() || "UNKNOWN DATE OF SERVICE",
+    clientName: clientName?.trim() || "UNKNOWN CLIENT",
+  };
 
   const noteSuggestedCodes = (noteAnalysis?.recommendations ?? [])
     .filter((rec) => rec.action === "suggest")
@@ -234,12 +285,28 @@ export function buildCodingReport(params: BuildCodingReportParams): CodingHelper
       };
     });
 
-  const reportText = detailedSections.map(buildSectionReportText).join("\n\n");
+  const legalHeaderText = buildLegalHeaderText({
+    encounterId,
+    reportDate: date,
+    legalHeader,
+    sourceReference,
+  });
+  const summaryText = [
+    "EXECUTIVE SUMMARY",
+    `SUGGESTED CODES: ${suggestedCodes.length ? suggestedCodes.join(", ") : "NONE"}`,
+    `AUDIT SUMMARY: ${auditSummary}`,
+    `CODING RATIONALE: ${recommendationText || "No recommendation rows generated."}`,
+    `DOCUMENTATION GAPS: ${documentationGaps.length ? documentationGaps.join("; ") : "NONE IDENTIFIED"}`,
+    "",
+  ].join("\n");
+  const detailText = detailedSections.map((section, index) => buildSectionReportText(section, index)).join("\n\n");
+  const reportText = [legalHeaderText, summaryText, detailText].filter(Boolean).join("\n");
 
   return {
     id: `coding-helper-${encounterId}-${Date.now()}`,
     date,
     codes: suggestedCodes.join(", "),
+    legalHeader,
     auditSummary,
     codingRationale: recommendationText || "No recommendation rows generated.",
     documentationGaps,

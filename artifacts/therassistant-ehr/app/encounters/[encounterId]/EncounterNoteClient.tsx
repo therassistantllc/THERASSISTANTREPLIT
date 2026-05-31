@@ -23,6 +23,8 @@ import {
 type EncounterSummary = {
   success: boolean;
   error?: string;
+  practice?: { id: string; name?: string | null; legalName?: string | null } | null;
+  provider?: { id: string; name?: string | null; credential?: string | null } | null;
   client?: { id: string; name: string; dateOfBirth?: string | null } | null;
   coverage?: {
     isMedicaid?: boolean;
@@ -917,6 +919,9 @@ export default function EncounterNoteClient({ encounterId }: { encounterId: stri
               <CodingHelperPanel
                 encounterId={encounterId}
                 organizationId={organizationId}
+                practiceName={summary.practice?.legalName ?? summary.practice?.name}
+                providerName={summary.provider?.name}
+                dateOfService={summary.encounter?.service_date}
                 clientName={client?.name}
                 payerName={summary.coverage?.primaryPayerName}
                 isMedicaid={!!summary.coverage?.isMedicaid}

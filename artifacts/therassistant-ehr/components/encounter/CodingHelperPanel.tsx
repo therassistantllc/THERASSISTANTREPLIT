@@ -14,6 +14,9 @@ type CodingQuestionnaireAnswers = Partial<Record<string, string>>;
 type Props = {
   encounterId: string;
   organizationId: string;
+  practiceName?: string;
+  providerName?: string;
+  dateOfService?: string | null;
   clientName?: string;
   payerName?: string | null;
   isMedicaid: boolean;
@@ -69,6 +72,9 @@ function sectionsFromState(params: {
 export default function CodingHelperPanel(props: Props) {
   const {
     encounterId,
+    practiceName,
+    providerName,
+    dateOfService,
     clientName,
     payerName,
     isMedicaid,
@@ -118,6 +124,10 @@ export default function CodingHelperPanel(props: Props) {
   function buildReport(): CodingHelperReport {
     return buildCodingReport({
       encounterId,
+      practiceName,
+      providerName,
+      dateOfService,
+      clientName,
       answers,
       questionnaireScore,
       noteAnalysis,
@@ -160,6 +170,9 @@ export default function CodingHelperPanel(props: Props) {
   return (
     <div>
       <div style={{ display: "grid", gap: 8 }}>
+        <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+          Practice: {clean(practiceName) || "Unknown"} · Provider: {clean(providerName) || "Unknown"} · Date of service: {clean(dateOfService) || "Unknown"}
+        </p>
         <p className="muted" style={{ margin: 0, fontSize: 12 }}>
           Client: {clean(clientName) || "Unknown"} · Payer: {clean(payerName) || "Unknown"} · Coverage: {isMedicaid ? "Medicaid" : "Non-Medicaid"}
         </p>
